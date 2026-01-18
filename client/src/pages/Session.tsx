@@ -3,6 +3,7 @@ import { useRoute, Link } from 'wouter';
 import { useWebRTC } from '@/hooks/use-webrtc';
 import { useUploadRecording } from '@/hooks/use-recordings';
 import { Visualizer } from '@/components/Visualizer';
+import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { motion } from 'framer-motion';
 import { 
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
@@ -15,7 +16,7 @@ function generateUserId() {
   return 'user_' + Math.random().toString(36).substr(2, 9);
 }
 
-export default function Session() {
+function SessionContent() {
   const [, params] = useRoute('/session/:id/:role');
   const roomId = params?.id || '';
   const role = (params?.role as SessionRole) || 'artist';
@@ -518,5 +519,13 @@ export default function Session() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Session() {
+  return (
+    <SubscriptionGate>
+      <SessionContent />
+    </SubscriptionGate>
   );
 }

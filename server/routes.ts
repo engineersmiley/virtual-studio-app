@@ -47,10 +47,28 @@ export async function registerRoutes(
   // Serve uploaded files statically
   app.use('/uploads', express.static(uploadDir));
 
+  // ============ SUBSCRIPTION VERIFICATION HELPER ============
+  
+  async function verifySubscription(emailHeader: string | string[] | undefined): Promise<boolean> {
+    const email = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader;
+    if (!email) return false;
+    const user = await storage.getUserByEmail(email);
+    if (!user?.stripeCustomerId) return false;
+    const subscription = await storage.getSubscriptionByCustomerId(user.stripeCustomerId);
+    return subscription && (subscription.status === 'active' || subscription.status === 'trialing');
+  }
+
   // ============ SESSION ROUTES ============
   
   app.post(api.sessions.create.path, async (req, res) => {
     try {
+      const subscriberEmail = req.headers['x-subscriber-email'] as string;
+      const hasSubscription = await verifySubscription(subscriberEmail);
+      
+      if (!hasSubscription) {
+        return res.status(403).json({ message: 'Active subscription required' });
+      }
+
       const { name } = api.sessions.create.input.parse(req.body);
       const session = await storage.createSession(name);
       res.status(201).json(session);
@@ -68,7 +86,8 @@ export async function registerRoutes(
   });
 
   app.get(api.sessions.get.path, async (req, res) => {
-    const session = await storage.getSession(req.params.id);
+    const id = req.params.id as string;
+    const session = await storage.getSession(id);
     if (!session) {
       return res.status(404).json({ message: 'Session not found' });
     }
@@ -76,7 +95,8 @@ export async function registerRoutes(
   });
 
   app.post(api.sessions.end.path, async (req, res) => {
-    const session = await storage.endSession(req.params.id);
+    const id = req.params.id as string;
+    const session = await storage.endSession(id);
     if (!session) {
       return res.status(404).json({ message: 'Session not found' });
     }
@@ -272,15 +292,15 @@ export async function registerRoutes(
 
         switch (type) {
           case 'join': {
-            currentRoom = roomId.toUpperCase();
-            currentUserId = userId;
+            currentRoom = (roomId as string).toUpperCase();
+            currentUserId = userId as string;
             
             if (!rooms.has(currentRoom)) {
               rooms.set(currentRoom, new Map());
             }
             
             const room = rooms.get(currentRoom)!;
-            room.set(userId, { ws, role, userId });
+            room.set(currentUserId, { ws, role, userId: currentUserId });
             
             // Notify others in the room
             room.forEach((participant, pId) => {

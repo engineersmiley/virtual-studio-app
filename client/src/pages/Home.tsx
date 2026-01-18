@@ -85,17 +85,33 @@ export default function Home() {
   // Create new session
   const createSession = useMutation({
     mutationFn: async (name: string) => {
+      const subscriberEmail = localStorage.getItem('studiolink_subscriber_email');
       const res = await fetch(api.sessions.create.path, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(subscriberEmail && { 'X-Subscriber-Email': subscriberEmail })
+        },
         body: JSON.stringify({ name }),
       });
-      if (!res.ok) throw new Error('Failed to create session');
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: 'Failed to create session' }));
+        throw new Error(error.message || 'Failed to create session');
+      }
       return res.json();
     },
     onSuccess: (data) => {
       navigate(`/session/${data.id}/${selectedRole}`);
     },
+    onError: (error: Error) => {
+      if (error.message.includes('subscription')) {
+        toast({
+          title: "Subscription Required",
+          description: "Please subscribe to create recording sessions.",
+          variant: "destructive"
+        });
+      }
+    }
   });
 
   const handleCreate = () => {
