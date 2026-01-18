@@ -35,15 +35,16 @@ export function useUploadRecording() {
   return useMutation({
     mutationFn: async ({ blob, metadata }: { 
       blob: Blob, 
-      metadata: Omit<InsertRecording, "filename" | "fileSize" | "mimeType"> 
+      metadata: Partial<Omit<InsertRecording, "filename" | "fileSize" | "mimeType">> & { title: string; duration: number }
     }) => {
       const formData = new FormData();
       formData.append("file", blob, `${metadata.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`);
       formData.append("title", metadata.title);
       if (metadata.description) formData.append("description", metadata.description);
       formData.append("duration", metadata.duration.toString());
-      formData.append("isHighQuality", metadata.isHighQuality ? "true" : "false");
+      if (metadata.isHighQuality) formData.append("isHighQuality", "true");
       if (metadata.sessionName) formData.append("sessionName", metadata.sessionName);
+      if (metadata.sessionId) formData.append("sessionId", metadata.sessionId);
 
       const res = await fetch(api.recordings.upload.path, {
         method: api.recordings.upload.method,
