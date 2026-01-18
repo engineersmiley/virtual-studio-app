@@ -1,23 +1,86 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { 
   Monitor, Mic, Users, Radio, ArrowRight, 
-  Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download
+  Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download,
+  Crown, Check, CreditCard, Loader2
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "@shared/routes";
 import type { SessionRole } from "@shared/schema";
 import { usePwaInstall } from "@/hooks/use-pwa-install";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Home() {
   const [, navigate] = useLocation();
+  const searchString = useSearch();
   const [sessionName, setSessionName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [selectedRole, setSelectedRole] = useState<SessionRole>('artist');
   const { isInstallable, isInstalled, isIOSDevice, install } = usePwaInstall();
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
+  const [email, setEmail] = useState("");
+  const [showSubscribe, setShowSubscribe] = useState(false);
+  const { toast } = useToast();
+
+  const justSubscribed = searchString.includes('subscribed=true');
+  const cancelled = searchString.includes('cancelled=true');
+
+  useEffect(() => {
+    if (justSubscribed) {
+      toast({
+        title: "Welcome to Studio Link Pro!",
+        description: "Thank you for subscribing. Enjoy unlimited sessions!",
+      });
+    }
+    if (cancelled) {
+      toast({
+        title: "Subscription cancelled",
+        description: "You can subscribe anytime.",
+        variant: "destructive"
+      });
+    }
+  }, [justSubscribed, cancelled]);
+
+  const { data: pricesData } = useQuery<{ prices: Array<{ id: string; unit_amount: number; currency: string }> }>({
+    queryKey: ['/api/stripe/prices'],
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: async ({ email, priceId }: { email: string; priceId: string }) => {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, priceId }),
+      });
+      if (!res.ok) throw new Error('Failed to create checkout');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Could not start checkout. Please try again.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const handleSubscribe = () => {
+    if (!email.trim() || !pricesData?.prices?.[0]?.id) return;
+    checkoutMutation.mutate({ email, priceId: pricesData.prices[0].id });
+  };
+
+  const monthlyPrice = pricesData?.prices?.[0];
+  const priceAmount = monthlyPrice?.unit_amount ? (monthlyPrice.unit_amount / 100).toFixed(2) : '9.99';
 
   // Create new session
   const createSession = useMutation({
@@ -91,6 +154,98 @@ export default function Home() {
               <p className="text-sm text-muted-foreground">Never miss a moment of creative inspiration</p>
             </div>
           </div>
+
+          {/* Pro Subscription Banner */}
+          {!showSubscribe ? (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="glass-panel rounded-2xl p-6 mb-8 max-w-2xl mx-auto border border-secondary/30"
+            >
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <Crown className="w-8 h-8 text-secondary" />
+                  <div className="text-left">
+                    <h3 className="font-display font-bold text-lg">Studio Link Pro</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Unlimited sessions for ${priceAmount}/month
+                    </p>
+                  </div>
+                </div>
+                <Button 
+                  onClick={() => setShowSubscribe(true)}
+                  data-testid="button-get-pro"
+                  className="bg-gradient-to-r from-secondary to-secondary/80 hover:brightness-110"
+                >
+                  Get Pro <ArrowRight className="ml-2 w-4 h-4" />
+                </Button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="glass-panel rounded-2xl p-6 mb-8 max-w-md mx-auto border border-secondary/50"
+            >
+              <div className="text-center mb-6">
+                <Crown className="w-12 h-12 text-secondary mx-auto mb-3" />
+                <h3 className="font-display font-bold text-2xl mb-2">Studio Link Pro</h3>
+                <p className="text-3xl font-bold">
+                  ${priceAmount}
+                  <span className="text-sm font-normal text-muted-foreground">/month</span>
+                </p>
+              </div>
+
+              <div className="space-y-3 mb-6 text-left">
+                <div className="flex items-center gap-2 text-sm">
+                  <Check className="w-4 h-4 text-secondary" />
+                  <span>Unlimited recording sessions</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Check className="w-4 h-4 text-secondary" />
+                  <span>HD audio & video streaming</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Check className="w-4 h-4 text-secondary" />
+                  <span>Cloud recording library</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Check className="w-4 h-4 text-secondary" />
+                  <span>Priority support</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Input
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  data-testid="input-subscription-email"
+                  className="bg-background/50"
+                />
+                <Button 
+                  onClick={handleSubscribe}
+                  disabled={!email.trim() || checkoutMutation.isPending}
+                  data-testid="button-subscribe"
+                  className="w-full bg-gradient-to-r from-secondary to-secondary/80 hover:brightness-110"
+                >
+                  {checkoutMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <CreditCard className="w-4 h-4 mr-2" />
+                  )}
+                  Subscribe Now
+                </Button>
+                <button
+                  onClick={() => setShowSubscribe(false)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors w-full"
+                >
+                  Maybe later
+                </button>
+              </div>
+            </motion.div>
+          )}
 
           {/* Session Controls */}
           <div className="glass-panel rounded-2xl p-8 max-w-2xl mx-auto">
