@@ -33,18 +33,21 @@ export function useRecording(id: number) {
 export function useUploadRecording() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ blob, metadata }: { blob: Blob, metadata: Omit<InsertRecording, "filename" | "fileSize" | "mimeType"> }) => {
+    mutationFn: async ({ blob, metadata }: { 
+      blob: Blob, 
+      metadata: Omit<InsertRecording, "filename" | "fileSize" | "mimeType"> 
+    }) => {
       const formData = new FormData();
-      // Filename will be generated on server or refined here, but we pass a name
       formData.append("file", blob, `${metadata.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`);
       formData.append("title", metadata.title);
       if (metadata.description) formData.append("description", metadata.description);
       formData.append("duration", metadata.duration.toString());
+      formData.append("isHighQuality", metadata.isHighQuality ? "true" : "false");
+      if (metadata.sessionName) formData.append("sessionName", metadata.sessionName);
 
       const res = await fetch(api.recordings.upload.path, {
         method: api.recordings.upload.method,
         body: formData,
-        // Don't set Content-Type header manually for FormData, browser does it with boundary
       });
 
       if (!res.ok) {

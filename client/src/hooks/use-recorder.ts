@@ -40,14 +40,23 @@ export function useRecorder({ onStop }: UseRecorderOptions = {}) {
     if (sysGainRef.current) sysGainRef.current.gain.value = systemVolume;
   }, [systemVolume]);
 
-  const startRecording = useCallback(async () => {
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const startRecording = useCallback(async (options: { highQuality?: boolean } = {}) => {
     try {
       setError(null);
       setBlob(null);
       chunksRef.current = [];
 
       // 1. Get Screen Stream (System Audio + Video)
-      // IMPORTANT: User must select "Share System Audio" in the browser prompt
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: { width: 1920, height: 1080, frameRate: 60 },
         audio: {
@@ -60,15 +69,14 @@ export function useRecorder({ onStop }: UseRecorderOptions = {}) {
       // 2. Get Microphone Stream
       const userStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true, // Echo cancellation needed for mic
+          echoCancellation: true,
           noiseSuppression: true,
         }
       });
 
-      // Keep track to stop later
       streamsRef.current = [displayStream, userStream];
 
-      // 3. Setup Audio Context for mixing
+      // 3. Setup Audio Context
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioCtx = new AudioContextClass();
       audioContextRef.current = audioCtx;
@@ -76,14 +84,12 @@ export function useRecorder({ onStop }: UseRecorderOptions = {}) {
       const dest = audioCtx.createMediaStreamDestination();
       destinationRef.current = dest;
 
-      // Analyser for visualizer
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       analyserRef.current = analyser;
-      dest.connect(analyser); // Connect mixed output to analyser
+      dest.connect(analyser);
 
-      // 4. Create Source Nodes & Gains
-      // System Audio
+      // 4. Mixing
       if (displayStream.getAudioTracks().length > 0) {
         const sysSource = audioCtx.createMediaStreamSource(displayStream);
         const sysGain = audioCtx.createGain();
@@ -91,12 +97,8 @@ export function useRecorder({ onStop }: UseRecorderOptions = {}) {
         sysSource.connect(sysGain);
         sysGain.connect(dest);
         sysGainRef.current = sysGain;
-      } else {
-        console.warn("No system audio track found. Make sure 'Share System Audio' was checked.");
-        setError("System audio not detected. Did you check 'Share System Audio'?");
       }
 
-      // Microphone Audio
       if (userStream.getAudioTracks().length > 0) {
         const micSource = audioCtx.createMediaStreamSource(userStream);
         const micGain = audioCtx.createGain();
@@ -106,20 +108,18 @@ export function useRecorder({ onStop }: UseRecorderOptions = {}) {
         micGainRef.current = micGain;
       }
 
-      // 5. Combine Video from Display with Mixed Audio
       const mixedAudioTrack = dest.stream.getAudioTracks()[0];
       const videoTrack = displayStream.getVideoTracks()[0];
-      
       const combinedStream = new MediaStream([videoTrack, mixedAudioTrack]);
 
-      // Handle user clicking "Stop Sharing" in browser UI
-      videoTrack.onended = () => {
-        stopRecording();
-      };
+      videoTrack.onended = () => stopRecording();
 
-      // 6. Start MediaRecorder
+      // 6. MediaRecorder with High Quality options
+      const audioBitsPerSecond = options.highQuality ? 320000 : 128000;
+
       const mediaRecorder = new MediaRecorder(combinedStream, {
-        mimeType: 'video/webm;codecs=vp9,opus'
+        mimeType: 'video/webm;codecs=vp9,opus',
+        audioBitsPerSecond
       });
       mediaRecorderRef.current = mediaRecorder;
 
@@ -132,13 +132,11 @@ export function useRecorder({ onStop }: UseRecorderOptions = {}) {
         setBlob(recordedBlob);
         setStatus('stopped');
         
-        // Cleanup Audio Context
         if (audioContextRef.current) {
           audioContextRef.current.close();
           audioContextRef.current = null;
         }
         
-        // Stop all tracks
         streamsRef.current.forEach(stream => {
           stream.getTracks().forEach(track => track.stop());
         });
@@ -147,10 +145,9 @@ export function useRecorder({ onStop }: UseRecorderOptions = {}) {
         if (onStop) onStop(recordedBlob);
       };
 
-      mediaRecorder.start(100); // Collect 100ms chunks
+      mediaRecorder.start(100);
       setStatus('recording');
       
-      // Timer
       setDuration(0);
       timerRef.current = window.setInterval(() => {
         setDuration(prev => prev + 1);
@@ -161,17 +158,7 @@ export function useRecorder({ onStop }: UseRecorderOptions = {}) {
       setError(err.message || "Failed to start recording");
       setStatus('idle');
     }
-  }, [micVolume, systemVolume, onStop]);
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
+  }, [micVolume, systemVolume, onStop, stopRecording]);
 
   const resetRecorder = useCallback(() => {
     setBlob(null);

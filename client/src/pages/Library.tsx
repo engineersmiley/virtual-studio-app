@@ -10,7 +10,8 @@ export default function Library() {
   const [search, setSearch] = useState("");
 
   const filteredRecordings = recordings?.filter(rec => 
-    rec.title.toLowerCase().includes(search.toLowerCase())
+    rec.title.toLowerCase().includes(search.toLowerCase()) || 
+    rec.sessionName?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (

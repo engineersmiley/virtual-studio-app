@@ -9,6 +9,9 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export default function Home() {
   const [title, setTitle] = useState("");
+  const [isHighQuality, setIsHighQuality] = useState(false);
+  const [sessionName, setSessionName] = useState("");
+  const [sessionMode, setSessionMode] = useState(false);
   const uploadMutation = useUploadRecording();
   
   const {
@@ -23,7 +26,9 @@ export default function Home() {
     setMicVolume,
     systemVolume,
     setSystemVolume,
-    analyserNode
+    analyserNode,
+    quality,
+    setQuality
   } = useRecorder();
 
   const handleSave = async () => {
@@ -32,9 +37,11 @@ export default function Home() {
       await uploadMutation.mutateAsync({
         blob,
         metadata: {
-          title: title || `Recording ${new Date().toLocaleString()}`,
+          title: title || `${sessionMode ? sessionName : 'Recording'} ${new Date().toLocaleString()}`,
           duration,
-          description: "Recorded via Web Studio"
+          description: "Recorded via Web Studio",
+          isHighQuality,
+          sessionName: sessionMode ? sessionName : null
         }
       });
       resetRecorder();
@@ -42,6 +49,13 @@ export default function Home() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleStart = () => {
+    if (sessionMode && !sessionName) {
+      setSessionName(`Session-${new Date().toISOString().split('T')[0]}`);
+    }
+    startRecording({ highQuality: isHighQuality });
   };
 
   const handleDownload = () => {
@@ -106,6 +120,36 @@ export default function Home() {
             />
           </div>
 
+          <div className="space-y-4 pt-4 border-t border-white/10">
+            <div className="flex items-center justify-between">
+              <span className="font-tech text-xs uppercase tracking-tighter text-muted-foreground">High Quality (WAV)</span>
+              <input 
+                type="checkbox" 
+                checked={isHighQuality} 
+                onChange={(e) => setIsHighQuality(e.target.checked)}
+                className="accent-primary"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-tech text-xs uppercase tracking-tighter text-muted-foreground">Session Mode</span>
+              <input 
+                type="checkbox" 
+                checked={sessionMode} 
+                onChange={(e) => setSessionMode(e.target.checked)}
+                className="accent-secondary"
+              />
+            </div>
+            {sessionMode && (
+              <input 
+                type="text" 
+                placeholder="Session Name..." 
+                value={sessionName}
+                onChange={(e) => setSessionName(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded bg-background/50 border border-white/10 outline-none text-white"
+              />
+            )}
+          </div>
+
           <div className="mt-auto space-y-3">
             {error && (
               <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm flex items-center gap-2">
@@ -116,7 +160,7 @@ export default function Home() {
             
             {status === 'idle' || status === 'stopped' ? (
               <button 
-                onClick={startRecording}
+                onClick={handleStart}
                 className="w-full py-4 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-background font-display font-bold text-lg tracking-wider hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_-5px_hsl(var(--primary)/0.5)] flex items-center justify-center gap-2"
               >
                 <Disc className="animate-spin-slow" /> START RECORDING
