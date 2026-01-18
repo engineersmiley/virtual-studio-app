@@ -7,6 +7,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
+import { WebSocketServer, WebSocket } from "ws";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -22,9 +23,18 @@ const upload = multer({
     }
   }),
   limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB limit
+    fileSize: 500 * 1024 * 1024,
   }
 });
+
+// Room management for WebRTC signaling
+interface RoomParticipant {
+  ws: WebSocket;
+  role: 'artist' | 'engineer';
+  userId: string;
+}
+
+const rooms = new Map<string, Map<string, RoomParticipant>>();
 
 export async function registerRoutes(
   httpServer: Server,
@@ -34,9 +44,47 @@ export async function registerRoutes(
   // Serve uploaded files statically
   app.use('/uploads', express.static(uploadDir));
 
+  // ============ SESSION ROUTES ============
+  
+  app.post(api.sessions.create.path, async (req, res) => {
+    try {
+      const { name } = api.sessions.create.input.parse(req.body);
+      const session = await storage.createSession(name);
+      res.status(201).json(session);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.get(api.sessions.list.path, async (req, res) => {
+    const sessionsList = await storage.getSessions();
+    res.json(sessionsList);
+  });
+
+  app.get(api.sessions.get.path, async (req, res) => {
+    const session = await storage.getSession(req.params.id);
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+    res.json(session);
+  });
+
+  app.post(api.sessions.end.path, async (req, res) => {
+    const session = await storage.endSession(req.params.id);
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+    res.json(session);
+  });
+
+  // ============ RECORDING ROUTES ============
+
   app.get(api.recordings.list.path, async (req, res) => {
-    const recordings = await storage.getRecordings();
-    res.json(recordings);
+    const recordingsList = await storage.getRecordings();
+    res.json(recordingsList);
   });
 
   app.get(api.recordings.get.path, async (req, res) => {
@@ -53,9 +101,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: 'No file uploaded' });
       }
 
-      // Metadata comes as a JSON string in 'data' field or individual fields
-      // For simplicity with standard FormData, we'll extract fields from req.body
-      
       const duration = parseInt(req.body.duration || '0');
       
       const recordingData = {
@@ -67,6 +112,7 @@ export async function registerRoutes(
         mimeType: req.file.mimetype,
         isHighQuality: req.body.isHighQuality === 'true',
         sessionName: req.body.sessionName || null,
+        sessionId: req.body.sessionId || null,
       };
 
       const recording = await storage.createRecording(recordingData);
@@ -82,7 +128,6 @@ export async function registerRoutes(
     const recording = await storage.getRecording(id);
     
     if (recording) {
-      // Try to delete file
       try {
         const filePath = path.join(uploadDir, recording.filename);
         if (fs.existsSync(filePath)) {
@@ -97,6 +142,129 @@ export async function registerRoutes(
     } else {
       res.status(404).json({ message: 'Recording not found' });
     }
+  });
+
+  // ============ WEBSOCKET SIGNALING SERVER ============
+  
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+  wss.on('connection', (ws) => {
+    let currentRoom: string | null = null;
+    let currentUserId: string | null = null;
+
+    ws.on('message', (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        const { type, roomId, userId, role, payload } = message;
+
+        switch (type) {
+          case 'join': {
+            currentRoom = roomId.toUpperCase();
+            currentUserId = userId;
+            
+            if (!rooms.has(currentRoom)) {
+              rooms.set(currentRoom, new Map());
+            }
+            
+            const room = rooms.get(currentRoom)!;
+            room.set(userId, { ws, role, userId });
+            
+            // Notify others in the room
+            room.forEach((participant, pId) => {
+              if (pId !== userId && participant.ws.readyState === WebSocket.OPEN) {
+                participant.ws.send(JSON.stringify({
+                  type: 'user-joined',
+                  userId,
+                  role,
+                  roomId: currentRoom
+                }));
+              }
+            });
+
+            // Send list of existing participants to the new user
+            const participants = Array.from(room.entries())
+              .filter(([pId]) => pId !== userId)
+              .map(([pId, p]) => ({ userId: pId, role: p.role }));
+            
+            ws.send(JSON.stringify({
+              type: 'room-state',
+              roomId: currentRoom,
+              participants
+            }));
+            break;
+          }
+
+          case 'offer':
+          case 'answer':
+          case 'ice-candidate': {
+            if (!currentRoom) return;
+            const room = rooms.get(currentRoom);
+            if (!room) return;
+            
+            // Forward to target user or broadcast
+            const targetId = payload?.targetUserId;
+            if (targetId && room.has(targetId)) {
+              const target = room.get(targetId)!;
+              if (target.ws.readyState === WebSocket.OPEN) {
+                target.ws.send(JSON.stringify({
+                  type,
+                  userId: currentUserId,
+                  payload
+                }));
+              }
+            } else {
+              // Broadcast to all others
+              room.forEach((participant, pId) => {
+                if (pId !== currentUserId && participant.ws.readyState === WebSocket.OPEN) {
+                  participant.ws.send(JSON.stringify({
+                    type,
+                    userId: currentUserId,
+                    payload
+                  }));
+                }
+              });
+            }
+            break;
+          }
+
+          case 'leave': {
+            handleLeave();
+            break;
+          }
+        }
+      } catch (err) {
+        console.error('WebSocket message error:', err);
+      }
+    });
+
+    function handleLeave() {
+      if (currentRoom && currentUserId) {
+        const room = rooms.get(currentRoom);
+        if (room) {
+          room.delete(currentUserId);
+          
+          // Notify others
+          room.forEach((participant) => {
+            if (participant.ws.readyState === WebSocket.OPEN) {
+              participant.ws.send(JSON.stringify({
+                type: 'user-left',
+                userId: currentUserId,
+                roomId: currentRoom
+              }));
+            }
+          });
+          
+          if (room.size === 0) {
+            rooms.delete(currentRoom);
+          }
+        }
+      }
+      currentRoom = null;
+      currentUserId = null;
+    }
+
+    ws.on('close', handleLeave);
+    ws.on('error', handleLeave);
   });
 
   return httpServer;
