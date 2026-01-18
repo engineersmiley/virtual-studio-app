@@ -2,12 +2,15 @@ import { db } from "./db";
 import {
   recordings,
   sessions,
+  users,
   type Recording,
   type InsertRecording,
   type Session,
-  type InsertSession
+  type InsertSession,
+  type User,
+  type InsertUser
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 
 function generateRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -30,6 +33,17 @@ export interface IStorage {
   getRecording(id: number): Promise<Recording | undefined>;
   createRecording(recording: InsertRecording): Promise<Recording>;
   deleteRecording(id: number): Promise<void>;
+  
+  // Users
+  getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUserStripeInfo(userId: string, stripeInfo: { stripeCustomerId?: string; stripeSubscriptionId?: string; subscriptionStatus?: string }): Promise<User | undefined>;
+  
+  // Stripe queries
+  getSubscription(subscriptionId: string): Promise<any>;
+  listProducts(active?: boolean): Promise<any[]>;
+  listPrices(active?: boolean): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -74,6 +88,56 @@ export class DatabaseStorage implements IStorage {
 
   async deleteRecording(id: number): Promise<void> {
     await db.delete(recordings).where(eq(recordings.id, id));
+  }
+
+  // Users
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const [newUser] = await db.insert(users).values(user).returning();
+    return newUser;
+  }
+
+  async updateUserStripeInfo(userId: string, stripeInfo: { stripeCustomerId?: string; stripeSubscriptionId?: string; subscriptionStatus?: string }): Promise<User | undefined> {
+    const [user] = await db.update(users).set(stripeInfo).where(eq(users.id, userId)).returning();
+    return user;
+  }
+
+  // Stripe queries - query from stripe schema (managed by stripe-replit-sync)
+  async getSubscription(subscriptionId: string): Promise<any> {
+    const result = await db.execute(
+      sql`SELECT * FROM stripe.subscriptions WHERE id = ${subscriptionId}`
+    );
+    return result.rows[0] || null;
+  }
+
+  async listProducts(active = true): Promise<any[]> {
+    const result = await db.execute(
+      sql`SELECT * FROM stripe.products WHERE active = ${active}`
+    );
+    return result.rows;
+  }
+
+  async listPrices(active = true): Promise<any[]> {
+    const result = await db.execute(
+      sql`SELECT * FROM stripe.prices WHERE active = ${active}`
+    );
+    return result.rows;
+  }
+
+  async getSubscriptionByCustomerId(customerId: string): Promise<any> {
+    const result = await db.execute(
+      sql`SELECT * FROM stripe.subscriptions WHERE customer = ${customerId} ORDER BY created DESC LIMIT 1`
+    );
+    return result.rows[0] || null;
   }
 }
 

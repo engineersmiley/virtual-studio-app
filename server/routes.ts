@@ -8,6 +8,9 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
+import { stripeService } from "./stripeService";
+import { getStripePublishableKey } from "./stripeClient";
+import type { SessionRole } from "@shared/schema";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -30,7 +33,7 @@ const upload = multer({
 // Room management for WebRTC signaling
 interface RoomParticipant {
   ws: WebSocket;
-  role: 'artist' | 'engineer';
+  role: SessionRole;
   userId: string;
 }
 
@@ -141,6 +144,116 @@ export async function registerRoutes(
       res.status(204).send();
     } else {
       res.status(404).json({ message: 'Recording not found' });
+    }
+  });
+
+  // ============ STRIPE ROUTES ============
+
+  app.get('/api/stripe/config', async (req, res) => {
+    try {
+      const publishableKey = await getStripePublishableKey();
+      res.json({ publishableKey });
+    } catch (err) {
+      console.error('Error getting Stripe config:', err);
+      res.status(500).json({ error: 'Stripe not configured' });
+    }
+  });
+
+  app.post('/api/stripe/checkout', async (req, res) => {
+    try {
+      const { email, priceId } = req.body;
+      if (!email || !priceId) {
+        return res.status(400).json({ error: 'Email and priceId required' });
+      }
+
+      let user = await storage.getUserByEmail(email);
+      let customerId = user?.stripeCustomerId;
+
+      if (!user) {
+        const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        user = await storage.createUser({ id: userId, email });
+      }
+
+      if (!customerId) {
+        const customer = await stripeService.createCustomer(email, user.id);
+        await storage.updateUserStripeInfo(user.id, { stripeCustomerId: customer.id });
+        customerId = customer.id;
+      }
+
+      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      const session = await stripeService.createCheckoutSession(
+        customerId,
+        priceId,
+        `${baseUrl}/?subscribed=true`,
+        `${baseUrl}/?cancelled=true`
+      );
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/stripe/portal', async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: 'Email required' });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user?.stripeCustomerId) {
+        return res.status(404).json({ error: 'No subscription found' });
+      }
+
+      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      const portalSession = await stripeService.createCustomerPortalSession(
+        user.stripeCustomerId,
+        baseUrl || '/'
+      );
+
+      res.json({ url: portalSession.url });
+    } catch (err: any) {
+      console.error('Portal error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/subscription-status', async (req, res) => {
+    try {
+      const email = req.query.email as string;
+      if (!email) {
+        return res.json({ hasSubscription: false });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user?.stripeCustomerId) {
+        return res.json({ hasSubscription: false });
+      }
+
+      const subscription = await storage.getSubscriptionByCustomerId(user.stripeCustomerId);
+      const hasSubscription = subscription && 
+        (subscription.status === 'active' || subscription.status === 'trialing');
+
+      res.json({ 
+        hasSubscription, 
+        status: subscription?.status || null,
+        email 
+      });
+    } catch (err: any) {
+      console.error('Subscription status error:', err);
+      res.json({ hasSubscription: false });
+    }
+  });
+
+  app.get('/api/stripe/prices', async (req, res) => {
+    try {
+      const prices = await storage.listPrices(true);
+      res.json({ prices });
+    } catch (err: any) {
+      console.error('Prices error:', err);
+      res.status(500).json({ error: err.message });
     }
   });
 
