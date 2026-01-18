@@ -3,10 +3,11 @@ import { useLocation, useSearch } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { 
-  Monitor, Mic, Users, Radio, ArrowRight, 
+  Monitor, Mic, Users, ArrowRight, 
   Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download,
   Crown, Check, CreditCard, Loader2
 } from "lucide-react";
+import logoImage from "@assets/generated_images/studio_link_app_logo.png";
 import { motion } from "framer-motion";
 import { api } from "@shared/routes";
 import type { SessionRole } from "@shared/schema";
@@ -142,7 +143,7 @@ export default function Home() {
           className="relative z-10 text-center max-w-4xl mx-auto"
         >
           <div className="flex items-center justify-center gap-4 mb-6">
-            <Radio className="w-12 h-12 text-primary animate-pulse" />
+            <img src={logoImage} alt="Studio Link" className="w-16 h-16 md:w-20 md:h-20" />
             <h1 className="text-5xl md:text-7xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-primary via-white to-secondary">
               STUDIO LINK
             </h1>
