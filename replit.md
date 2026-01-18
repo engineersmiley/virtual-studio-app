@@ -41,6 +41,7 @@ Preferred communication style: Simple, everyday language.
 4. **Recording**: Browser-based MediaRecorder with Web Audio API mixing (engineer only)
 5. **Audio Visualization**: Real-time frequency analysis rendered to canvas
 6. **PWA Support**: Installable as an app on desktop and mobile, with iOS install instructions
+7. **Stripe Subscription**: Monthly Pro subscription at $9.99/month with checkout, customer portal, and webhook handling
 
 ### Shared Code Pattern
 The `shared/` directory contains:
@@ -57,6 +58,11 @@ This allows type-safe API calls between frontend and backend.
 
 ### Third-Party Services
 - **Google STUN Servers**: Used for WebRTC NAT traversal (`stun.l.google.com:19302`)
+- **Stripe**: Payment processing for subscriptions (managed via Replit connector)
+  - Webhook endpoint: `/api/stripe/webhook`
+  - Checkout: `/api/stripe/checkout`
+  - Customer portal: `/api/stripe/portal`
+  - Product: "Studio Link Pro" at $9.99/month
 
 ### Browser APIs Required
 - **MediaDevices API**: Screen capture and microphone access
