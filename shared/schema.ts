@@ -52,10 +52,14 @@ export const SignalingMessageType = {
   ERROR: 'error',
 } as const;
 
+// Session roles
+export const SessionRoles = ['artist', 'engineer', 'producer', 'other'] as const;
+export type SessionRole = typeof SessionRoles[number];
+
 export type SignalingMessage = {
   type: keyof typeof SignalingMessageType;
   roomId: string;
   userId: string;
-  role: 'artist' | 'engineer';
+  role: SessionRole;
   payload?: any;
 };

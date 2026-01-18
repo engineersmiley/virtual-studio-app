@@ -1,14 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import type { SessionRole } from '@shared/schema';
 
 interface Participant {
   userId: string;
-  role: 'artist' | 'engineer';
+  role: SessionRole;
 }
 
 interface UseWebRTCOptions {
   roomId: string;
   userId: string;
-  role: 'artist' | 'engineer';
+  role: SessionRole;
   onRemoteStream?: (stream: MediaStream) => void;
 }
 
@@ -107,11 +108,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
         case 'room-state': {
           setParticipants(message.participants || []);
           
-          // If we're the artist with a stream and engineers are already in the room
+          // If we're the artist with a stream and viewers are already in the room
           if (role === 'artist' && localStreamRef.current) {
-            const engineers = (message.participants || []).filter((p: Participant) => p.role === 'engineer');
-            for (const engineer of engineers) {
-              await sendOfferToEngineer(engineer.userId);
+            const viewers = (message.participants || []).filter((p: Participant) => p.role !== 'artist');
+            for (const viewer of viewers) {
+              await sendOfferToViewer(viewer.userId);
             }
           }
           break;
@@ -123,9 +124,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
             return [...prev, { userId: message.userId, role: message.role }];
           });
           
-          // If we're the artist and an engineer joined, create offer
-          if (role === 'artist' && message.role === 'engineer' && localStreamRef.current) {
-            await sendOfferToEngineer(message.userId);
+          // If we're the artist and a viewer joined, create offer
+          if (role === 'artist' && message.role !== 'artist' && localStreamRef.current) {
+            await sendOfferToViewer(message.userId);
           }
           break;
         }
@@ -137,8 +138,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
         }
 
         case 'offer': {
-          // Engineer receives offer from artist
-          if (role === 'engineer') {
+          // All viewers (engineer, producer, other) receive offer from artist
+          if (role !== 'artist') {
             const pc = createPeerConnection(message.userId);
             await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
             
@@ -187,10 +188,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
       }
     };
 
-    async function sendOfferToEngineer(engineerUserId: string) {
+    async function sendOfferToViewer(viewerUserId: string) {
       if (!localStreamRef.current || !wsRef.current) return;
       
-      const pc = createPeerConnection(engineerUserId);
+      const pc = createPeerConnection(viewerUserId);
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current!);
       });
@@ -205,7 +206,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
         role,
         payload: { 
           sdp: offer,
-          targetUserId: engineerUserId 
+          targetUserId: viewerUserId 
         }
       }));
     }
@@ -266,10 +267,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
       localStreamRef.current = combinedStream;
       setLocalStream(combinedStream);
 
-      // Send offer to all current engineers
-      const engineers = participants.filter(p => p.role === 'engineer');
-      for (const engineer of engineers) {
-        const pc = createPeerConnection(engineer.userId);
+      // Send offer to all current viewers (engineer, producer, other)
+      const viewers = participants.filter(p => p.role !== 'artist');
+      for (const viewer of viewers) {
+        const pc = createPeerConnection(viewer.userId);
         combinedStream.getTracks().forEach(track => {
           pc.addTrack(track, combinedStream);
         });
@@ -284,7 +285,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
           role,
           payload: { 
             sdp: offer,
-            targetUserId: engineer.userId 
+            targetUserId: viewer.userId 
           }
         }));
       }

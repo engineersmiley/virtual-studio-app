@@ -4,16 +4,17 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { 
   Monitor, Mic, Users, Radio, ArrowRight, 
-  Disc, ListMusic, Zap, Headphones
+  Disc, ListMusic, Zap, Headphones, Eye, PenTool
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "@shared/routes";
+import type { SessionRole } from "@shared/schema";
 
 export default function Home() {
   const [, navigate] = useLocation();
   const [sessionName, setSessionName] = useState("");
   const [joinCode, setJoinCode] = useState("");
-  const [selectedRole, setSelectedRole] = useState<'artist' | 'engineer'>('artist');
+  const [selectedRole, setSelectedRole] = useState<SessionRole>('artist');
 
   // Create new session
   const createSession = useMutation({
@@ -91,28 +92,50 @@ export default function Home() {
           {/* Session Controls */}
           <div className="glass-panel rounded-2xl p-8 max-w-2xl mx-auto">
             {/* Role Selection */}
-            <div className="flex gap-4 mb-8">
+            <div className="grid grid-cols-2 gap-3 mb-8">
               <button
                 onClick={() => setSelectedRole('artist')}
                 data-testid="button-role-artist"
-                className={`flex-1 py-4 rounded-xl font-display font-bold text-lg flex items-center justify-center gap-3 transition-all ${
+                className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
                   selectedRole === 'artist' 
                     ? 'bg-secondary text-white shadow-[0_0_20px_-5px_hsl(var(--secondary)/0.5)]' 
                     : 'bg-white/5 border border-white/10 hover:border-secondary/50'
                 }`}
               >
-                <Mic size={24} /> I'm the Artist
+                <Mic size={20} /> Artist
               </button>
               <button
                 onClick={() => setSelectedRole('engineer')}
                 data-testid="button-role-engineer"
-                className={`flex-1 py-4 rounded-xl font-display font-bold text-lg flex items-center justify-center gap-3 transition-all ${
+                className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
                   selectedRole === 'engineer' 
                     ? 'bg-primary text-background shadow-[0_0_20px_-5px_hsl(var(--primary)/0.5)]' 
                     : 'bg-white/5 border border-white/10 hover:border-primary/50'
                 }`}
               >
-                <Zap size={24} /> I'm the Engineer
+                <Zap size={20} /> Engineer
+              </button>
+              <button
+                onClick={() => setSelectedRole('producer')}
+                data-testid="button-role-producer"
+                className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
+                  selectedRole === 'producer' 
+                    ? 'bg-purple-600 text-white shadow-[0_0_20px_-5px_rgba(147,51,234,0.5)]' 
+                    : 'bg-white/5 border border-white/10 hover:border-purple-500/50'
+                }`}
+              >
+                <Eye size={20} /> Producer
+              </button>
+              <button
+                onClick={() => setSelectedRole('other')}
+                data-testid="button-role-other"
+                className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
+                  selectedRole === 'other' 
+                    ? 'bg-amber-600 text-white shadow-[0_0_20px_-5px_rgba(217,119,6,0.5)]' 
+                    : 'bg-white/5 border border-white/10 hover:border-amber-500/50'
+                }`}
+              >
+                <PenTool size={20} /> Other
               </button>
             </div>
 

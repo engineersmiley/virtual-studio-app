@@ -7,8 +7,9 @@ import { motion } from 'framer-motion';
 import { 
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
   Users, Radio, ArrowLeft, CheckCircle, AlertTriangle,
-  Video, VideoOff
+  Video, VideoOff, Eye, PenTool, Zap
 } from 'lucide-react';
+import type { SessionRole } from '@shared/schema';
 
 function generateUserId() {
   return 'user_' + Math.random().toString(36).substr(2, 9);
@@ -17,7 +18,7 @@ function generateUserId() {
 export default function Session() {
   const [, params] = useRoute('/session/:id/:role');
   const roomId = params?.id || '';
-  const role = (params?.role as 'artist' | 'engineer') || 'artist';
+  const role = (params?.role as SessionRole) || 'artist';
   
   const [userId] = useState(() => generateUserId());
   const [isSharing, setIsSharing] = useState(false);
@@ -197,6 +198,50 @@ export default function Session() {
 
   const artistCount = participants.filter(p => p.role === 'artist').length + (role === 'artist' ? 1 : 0);
   const engineerCount = participants.filter(p => p.role === 'engineer').length + (role === 'engineer' ? 1 : 0);
+  const producerCount = participants.filter(p => p.role === 'producer').length + (role === 'producer' ? 1 : 0);
+  const otherCount = participants.filter(p => p.role === 'other').length + (role === 'other' ? 1 : 0);
+
+  // Helper to get role color
+  const getRoleColor = (r: SessionRole) => {
+    switch (r) {
+      case 'artist': return 'text-secondary';
+      case 'engineer': return 'text-primary';
+      case 'producer': return 'text-purple-400';
+      case 'other': return 'text-amber-400';
+    }
+  };
+
+  const getRoleBgColor = (r: SessionRole) => {
+    switch (r) {
+      case 'artist': return 'bg-secondary/20 border-secondary/30';
+      case 'engineer': return 'bg-primary/20 border-primary/30';
+      case 'producer': return 'bg-purple-500/20 border-purple-500/30';
+      case 'other': return 'bg-amber-500/20 border-amber-500/30';
+    }
+  };
+
+  const getRoleDotColor = (r: SessionRole) => {
+    switch (r) {
+      case 'artist': return 'bg-secondary';
+      case 'engineer': return 'bg-primary';
+      case 'producer': return 'bg-purple-500';
+      case 'other': return 'bg-amber-500';
+    }
+  };
+
+  const getRoleIcon = (r: SessionRole) => {
+    switch (r) {
+      case 'artist': return <Mic size={14} />;
+      case 'engineer': return <Zap size={14} />;
+      case 'producer': return <Eye size={14} />;
+      case 'other': return <PenTool size={14} />;
+    }
+  };
+
+  // Check if current role can record (only engineers)
+  const canRecord = role === 'engineer';
+  // Check if current role is a viewer (producer, other, engineer)
+  const isViewer = role !== 'artist';
 
   return (
     <div className="min-h-screen p-4 md:p-8 flex flex-col gap-6 max-w-7xl mx-auto">
@@ -212,7 +257,7 @@ export default function Session() {
               SESSION: <span className="text-primary">{roomId}</span>
             </h1>
             <p className="text-muted-foreground font-tech text-sm mt-1">
-              You are the <span className={`font-bold ${role === 'artist' ? 'text-secondary' : 'text-primary'}`}>{role.toUpperCase()}</span>
+              You are the <span className={`font-bold ${getRoleColor(role)}`}>{role.toUpperCase()}</span>
             </p>
           </div>
         </div>
@@ -226,9 +271,19 @@ export default function Session() {
             <span className="font-mono">{roomId}</span>
           </button>
           
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 text-sm">
             <Users size={16} />
-            <span className="text-sm">{artistCount}A / {engineerCount}E</span>
+            <span className="text-secondary">{artistCount}A</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="text-primary">{engineerCount}E</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="text-purple-400">{producerCount}P</span>
+            {otherCount > 0 && (
+              <>
+                <span className="text-muted-foreground">/</span>
+                <span className="text-amber-400">{otherCount}O</span>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -262,7 +317,7 @@ export default function Session() {
                 </div>
               )
             ) : (
-              // Engineer sees remote stream
+              // Viewers (Engineer, Producer, Other) see remote stream
               <>
                 <video
                   ref={remoteVideoRef}
@@ -287,6 +342,7 @@ export default function Session() {
           {/* Controls */}
           <div className="flex flex-wrap gap-4 items-center justify-between">
             {role === 'artist' ? (
+              // Artist controls - share screen
               <div className="flex gap-3">
                 {!isSharing ? (
                   <button
@@ -306,7 +362,8 @@ export default function Session() {
                   </button>
                 )}
               </div>
-            ) : (
+            ) : canRecord ? (
+              // Engineer controls - can record
               <div className="flex gap-3 items-center">
                 {!recordedBlob ? (
                   !isRecording ? (
@@ -359,6 +416,14 @@ export default function Session() {
                   </div>
                 )}
               </div>
+            ) : (
+              // Producer/Other - view only, no controls
+              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10">
+                <Eye size={18} className="text-muted-foreground" />
+                <span className="text-sm text-muted-foreground font-tech">
+                  {role === 'producer' ? 'Viewing as Producer' : 'Viewing as Guest'}
+                </span>
+              </div>
             )}
           </div>
         </div>
@@ -371,9 +436,11 @@ export default function Session() {
             </h3>
             <div className="space-y-2">
               {/* Self */}
-              <div className={`flex items-center gap-3 p-3 rounded-lg ${role === 'artist' ? 'bg-secondary/20 border border-secondary/30' : 'bg-primary/20 border border-primary/30'}`}>
-                <div className={`w-3 h-3 rounded-full ${role === 'artist' ? 'bg-secondary' : 'bg-primary'} shadow-lg`} />
-                <span className="font-tech text-sm">You ({role})</span>
+              <div className={`flex items-center gap-3 p-3 rounded-lg border ${getRoleBgColor(role)}`}>
+                <div className={`w-3 h-3 rounded-full ${getRoleDotColor(role)} shadow-lg`} />
+                <span className="font-tech text-sm flex items-center gap-2">
+                  {getRoleIcon(role)} You ({role})
+                </span>
                 {role === 'artist' && isSharing && (
                   <span className="ml-auto text-xs text-green-400 flex items-center gap-1">
                     <Radio size={12} /> Live
@@ -385,17 +452,19 @@ export default function Session() {
               {participants.map(p => (
                 <div 
                   key={p.userId}
-                  className={`flex items-center gap-3 p-3 rounded-lg ${p.role === 'artist' ? 'bg-secondary/10 border border-secondary/20' : 'bg-primary/10 border border-primary/20'}`}
+                  className={`flex items-center gap-3 p-3 rounded-lg border ${getRoleBgColor(p.role as SessionRole)}`}
                 >
-                  <div className={`w-3 h-3 rounded-full ${p.role === 'artist' ? 'bg-secondary' : 'bg-primary'}`} />
-                  <span className="font-tech text-sm">{p.role}</span>
+                  <div className={`w-3 h-3 rounded-full ${getRoleDotColor(p.role as SessionRole)}`} />
+                  <span className="font-tech text-sm flex items-center gap-2">
+                    {getRoleIcon(p.role as SessionRole)} {p.role}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Audio Visualizer (Engineer) */}
-          {role === 'engineer' && (
+          {/* Audio Visualizer (for viewers) */}
+          {isViewer && (
             <div className="flex-1">
               <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
                 <Mic size={20} /> Audio Level
@@ -411,7 +480,7 @@ export default function Session() {
 
           {/* Instructions */}
           <div className="mt-auto p-4 rounded-xl bg-white/5 text-sm text-muted-foreground space-y-2">
-            {role === 'artist' ? (
+            {role === 'artist' && (
               <>
                 <p><strong>Artist Instructions:</strong></p>
                 <ol className="list-decimal list-inside space-y-1 text-xs">
@@ -421,7 +490,8 @@ export default function Session() {
                   <li>Your engineer will see and hear everything</li>
                 </ol>
               </>
-            ) : (
+            )}
+            {role === 'engineer' && (
               <>
                 <p><strong>Engineer Instructions:</strong></p>
                 <ol className="list-decimal list-inside space-y-1 text-xs">
@@ -430,6 +500,18 @@ export default function Session() {
                   <li>Click "Start Recording" when ready</li>
                   <li>Download or save to cloud when done</li>
                 </ol>
+              </>
+            )}
+            {role === 'producer' && (
+              <>
+                <p><strong>Producer View:</strong></p>
+                <p className="text-xs">You can watch and listen to the session. The engineer handles recording.</p>
+              </>
+            )}
+            {role === 'other' && (
+              <>
+                <p><strong>Guest View:</strong></p>
+                <p className="text-xs">You can watch and listen to the session as a collaborator.</p>
               </>
             )}
           </div>
