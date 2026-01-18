@@ -77,18 +77,18 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
             <div className="glass-panel rounded-2xl p-6 text-left">
               <Monitor className="w-10 h-10 text-primary mb-4" />
-              <h3 className="font-display font-bold text-lg mb-2">Screen Share</h3>
-              <p className="text-sm text-muted-foreground">Share your DAW screen with your engineer in real-time</p>
+              <h3 className="font-display font-bold text-lg mb-2">Virtual Recording</h3>
+              <p className="text-sm text-muted-foreground">Capture your creative vision in stunning clarity</p>
             </div>
             <div className="glass-panel rounded-2xl p-6 text-left">
               <Headphones className="w-10 h-10 text-secondary mb-4" />
-              <h3 className="font-display font-bold text-lg mb-2">System Audio</h3>
-              <p className="text-sm text-muted-foreground">Capture system audio and microphone together</p>
+              <h3 className="font-display font-bold text-lg mb-2">Global Connect</h3>
+              <p className="text-sm text-muted-foreground">Collaborate with your team from anywhere in the world</p>
             </div>
             <div className="glass-panel rounded-2xl p-6 text-left">
               <Disc className="w-10 h-10 text-primary mb-4" />
-              <h3 className="font-display font-bold text-lg mb-2">Remote Record</h3>
-              <p className="text-sm text-muted-foreground">Engineer records the session from anywhere</p>
+              <h3 className="font-display font-bold text-lg mb-2">Instant Capture</h3>
+              <p className="text-sm text-muted-foreground">Never miss a moment of creative inspiration</p>
             </div>
           </div>
 
