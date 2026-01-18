@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -10,6 +10,8 @@ export const recordings = pgTable("recordings", {
   fileSize: integer("file_size").notNull(),
   duration: integer("duration").notNull(), // in seconds
   mimeType: text("mime_type").notNull(),
+  isHighQuality: boolean("is_high_quality").default(false),
+  sessionName: text("session_name"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

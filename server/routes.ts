@@ -65,6 +65,8 @@ export async function registerRoutes(
         fileSize: req.file.size,
         duration: duration,
         mimeType: req.file.mimetype,
+        isHighQuality: req.body.isHighQuality === 'true',
+        sessionName: req.body.sessionName || null,
       };
 
       const recording = await storage.createRecording(recordingData);
