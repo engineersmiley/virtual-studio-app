@@ -4,17 +4,20 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { 
   Monitor, Mic, Users, Radio, ArrowRight, 
-  Disc, ListMusic, Zap, Headphones, Eye, PenTool
+  Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "@shared/routes";
 import type { SessionRole } from "@shared/schema";
+import { usePwaInstall } from "@/hooks/use-pwa-install";
 
 export default function Home() {
   const [, navigate] = useLocation();
   const [sessionName, setSessionName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [selectedRole, setSelectedRole] = useState<SessionRole>('artist');
+  const { isInstallable, isInstalled, isIOSDevice, install } = usePwaInstall();
+  const [showIOSInstructions, setShowIOSInstructions] = useState(false);
 
   // Create new session
   const createSession = useMutation({
@@ -192,10 +195,45 @@ export default function Home() {
       </div>
 
       {/* Footer */}
-      <footer className="p-6 flex justify-center gap-8 text-muted-foreground">
-        <Link href="/library" className="flex items-center gap-2 hover:text-primary transition-colors">
-          <ListMusic size={20} /> Recording Library
-        </Link>
+      <footer className="p-6 flex flex-col items-center gap-4 text-muted-foreground">
+        <div className="flex justify-center gap-8">
+          <Link href="/library" className="flex items-center gap-2 hover:text-primary transition-colors">
+            <ListMusic size={20} /> Recording Library
+          </Link>
+          {isInstallable && !isInstalled && !isIOSDevice && (
+            <button
+              onClick={install}
+              data-testid="button-install-app"
+              className="flex items-center gap-2 hover:text-primary transition-colors"
+            >
+              <Download size={20} /> Install App
+            </button>
+          )}
+          {isInstallable && !isInstalled && isIOSDevice && (
+            <button
+              onClick={() => setShowIOSInstructions(!showIOSInstructions)}
+              data-testid="button-install-app-ios"
+              className="flex items-center gap-2 hover:text-primary transition-colors"
+            >
+              <Download size={20} /> Install App
+            </button>
+          )}
+          {isInstalled && (
+            <span className="flex items-center gap-2 text-primary">
+              <Download size={20} /> App Installed
+            </span>
+          )}
+        </div>
+        {showIOSInstructions && isIOSDevice && (
+          <div className="glass-panel rounded-xl p-4 text-center max-w-sm">
+            <p className="text-sm mb-2">To install on iOS:</p>
+            <ol className="text-xs text-left space-y-1">
+              <li>1. Tap the Share button in Safari</li>
+              <li>2. Scroll down and tap "Add to Home Screen"</li>
+              <li>3. Tap "Add" in the top right</li>
+            </ol>
+          </div>
+        )}
       </footer>
     </div>
   );

@@ -1,8 +1,10 @@
-# SoundBridge - Remote Recording Studio
+# Studio Link - Remote Recording Studio
 
 ## Overview
 
-SoundBridge is a real-time remote recording studio application that enables artists and audio engineers to collaborate remotely. The platform supports WebRTC-based audio/video streaming, session-based recording with room codes, and a library for managing saved recordings. Built with a React frontend and Express backend, it uses PostgreSQL for persistence and WebSocket for real-time signaling.
+Studio Link is a real-time remote recording studio application that enables artists, engineers, producers, and collaborators to work together remotely. The platform supports WebRTC-based audio/video streaming, session-based recording with room codes, and a library for managing saved recordings. Built with a React frontend and Express backend, it uses PostgreSQL for persistence and WebSocket for real-time signaling.
+
+The app is PWA-enabled and can be installed on mobile and desktop devices.
 
 ## User Preferences
 
@@ -34,10 +36,11 @@ Preferred communication style: Simple, everyday language.
 
 ### Key Features
 1. **Session Management**: Create/join rooms via 6-character codes (e.g., "ABC123")
-2. **Role-Based Access**: Users join as either "artist" or "engineer"
-3. **WebRTC Streaming**: Peer-to-peer audio/video with STUN servers for NAT traversal
-4. **Recording**: Browser-based MediaRecorder with Web Audio API mixing
+2. **Role-Based Access**: Four roles - Artist (broadcaster), Engineer (recorder), Producer (view-only supervisor), Other (guest/collaborator)
+3. **WebRTC Streaming**: Peer-to-peer audio/video with STUN servers for NAT traversal, supports multiple simultaneous viewers
+4. **Recording**: Browser-based MediaRecorder with Web Audio API mixing (engineer only)
 5. **Audio Visualization**: Real-time frequency analysis rendered to canvas
+6. **PWA Support**: Installable as an app on desktop and mobile, with iOS install instructions
 
 ### Shared Code Pattern
 The `shared/` directory contains:
