@@ -99,10 +99,33 @@ export default function Session() {
     if (!remoteVideoRef.current?.srcObject) return;
     
     const stream = remoteVideoRef.current.srcObject as MediaStream;
-    const recorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm;codecs=vp9,opus',
-      audioBitsPerSecond: 320000,
-    });
+    
+    // Determine supported MIME type with fallbacks
+    const mimeTypes = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4',
+    ];
+    
+    let selectedMimeType = 'video/webm';
+    for (const mimeType of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(mimeType)) {
+        selectedMimeType = mimeType;
+        break;
+      }
+    }
+    
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, {
+        mimeType: selectedMimeType,
+        audioBitsPerSecond: 320000,
+      });
+    } catch (err) {
+      console.error('Failed to create MediaRecorder:', err);
+      return;
+    }
     
     chunksRef.current = [];
     
@@ -110,8 +133,14 @@ export default function Session() {
       if (e.data.size > 0) chunksRef.current.push(e.data);
     };
     
+    recorder.onerror = (e) => {
+      console.error('MediaRecorder error:', e);
+      setIsRecording(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+    
     recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+      const blob = new Blob(chunksRef.current, { type: selectedMimeType.split(';')[0] });
       setRecordedBlob(blob);
       setIsRecording(false);
       if (timerRef.current) clearInterval(timerRef.current);
@@ -262,6 +291,7 @@ export default function Session() {
                 {!isSharing ? (
                   <button
                     onClick={handleStartSharing}
+                    data-testid="button-start-sharing"
                     className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-background font-bold flex items-center gap-2 hover:brightness-110 transition-all"
                   >
                     <Video size={20} /> Start Sharing
@@ -269,6 +299,7 @@ export default function Session() {
                 ) : (
                   <button
                     onClick={handleStopSharing}
+                    data-testid="button-stop-sharing"
                     className="px-6 py-3 rounded-xl bg-destructive text-white font-bold flex items-center gap-2 hover:bg-destructive/90 transition-all"
                   >
                     <VideoOff size={20} /> Stop Sharing
@@ -282,6 +313,7 @@ export default function Session() {
                     <button
                       onClick={startRecordingSession}
                       disabled={participants.filter(p => p.role === 'artist').length === 0}
+                      data-testid="button-start-recording"
                       className="px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Disc className="animate-pulse" size={20} /> Start Recording
@@ -289,6 +321,7 @@ export default function Session() {
                   ) : (
                     <button
                       onClick={stopRecordingSession}
+                      data-testid="button-stop-recording"
                       className="px-6 py-3 rounded-xl bg-destructive text-white font-bold flex items-center gap-2 hover:bg-destructive/90 transition-all"
                     >
                       <Square fill="currentColor" size={20} /> Stop Recording
@@ -298,6 +331,7 @@ export default function Session() {
                   <div className="flex gap-3">
                     <button
                       onClick={handleDownload}
+                      data-testid="button-download-recording"
                       className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 flex items-center gap-2 transition-colors"
                     >
                       <Download size={18} /> Download
@@ -305,6 +339,7 @@ export default function Session() {
                     <button
                       onClick={handleSave}
                       disabled={uploadMutation.isPending}
+                      data-testid="button-save-recording"
                       className="px-6 py-3 rounded-xl bg-secondary text-white font-bold flex items-center gap-2 hover:bg-secondary/90 transition-all disabled:opacity-50"
                     >
                       {uploadMutation.isPending ? (

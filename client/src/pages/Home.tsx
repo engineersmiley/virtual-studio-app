@@ -94,6 +94,7 @@ export default function Home() {
             <div className="flex gap-4 mb-8">
               <button
                 onClick={() => setSelectedRole('artist')}
+                data-testid="button-role-artist"
                 className={`flex-1 py-4 rounded-xl font-display font-bold text-lg flex items-center justify-center gap-3 transition-all ${
                   selectedRole === 'artist' 
                     ? 'bg-secondary text-white shadow-[0_0_20px_-5px_hsl(var(--secondary)/0.5)]' 
@@ -104,6 +105,7 @@ export default function Home() {
               </button>
               <button
                 onClick={() => setSelectedRole('engineer')}
+                data-testid="button-role-engineer"
                 className={`flex-1 py-4 rounded-xl font-display font-bold text-lg flex items-center justify-center gap-3 transition-all ${
                   selectedRole === 'engineer' 
                     ? 'bg-primary text-background shadow-[0_0_20px_-5px_hsl(var(--primary)/0.5)]' 
@@ -123,11 +125,13 @@ export default function Home() {
                   placeholder="Session name (optional)"
                   value={sessionName}
                   onChange={(e) => setSessionName(e.target.value)}
+                  data-testid="input-session-name"
                   className="w-full px-4 py-3 rounded-xl bg-background/50 border border-white/10 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
                 />
                 <button
                   onClick={handleCreate}
                   disabled={createSession.isPending}
+                  data-testid="button-create-session"
                   className="w-full py-4 rounded-xl bg-gradient-to-r from-primary to-secondary text-background font-display font-bold text-lg flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
                 >
                   {createSession.isPending ? (
@@ -147,11 +151,13 @@ export default function Home() {
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   maxLength={6}
+                  data-testid="input-room-code"
                   className="w-full px-4 py-3 rounded-xl bg-background/50 border border-white/10 focus:border-primary focus:ring-1 focus:ring-primary outline-none font-mono text-center text-2xl tracking-widest transition-all uppercase"
                 />
                 <button
                   onClick={handleJoin}
                   disabled={!joinCode.trim()}
+                  data-testid="button-join-session"
                   className="w-full py-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 font-display font-bold text-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Users size={20} /> Join Session

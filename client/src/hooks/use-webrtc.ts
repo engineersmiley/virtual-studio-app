@@ -19,15 +19,24 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  // Map of peer connections: userId -> RTCPeerConnection
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
   ];
 
-  const createPeerConnection = useCallback(() => {
+  const createPeerConnection = useCallback((targetUserId: string) => {
+    // Close existing connection for this peer if any
+    const existingPc = peerConnectionsRef.current.get(targetUserId);
+    if (existingPc) {
+      existingPc.close();
+      peerConnectionsRef.current.delete(targetUserId);
+    }
+
     const pc = new RTCPeerConnection({ iceServers });
 
     pc.onicecandidate = (event) => {
@@ -37,7 +46,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
           roomId,
           userId,
           role,
-          payload: { candidate: event.candidate }
+          payload: { 
+            candidate: event.candidate,
+            targetUserId 
+          }
         }));
       }
     };
@@ -49,16 +61,30 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') {
-        setConnected(true);
-      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-        setConnected(false);
-      }
+      const states = Array.from(peerConnectionsRef.current.values()).map(p => p.connectionState);
+      const hasConnected = states.some(s => s === 'connected');
+      setConnected(hasConnected);
     };
 
-    peerConnectionRef.current = pc;
+    peerConnectionsRef.current.set(targetUserId, pc);
     return pc;
   }, [roomId, userId, role, onRemoteStream]);
+
+  const closePeerConnection = useCallback((targetUserId: string) => {
+    const pc = peerConnectionsRef.current.get(targetUserId);
+    if (pc) {
+      pc.close();
+      peerConnectionsRef.current.delete(targetUserId);
+    }
+  }, []);
+
+  const closeAllPeerConnections = useCallback(() => {
+    peerConnectionsRef.current.forEach((pc) => {
+      pc.close();
+    });
+    peerConnectionsRef.current.clear();
+    setConnected(false);
+  }, []);
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -80,45 +106,40 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
       switch (message.type) {
         case 'room-state': {
           setParticipants(message.participants || []);
+          
+          // If we're the artist with a stream and engineers are already in the room
+          if (role === 'artist' && localStreamRef.current) {
+            const engineers = (message.participants || []).filter((p: Participant) => p.role === 'engineer');
+            for (const engineer of engineers) {
+              await sendOfferToEngineer(engineer.userId);
+            }
+          }
           break;
         }
 
         case 'user-joined': {
-          setParticipants(prev => [...prev, { userId: message.userId, role: message.role }]);
+          setParticipants(prev => {
+            if (prev.some(p => p.userId === message.userId)) return prev;
+            return [...prev, { userId: message.userId, role: message.role }];
+          });
           
           // If we're the artist and an engineer joined, create offer
           if (role === 'artist' && message.role === 'engineer' && localStreamRef.current) {
-            const pc = createPeerConnection();
-            localStreamRef.current.getTracks().forEach(track => {
-              pc.addTrack(track, localStreamRef.current!);
-            });
-            
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            
-            ws.send(JSON.stringify({
-              type: 'offer',
-              roomId,
-              userId,
-              role,
-              payload: { 
-                sdp: offer,
-                targetUserId: message.userId 
-              }
-            }));
+            await sendOfferToEngineer(message.userId);
           }
           break;
         }
 
         case 'user-left': {
           setParticipants(prev => prev.filter(p => p.userId !== message.userId));
+          closePeerConnection(message.userId);
           break;
         }
 
         case 'offer': {
           // Engineer receives offer from artist
           if (role === 'engineer') {
-            const pc = createPeerConnection();
+            const pc = createPeerConnection(message.userId);
             await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
             
             const answer = await pc.createAnswer();
@@ -140,20 +161,18 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
 
         case 'answer': {
           // Artist receives answer from engineer
-          if (peerConnectionRef.current) {
-            await peerConnectionRef.current.setRemoteDescription(
-              new RTCSessionDescription(message.payload.sdp)
-            );
+          const pc = peerConnectionsRef.current.get(message.userId);
+          if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
           }
           break;
         }
 
         case 'ice-candidate': {
-          if (peerConnectionRef.current && message.payload.candidate) {
+          const pc = peerConnectionsRef.current.get(message.userId);
+          if (pc && message.payload.candidate) {
             try {
-              await peerConnectionRef.current.addIceCandidate(
-                new RTCIceCandidate(message.payload.candidate)
-              );
+              await pc.addIceCandidate(new RTCIceCandidate(message.payload.candidate));
             } catch (e) {
               console.error('Error adding ICE candidate:', e);
             }
@@ -168,13 +187,39 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
       }
     };
 
+    async function sendOfferToEngineer(engineerUserId: string) {
+      if (!localStreamRef.current || !wsRef.current) return;
+      
+      const pc = createPeerConnection(engineerUserId);
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
+      
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      
+      wsRef.current.send(JSON.stringify({
+        type: 'offer',
+        roomId,
+        userId,
+        role,
+        payload: { 
+          sdp: offer,
+          targetUserId: engineerUserId 
+        }
+      }));
+    }
+
     ws.onerror = () => setError('WebSocket connection failed');
-    ws.onclose = () => setConnected(false);
+    ws.onclose = () => {
+      closeAllPeerConnections();
+      setConnected(false);
+    };
 
     return () => {
       ws.close();
     };
-  }, [roomId, userId, role, createPeerConnection]);
+  }, [roomId, userId, role, createPeerConnection, closePeerConnection, closeAllPeerConnections]);
 
   const startSharing = useCallback(async () => {
     try {
@@ -198,6 +243,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
 
       // Mix audio using Web Audio API
       const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
       const dest = audioContext.createMediaStreamDestination();
 
       // Add system audio if available
@@ -220,35 +266,36 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
       localStreamRef.current = combinedStream;
       setLocalStream(combinedStream);
 
-      // If there are already engineers in the room, send offer
+      // Send offer to all current engineers
       const engineers = participants.filter(p => p.role === 'engineer');
-      if (engineers.length > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-        const pc = createPeerConnection();
+      for (const engineer of engineers) {
+        const pc = createPeerConnection(engineer.userId);
         combinedStream.getTracks().forEach(track => {
           pc.addTrack(track, combinedStream);
         });
 
-        for (const engineer of engineers) {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          
-          wsRef.current.send(JSON.stringify({
-            type: 'offer',
-            roomId,
-            userId,
-            role,
-            payload: { 
-              sdp: offer,
-              targetUserId: engineer.userId 
-            }
-          }));
-        }
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        
+        wsRef.current?.send(JSON.stringify({
+          type: 'offer',
+          roomId,
+          userId,
+          role,
+          payload: { 
+            sdp: offer,
+            targetUserId: engineer.userId 
+          }
+        }));
       }
 
-      // Handle stop sharing
+      // Handle stop sharing when screen share ends
       videoTrack.onended = () => {
         stopSharing();
       };
+
+      // Store streams for cleanup
+      (combinedStream as any)._originalStreams = [displayStream, micStream];
 
       return combinedStream;
     } catch (err: any) {
@@ -258,36 +305,71 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
   }, [roomId, userId, role, participants, createPeerConnection]);
 
   const stopSharing = useCallback(() => {
+    // Stop all tracks on local stream
     if (localStreamRef.current) {
+      // Stop the combined stream tracks
       localStreamRef.current.getTracks().forEach(track => track.stop());
+      
+      // Stop original streams if stored
+      const originalStreams = (localStreamRef.current as any)._originalStreams;
+      if (originalStreams) {
+        originalStreams.forEach((stream: MediaStream) => {
+          stream.getTracks().forEach(track => track.stop());
+        });
+      }
+      
       localStreamRef.current = null;
       setLocalStream(null);
     }
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
+    
+    // Close audio context
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
     }
-  }, []);
+    
+    // Close all peer connections
+    closeAllPeerConnections();
+  }, [closeAllPeerConnections]);
 
   const disconnect = useCallback(() => {
+    // Stop sharing first
     stopSharing();
-    if (wsRef.current) {
+    
+    // Send leave message
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'leave',
         roomId,
         userId,
         role
       }));
+    }
+    
+    // Close WebSocket
+    if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
+    
     setParticipants([]);
     setConnected(false);
   }, [roomId, userId, role, stopSharing]);
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      disconnect();
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      peerConnectionsRef.current.forEach(pc => pc.close());
+      peerConnectionsRef.current.clear();
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
     };
   }, []);
 
