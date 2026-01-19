@@ -1,8 +1,8 @@
-# Studio Link - Remote Recording Studio
+# Virtual Studio - Remote Recording Studio
 
 ## Overview
 
-Studio Link is a real-time remote recording studio application that enables artists, engineers, producers, and collaborators to work together remotely. The platform supports WebRTC-based audio/video streaming, session-based recording with room codes, and a library for managing saved recordings. Built with a React frontend and Express backend, it uses PostgreSQL for persistence and WebSocket for real-time signaling.
+Virtual Studio is a real-time remote recording studio application that enables artists, engineers, producers, and collaborators to work together remotely. The platform supports WebRTC-based audio/video streaming, session-based recording with room codes, and a library for managing saved recordings. Built with a React frontend and Express backend, it uses PostgreSQL for persistence and WebSocket for real-time signaling.
 
 The app is PWA-enabled and can be installed on mobile and desktop devices.
 
@@ -62,7 +62,7 @@ This allows type-safe API calls between frontend and backend.
   - Webhook endpoint: `/api/stripe/webhook`
   - Checkout: `/api/stripe/checkout`
   - Customer portal: `/api/stripe/portal`
-  - Product: "Studio Link Pro" at $9.99/month
+  - Product: "Virtual Studio Pro" at $9.99/month
 
 ### Browser APIs Required
 - **MediaDevices API**: Screen capture and microphone access

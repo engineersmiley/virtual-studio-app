@@ -34,7 +34,7 @@ export default function Home() {
   useEffect(() => {
     if (justSubscribed) {
       toast({
-        title: "Welcome to Studio Link Pro!",
+        title: "Welcome to Virtual Studio Pro!",
         description: "Thank you for subscribing. Enjoy unlimited sessions!",
       });
     }
@@ -143,9 +143,9 @@ export default function Home() {
           className="relative z-10 text-center max-w-4xl mx-auto"
         >
           <div className="flex items-center justify-center gap-4 mb-6">
-            <img src={logoImage} alt="Studio Link" className="w-16 h-16 md:w-20 md:h-20" />
+            <img src={logoImage} alt="Virtual Studio" className="w-16 h-16 md:w-20 md:h-20" />
             <h1 className="text-5xl md:text-7xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-primary via-white to-secondary">
-              STUDIO LINK
+              VIRTUAL STUDIO
             </h1>
           </div>
           
@@ -183,7 +183,7 @@ export default function Home() {
                 <div className="flex items-center gap-3">
                   <Crown className="w-8 h-8 text-secondary" />
                   <div className="text-left">
-                    <h3 className="font-display font-bold text-lg">Studio Link Pro</h3>
+                    <h3 className="font-display font-bold text-lg">Virtual Studio Pro</h3>
                     <p className="text-sm text-muted-foreground">
                       Unlimited sessions for ${priceAmount}/month
                     </p>
@@ -206,7 +206,7 @@ export default function Home() {
             >
               <div className="text-center mb-6">
                 <Crown className="w-12 h-12 text-secondary mx-auto mb-3" />
-                <h3 className="font-display font-bold text-2xl mb-2">Studio Link Pro</h3>
+                <h3 className="font-display font-bold text-2xl mb-2">Virtual Studio Pro</h3>
                 <p className="text-3xl font-bold">
                   ${priceAmount}
                   <span className="text-sm font-normal text-muted-foreground">/month</span>
