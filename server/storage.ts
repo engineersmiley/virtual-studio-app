@@ -127,16 +127,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async listPrices(active = true): Promise<any[]> {
-    // Prefer live mode prices when available
+    // Only return recurring prices for subscriptions, prefer live mode
     const liveResult = await db.execute(
-      sql`SELECT * FROM stripe.prices WHERE active = ${active} AND livemode = true`
+      sql`SELECT * FROM stripe.prices WHERE active = ${active} AND livemode = true AND type = 'recurring'`
     );
     if (liveResult.rows.length > 0) {
       return liveResult.rows;
     }
-    // Fallback to test mode prices for development
+    // Fallback to test mode recurring prices for development
     const result = await db.execute(
-      sql`SELECT * FROM stripe.prices WHERE active = ${active}`
+      sql`SELECT * FROM stripe.prices WHERE active = ${active} AND type = 'recurring'`
     );
     return result.rows;
   }
