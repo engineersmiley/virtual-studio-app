@@ -30,7 +30,11 @@ async function initStripe() {
     const stripeSync = await getStripeSync();
 
     console.log('Setting up managed webhook...');
-    const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+    // Use custom domain for production, fallback to REPLIT_DOMAINS for dev
+    const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
+    const webhookBaseUrl = isProduction 
+      ? 'https://virtualstudio.sale'
+      : `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
     try {
       const result = await stripeSync.findOrCreateManagedWebhook(
         `${webhookBaseUrl}/api/stripe/webhook`
