@@ -127,6 +127,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async listPrices(active = true): Promise<any[]> {
+    // Prefer live mode prices when available
+    const liveResult = await db.execute(
+      sql`SELECT * FROM stripe.prices WHERE active = ${active} AND livemode = true`
+    );
+    if (liveResult.rows.length > 0) {
+      return liveResult.rows;
+    }
+    // Fallback to test mode prices for development
     const result = await db.execute(
       sql`SELECT * FROM stripe.prices WHERE active = ${active}`
     );
