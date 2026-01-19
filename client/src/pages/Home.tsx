@@ -7,7 +7,7 @@ import {
   Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download,
   Crown, Check, CreditCard, Loader2
 } from "lucide-react";
-import logoImage from "@assets/generated_images/studio_link_app_logo.png";
+import logoImage from "@assets/generated_images/virtual_studio_logo_with_globe.png";
 import { motion } from "framer-motion";
 import { api } from "@shared/routes";
 import type { SessionRole } from "@shared/schema";
@@ -142,11 +142,8 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           className="relative z-10 text-center max-w-4xl mx-auto"
         >
-          <div className="flex items-center justify-center gap-4 mb-6">
-            <img src={logoImage} alt="Virtual Studio" className="w-16 h-16 md:w-20 md:h-20" />
-            <h1 className="text-5xl md:text-7xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-primary via-white to-secondary">
-              VIRTUAL STUDIO
-            </h1>
+          <div className="flex items-center justify-center mb-6">
+            <img src={logoImage} alt="Virtual Studio" className="h-24 md:h-32 w-auto" />
           </div>
           
           <p className="text-xl text-muted-foreground font-tech uppercase tracking-widest mb-12">
