@@ -10,6 +10,7 @@ import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { stripeService } from "./stripeService";
 import { getStripePublishableKey } from "./stripeClient";
+import { sendWelcomeEmail } from "./gmailService";
 import type { SessionRole } from "@shared/schema";
 
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -307,6 +308,26 @@ export async function registerRoutes(
       res.json({ prices });
     } catch (err: any) {
       console.error('Prices error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Test endpoint to manually send welcome email (development only)
+  app.post('/api/test-welcome-email', async (req, res) => {
+    // Only allow in development to prevent abuse
+    if (process.env.NODE_ENV === 'production' || process.env.REPLIT_DEPLOYMENT === '1') {
+      return res.status(403).json({ error: 'Not available in production' });
+    }
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+      console.log(`Manually sending welcome email to ${email}`);
+      await sendWelcomeEmail(email);
+      res.json({ success: true, message: `Welcome email sent to ${email}` });
+    } catch (err: any) {
+      console.error('Test email error:', err);
       res.status(500).json({ error: err.message });
     }
   });
