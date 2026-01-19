@@ -83,7 +83,7 @@ export async function sendWelcomeEmail(toEmail: string, paymentDetails?: Payment
     const gmail = await getUncachableGmailClient();
     
     const amountStr = paymentDetails ? formatCurrency(paymentDetails.amount, paymentDetails.currency) : '$9.99';
-    const nextBillingStr = paymentDetails?.nextBillingDate ? formatDate(paymentDetails.nextBillingDate) : 'in 30 days';
+    const nextBillingStr = paymentDetails?.nextBillingDate ? formatDate(paymentDetails.nextBillingDate) : 'Monthly (see account for details)';
     
     const subject = 'Welcome to Virtual Studio Pro - Payment Confirmed!';
     const body = `
