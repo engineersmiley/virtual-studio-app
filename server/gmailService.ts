@@ -105,6 +105,16 @@ export async function sendWelcomeEmail(toEmail: string): Promise<void> {
       <p>Ready to start your first session?</p>
       <a href="https://virtualstudio.sale" class="button">Open Virtual Studio</a>
       
+      <div class="features" style="margin-top: 30px;">
+        <p><strong>Install the App:</strong></p>
+        <p>Add Virtual Studio to your desktop or phone for quick access:</p>
+        <ul>
+          <li><strong>Desktop (Chrome/Edge):</strong> Click the install icon in your browser's address bar</li>
+          <li><strong>iPhone/iPad:</strong> Tap Share, then "Add to Home Screen"</li>
+          <li><strong>Android:</strong> Tap the menu, then "Install App"</li>
+        </ul>
+      </div>
+      
       <p>If you have any questions, just reply to this email.</p>
       
       <p>Happy creating!</p>
