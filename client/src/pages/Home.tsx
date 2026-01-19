@@ -53,30 +53,52 @@ export default function Home() {
 
   const checkoutMutation = useMutation({
     mutationFn: async ({ email, priceId }: { email: string; priceId: string }) => {
+      console.log('Starting checkout with:', { email, priceId });
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, priceId }),
       });
-      if (!res.ok) throw new Error('Failed to create checkout');
-      return res.json();
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('Checkout error:', data);
+        throw new Error(data.error || 'Failed to create checkout');
+      }
+      return data;
     },
     onSuccess: (data) => {
+      console.log('Checkout success, redirecting to:', data.url);
       if (data.url) {
         window.location.href = data.url;
       }
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('Checkout mutation error:', error);
       toast({
         title: "Error",
-        description: "Could not start checkout. Please try again.",
+        description: error.message || "Could not start checkout. Please try again.",
         variant: "destructive"
       });
     }
   });
 
   const handleSubscribe = () => {
-    if (!email.trim() || !pricesData?.prices?.[0]?.id) return;
+    if (!email.trim()) {
+      toast({
+        title: "Email required",
+        description: "Please enter your email address.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!pricesData?.prices?.[0]?.id) {
+      toast({
+        title: "Error",
+        description: "Pricing not available. Please refresh the page.",
+        variant: "destructive"
+      });
+      return;
+    }
     checkoutMutation.mutate({ email, priceId: pricesData.prices[0].id });
   };
 
