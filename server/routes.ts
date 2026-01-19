@@ -211,7 +211,11 @@ export async function registerRoutes(
         customerId = customer.id;
       }
 
-      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      // Use custom domain in production, fallback to Replit domain
+      const customDomain = 'virtualstudio.sale';
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
+      const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
+      const baseUrl = `https://${isProduction ? customDomain : replitDomain}`;
       const session = await stripeService.createCheckoutSession(
         customerId,
         priceId,
@@ -238,7 +242,11 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'No subscription found' });
       }
 
-      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      // Use custom domain in production
+      const customDomain = 'virtualstudio.sale';
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
+      const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
+      const baseUrl = `https://${isProduction ? customDomain : replitDomain}`;
       const portalSession = await stripeService.createCustomerPortalSession(
         user.stripeCustomerId,
         baseUrl || '/'
