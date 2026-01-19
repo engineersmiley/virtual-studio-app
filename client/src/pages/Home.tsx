@@ -143,7 +143,7 @@ export default function Home() {
           className="relative z-10 text-center max-w-4xl mx-auto"
         >
           <div className="flex items-center justify-center mb-6">
-            <img src={logoImage} alt="Virtual Studio" className="h-24 md:h-32 w-auto" />
+            <img src={logoImage} alt="Virtual Studio" className="h-36 md:h-48 lg:h-56 w-auto" />
           </div>
           
           <p className="text-xl text-muted-foreground font-tech uppercase tracking-widest mb-12">
