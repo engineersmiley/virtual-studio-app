@@ -280,7 +280,22 @@ export async function registerRoutes(
 
   app.get('/api/stripe/prices', async (req, res) => {
     try {
-      const prices = await storage.listPrices(true);
+      let prices = await storage.listPrices(true);
+      
+      // Fallback to known live recurring price if database sync is incomplete
+      if (prices.length === 0) {
+        console.log('No prices in database, using fallback price');
+        prices = [{
+          id: 'price_1SrMmqQ1s5vL0wPuGs4qng2H',
+          type: 'recurring',
+          unit_amount: 999,
+          currency: 'usd',
+          livemode: true,
+          active: true,
+          recurring: { interval: 'month', interval_count: 1 }
+        }];
+      }
+      
       res.json({ prices });
     } catch (err: any) {
       console.error('Prices error:', err);
