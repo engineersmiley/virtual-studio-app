@@ -1,6 +1,11 @@
 import { getUncachableStripeClient } from './stripeClient';
 
 export class StripeService {
+  async getCustomer(customerId: string) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.customers.retrieve(customerId);
+  }
+
   async createCustomer(email: string, userId: string) {
     const stripe = await getUncachableStripeClient();
     return await stripe.customers.create({

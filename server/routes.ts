@@ -194,6 +194,17 @@ export async function registerRoutes(
         user = await storage.createUser({ id: userId, email });
       }
 
+      // Verify customer exists in current Stripe mode, create new if not
+      if (customerId) {
+        try {
+          await stripeService.getCustomer(customerId);
+        } catch (err: any) {
+          // Customer doesn't exist (likely from test mode), create new one
+          console.log('Customer not found in Stripe, creating new one');
+          customerId = null;
+        }
+      }
+
       if (!customerId) {
         const customer = await stripeService.createCustomer(email, user.id);
         await storage.updateUserStripeInfo(user.id, { stripeCustomerId: customer.id });
