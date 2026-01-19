@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import type { PaymentDetails } from './webhookHandlers';
 
 let connectionSettings: any;
 
@@ -61,11 +62,30 @@ function createEmailMessage(to: string, subject: string, body: string): string {
   return Buffer.from(email).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export async function sendWelcomeEmail(toEmail: string): Promise<void> {
+function formatCurrency(amount: number, currency: string): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency.toUpperCase()
+  }).format(amount / 100);
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
+
+export async function sendWelcomeEmail(toEmail: string, paymentDetails?: PaymentDetails): Promise<void> {
   try {
     const gmail = await getUncachableGmailClient();
     
-    const subject = 'Welcome to Virtual Studio Pro!';
+    const amountStr = paymentDetails ? formatCurrency(paymentDetails.amount, paymentDetails.currency) : '$9.99';
+    const nextBillingStr = paymentDetails?.nextBillingDate ? formatDate(paymentDetails.nextBillingDate) : 'in 30 days';
+    
+    const subject = 'Welcome to Virtual Studio Pro - Payment Confirmed!';
     const body = `
 <!DOCTYPE html>
 <html>
@@ -80,6 +100,10 @@ export async function sendWelcomeEmail(toEmail: string): Promise<void> {
     .button { display: inline-block; background: linear-gradient(90deg, #00f0ff, #ff00ff); color: #000; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }
     .features { background: rgba(0,240,255,0.1); border-radius: 8px; padding: 20px; margin: 20px 0; }
     .features li { margin: 10px 0; }
+    .payment-box { background: rgba(0,240,255,0.15); border: 1px solid rgba(0,240,255,0.3); border-radius: 8px; padding: 20px; margin: 20px 0; }
+    .payment-row { display: flex; justify-content: space-between; margin: 8px 0; }
+    .payment-label { color: #888; }
+    .payment-value { color: #00f0ff; font-weight: bold; }
     .footer { text-align: center; color: #888; font-size: 12px; margin-top: 30px; }
   </style>
 </head>
@@ -89,8 +113,26 @@ export async function sendWelcomeEmail(toEmail: string): Promise<void> {
       <h1>Virtual Studio</h1>
     </div>
     <div class="content">
-      <h2>Welcome to Virtual Studio Pro!</h2>
-      <p>Thank you for subscribing! You now have full access to our remote music collaboration platform.</p>
+      <h2>Payment Confirmed - Welcome to Pro!</h2>
+      <p>Thank you for subscribing! Your payment has been processed and you now have full access to Virtual Studio Pro.</p>
+      
+      <div class="payment-box">
+        <p style="margin: 0 0 15px 0; font-weight: bold; color: #fff;">Payment Details:</p>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="color: #888; padding: 5px 0;">Plan:</td>
+            <td style="color: #00f0ff; font-weight: bold; text-align: right;">Virtual Studio Pro (Monthly)</td>
+          </tr>
+          <tr>
+            <td style="color: #888; padding: 5px 0;">Amount Paid:</td>
+            <td style="color: #00f0ff; font-weight: bold; text-align: right;">${amountStr}</td>
+          </tr>
+          <tr>
+            <td style="color: #888; padding: 5px 0;">Next Billing:</td>
+            <td style="color: #00f0ff; font-weight: bold; text-align: right;">${nextBillingStr}</td>
+          </tr>
+        </table>
+      </div>
       
       <div class="features">
         <p><strong>Your Pro membership includes:</strong></p>
@@ -115,6 +157,8 @@ export async function sendWelcomeEmail(toEmail: string): Promise<void> {
         </ul>
       </div>
       
+      <p style="margin-top: 30px;">Need to manage your subscription? <a href="https://virtualstudio.sale" style="color: #00f0ff;">Visit Virtual Studio</a> and click "Manage Subscription" in your account.</p>
+      
       <p>If you have any questions, just reply to this email.</p>
       
       <p>Happy creating!</p>
@@ -122,6 +166,7 @@ export async function sendWelcomeEmail(toEmail: string): Promise<void> {
     </div>
     <div class="footer">
       <p>Virtual Studio | Remote Music Recording Collaboration</p>
+      <p style="margin-top: 10px;">You're receiving this email because you subscribed to Virtual Studio Pro.</p>
     </div>
   </div>
 </body>

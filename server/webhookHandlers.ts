@@ -1,6 +1,12 @@
 import { getStripeSync, getUncachableStripeClient } from './stripeClient';
 import { sendWelcomeEmail } from './gmailService';
 
+export interface PaymentDetails {
+  amount: number;
+  currency: string;
+  nextBillingDate: Date | null;
+}
+
 export class WebhookHandlers {
   static async processWebhook(payload: Buffer, signature: string): Promise<void> {
     if (!Buffer.isBuffer(payload)) {
@@ -26,15 +32,37 @@ export class WebhookHandlers {
       // Send welcome email when subscription is created or checkout completed
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object as any;
-        if (session.mode === 'subscription' && session.customer_email) {
-          console.log(`Sending welcome email to ${session.customer_email}`);
-          await sendWelcomeEmail(session.customer_email);
-        } else if (session.mode === 'subscription' && session.customer) {
-          // Fetch customer email from Stripe
-          const customer = await stripe.customers.retrieve(session.customer as string);
-          if (customer && !customer.deleted && customer.email) {
-            console.log(`Sending welcome email to ${customer.email}`);
-            await sendWelcomeEmail(customer.email);
+        if (session.mode === 'subscription') {
+          let customerEmail = session.customer_email;
+          let paymentDetails: PaymentDetails | undefined;
+          
+          // Fetch subscription details for payment info
+          if (session.subscription) {
+            try {
+              const subscription = await stripe.subscriptions.retrieve(session.subscription as string) as any;
+              const amount = subscription.items?.data?.[0]?.price?.unit_amount || 999;
+              const currency = subscription.items?.data?.[0]?.price?.currency || 'usd';
+              const nextBillingDate = subscription.current_period_end 
+                ? new Date(subscription.current_period_end * 1000) 
+                : null;
+              
+              paymentDetails = { amount, currency, nextBillingDate };
+            } catch (subErr) {
+              console.error('Error fetching subscription details:', subErr);
+            }
+          }
+          
+          // Get customer email if not in session
+          if (!customerEmail && session.customer) {
+            const customer = await stripe.customers.retrieve(session.customer as string);
+            if (customer && !customer.deleted && customer.email) {
+              customerEmail = customer.email;
+            }
+          }
+          
+          if (customerEmail) {
+            console.log(`Sending welcome email to ${customerEmail}`);
+            await sendWelcomeEmail(customerEmail, paymentDetails);
           }
         }
       }
