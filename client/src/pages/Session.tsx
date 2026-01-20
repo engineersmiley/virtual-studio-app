@@ -771,11 +771,11 @@ function SessionContent() {
                 </ol>
                 <div className="mt-3 pt-3 border-t border-white/10">
                   <p className="text-xs text-muted-foreground">
-                    <strong>Need full remote control?</strong> Ask the artist to install{' '}
-                    <a href="https://rustdesk.com/download" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                      RustDesk
+                    <strong>Need full remote control?</strong> Ask the artist to download{' '}
+                    <a href="/remote-control" className="text-primary hover:underline">
+                      Virtual Studio Agent
                     </a>{' '}
-                    (free) and share their ID with you.
+                    and connect to this session.
                   </p>
                 </div>
               </>

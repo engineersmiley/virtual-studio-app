@@ -44,8 +44,7 @@ Preferred communication style: Simple, everyday language.
 7. **Stripe Subscription**: Monthly Pro subscription at $9.99/month with checkout, customer portal, and webhook handling
 8. **Remote Control**: 
    - **Pointer Overlay**: Engineers can show click position on artist's screen via WebRTC data channels
-   - **Virtual Studio Agent (Coming Soon)**: Electron desktop app for full mouse/keyboard control with consent flow
-   - **Interim Solutions**: RustDesk/AnyDesk download links on Remote Control page
+   - **Virtual Studio Agent**: Electron desktop app for full mouse/keyboard control with consent flow (download at /remote-control)
 
 ### Remote Control Security Model
 The Virtual Studio Agent uses a multi-layered security approach:
