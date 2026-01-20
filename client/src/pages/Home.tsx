@@ -244,14 +244,25 @@ export default function Home() {
                     </p>
                   </div>
                 </div>
-                <Button 
-                  variant="outline"
-                  onClick={() => { localStorage.removeItem(STORAGE_KEY); setCheckEmail(""); setEmail(""); }}
-                  data-testid="button-logout"
-                  className="text-muted-foreground"
-                >
-                  Sign Out
-                </Button>
+                <div className="flex gap-2 flex-wrap">
+                  <Link href="/remote-control">
+                    <Button 
+                      data-testid="button-remote-control"
+                      className="bg-gradient-to-r from-secondary to-primary"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Remote Control Agent
+                    </Button>
+                  </Link>
+                  <Button 
+                    variant="outline"
+                    onClick={() => { localStorage.removeItem(STORAGE_KEY); setCheckEmail(""); setEmail(""); }}
+                    data-testid="button-logout"
+                    className="text-muted-foreground"
+                  >
+                    Sign Out
+                  </Button>
+                </div>
               </div>
             </motion.div>
           ) : !showSubscribe ? (
