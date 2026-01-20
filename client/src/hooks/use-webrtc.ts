@@ -6,14 +6,23 @@ interface Participant {
   role: SessionRole;
 }
 
+interface RemoteControlEvent {
+  type: 'click' | 'move' | 'pointer';
+  x: number; // 0-1 normalized coordinates
+  y: number;
+  fromUserId: string;
+  fromRole: SessionRole;
+}
+
 interface UseWebRTCOptions {
   roomId: string;
   userId: string;
   role: SessionRole;
   onRemoteStream?: (stream: MediaStream) => void;
+  onRemoteControl?: (event: RemoteControlEvent) => void;
 }
 
-export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOptions) {
+export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteControl }: UseWebRTCOptions) {
   const [connected, setConnected] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +32,21 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
   const wsRef = useRef<WebSocket | null>(null);
   // Map of peer connections: userId -> RTCPeerConnection
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  // Map of data channels: userId -> RTCDataChannel
+  const dataChannelsRef = useRef<Map<string, RTCDataChannel>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const onRemoteControlRef = useRef(onRemoteControl);
+  const participantsRef = useRef<Participant[]>([]);
+  
+  // Keep refs updated
+  useEffect(() => {
+    onRemoteControlRef.current = onRemoteControl;
+  }, [onRemoteControl]);
+  
+  useEffect(() => {
+    participantsRef.current = participants;
+  }, [participants]);
 
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -82,6 +104,34 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
           setHasRemoteStream(false);
         }
       }
+    };
+
+    // Handle incoming data channel (for artist receiving control events)
+    pc.ondatachannel = (event) => {
+      const channel = event.channel;
+      // Store the userId this channel is associated with for validation
+      (channel as any)._senderUserId = targetUserId;
+      
+      channel.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data) as RemoteControlEvent;
+          const senderUserId = (channel as any)._senderUserId;
+          
+          // Validate sender role against known participants (use ref for current state)
+          const currentParticipants = participantsRef.current;
+          const senderParticipant = currentParticipants.find(p => p.userId === senderUserId);
+          
+          // Only accept control events from engineers - prioritize known participant role
+          const isEngineer = senderParticipant?.role === 'engineer';
+          
+          if (isEngineer && onRemoteControlRef.current) {
+            onRemoteControlRef.current(data);
+          }
+        } catch (err) {
+          console.error('Error parsing data channel message:', err);
+        }
+      };
+      dataChannelsRef.current.set(targetUserId, channel);
     };
 
     peerConnectionsRef.current.set(targetUserId, pc);
@@ -163,6 +213,14 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
           // All viewers (engineer, producer, other) receive offer from artist
           if (role !== 'artist') {
             const pc = createPeerConnection(message.userId);
+            
+            // Create data channel for sending control events to artist
+            const dataChannel = pc.createDataChannel('control', { ordered: true });
+            dataChannel.onopen = () => {
+              console.log('Control data channel opened');
+            };
+            dataChannelsRef.current.set(message.userId, dataChannel);
+            
             await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
             
             const answer = await pc.createAnswer();
@@ -375,9 +433,47 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
       wsRef.current = null;
     }
     
+    // Close data channels
+    dataChannelsRef.current.forEach(dc => dc.close());
+    dataChannelsRef.current.clear();
+    
     setParticipants([]);
     setConnected(false);
   }, [roomId, userId, role, stopSharing]);
+
+  // Throttle ref for pointer events
+  const lastPointerSendRef = useRef<number>(0);
+  const POINTER_THROTTLE_MS = 50; // ~20 updates per second
+
+  // Send a control event to artist (for engineers only)
+  const sendControlEvent = useCallback((type: 'click' | 'move' | 'pointer', x: number, y: number) => {
+    // Only engineers can send control events
+    if (role !== 'engineer') return;
+    
+    // Throttle pointer events to avoid flooding the channel
+    if (type === 'pointer') {
+      const now = Date.now();
+      if (now - lastPointerSendRef.current < POINTER_THROTTLE_MS) {
+        return;
+      }
+      lastPointerSendRef.current = now;
+    }
+    
+    const event: RemoteControlEvent = {
+      type,
+      x,
+      y,
+      fromUserId: userId,
+      fromRole: role,
+    };
+    
+    // Send to all open data channels (typically just the artist)
+    dataChannelsRef.current.forEach((channel) => {
+      if (channel.readyState === 'open') {
+        channel.send(JSON.stringify(event));
+      }
+    });
+  }, [userId, role]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -406,5 +502,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
     disconnect,
     startSharing,
     stopSharing,
+    sendControlEvent,
   };
 }
+
+export type { RemoteControlEvent };

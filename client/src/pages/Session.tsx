@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRoute, Link } from 'wouter';
-import { useWebRTC } from '@/hooks/use-webrtc';
+import { useWebRTC, type RemoteControlEvent } from '@/hooks/use-webrtc';
 import { useUploadRecording } from '@/hooks/use-recordings';
 import { Visualizer } from '@/components/Visualizer';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
   Users, Radio, ArrowLeft, CheckCircle, AlertTriangle,
-  Video, VideoOff, Eye, PenTool, Zap
+  Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move
 } from 'lucide-react';
 import type { SessionRole } from '@shared/schema';
 
@@ -27,9 +27,13 @@ function SessionContent() {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [copied, setCopied] = useState(false);
+  const [controlMode, setControlMode] = useState(false);
+  const [remotePointer, setRemotePointer] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+  const pointerTimeoutRef = useRef<number | null>(null);
   
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
@@ -51,6 +55,21 @@ function SessionContent() {
     analyserRef.current = analyser;
   }, []);
 
+  const handleRemoteControl = useCallback((event: RemoteControlEvent) => {
+    // Show the remote pointer on artist's screen
+    setRemotePointer({ x: event.x * 100, y: event.y * 100, visible: true });
+    
+    // Clear existing timeout
+    if (pointerTimeoutRef.current) {
+      clearTimeout(pointerTimeoutRef.current);
+    }
+    
+    // Hide pointer after 2 seconds of inactivity
+    pointerTimeoutRef.current = window.setTimeout(() => {
+      setRemotePointer(prev => ({ ...prev, visible: false }));
+    }, 2000);
+  }, []);
+
   const {
     connected,
     participants,
@@ -61,11 +80,13 @@ function SessionContent() {
     disconnect,
     startSharing,
     stopSharing,
+    sendControlEvent,
   } = useWebRTC({
     roomId,
     userId,
     role,
     onRemoteStream: handleRemoteStream,
+    onRemoteControl: handleRemoteControl,
   });
 
   useEffect(() => {
@@ -301,17 +322,145 @@ function SessionContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
         {/* Video/Stream Area */}
         <div className="lg:col-span-2 glass-panel rounded-2xl p-6 flex flex-col gap-4 min-h-[500px]">
-          <div className="flex-1 rounded-xl overflow-hidden bg-black/50 relative">
+          <div 
+            ref={videoContainerRef}
+            className={`flex-1 rounded-xl overflow-hidden bg-black/50 relative ${controlMode && role === 'engineer' ? 'cursor-crosshair' : ''}`}
+            onClick={(e) => {
+              if (role === 'engineer' && controlMode && hasRemoteStream && remoteVideoRef.current) {
+                // Calculate normalized coordinates accounting for object-contain letterboxing
+                const video = remoteVideoRef.current;
+                const container = e.currentTarget.getBoundingClientRect();
+                
+                // Get actual video dimensions
+                const videoRatio = video.videoWidth / video.videoHeight;
+                const containerRatio = container.width / container.height;
+                
+                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+                
+                if (videoRatio > containerRatio) {
+                  // Video is wider - letterboxed top/bottom
+                  videoDisplayWidth = container.width;
+                  videoDisplayHeight = container.width / videoRatio;
+                  offsetX = 0;
+                  offsetY = (container.height - videoDisplayHeight) / 2;
+                } else {
+                  // Video is taller - letterboxed left/right
+                  videoDisplayHeight = container.height;
+                  videoDisplayWidth = container.height * videoRatio;
+                  offsetX = (container.width - videoDisplayWidth) / 2;
+                  offsetY = 0;
+                }
+                
+                const clickX = e.clientX - container.left - offsetX;
+                const clickY = e.clientY - container.top - offsetY;
+                
+                // Normalize to 0-1 range within the actual video area
+                const x = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
+                const y = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
+                
+                sendControlEvent('click', x, y);
+              }
+            }}
+            onMouseMove={(e) => {
+              if (role === 'engineer' && controlMode && hasRemoteStream && remoteVideoRef.current) {
+                const video = remoteVideoRef.current;
+                const container = e.currentTarget.getBoundingClientRect();
+                
+                const videoRatio = video.videoWidth / video.videoHeight;
+                const containerRatio = container.width / container.height;
+                
+                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+                
+                if (videoRatio > containerRatio) {
+                  videoDisplayWidth = container.width;
+                  videoDisplayHeight = container.width / videoRatio;
+                  offsetX = 0;
+                  offsetY = (container.height - videoDisplayHeight) / 2;
+                } else {
+                  videoDisplayHeight = container.height;
+                  videoDisplayWidth = container.height * videoRatio;
+                  offsetX = (container.width - videoDisplayWidth) / 2;
+                  offsetY = 0;
+                }
+                
+                const moveX = e.clientX - container.left - offsetX;
+                const moveY = e.clientY - container.top - offsetY;
+                
+                const x = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
+                const y = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
+                
+                sendControlEvent('pointer', x, y);
+              }
+            }}
+          >
             {role === 'artist' ? (
               // Artist sees their own screen share preview
               isSharing ? (
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="w-full h-full object-contain"
-                />
+                <>
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-full object-contain"
+                  />
+                  {/* Remote pointer from engineer - positioned relative to video content accounting for letterboxing */}
+                  <AnimatePresence>
+                    {remotePointer.visible && localVideoRef.current && videoContainerRef.current && (() => {
+                      const video = localVideoRef.current;
+                      const container = videoContainerRef.current;
+                      const containerRect = container.getBoundingClientRect();
+                      
+                      // Calculate video display area with object-contain letterboxing
+                      const videoRatio = video.videoWidth / video.videoHeight || 16/9;
+                      const containerRatio = containerRect.width / containerRect.height;
+                      
+                      let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+                      
+                      if (videoRatio > containerRatio) {
+                        videoDisplayWidth = containerRect.width;
+                        videoDisplayHeight = containerRect.width / videoRatio;
+                        offsetX = 0;
+                        offsetY = (containerRect.height - videoDisplayHeight) / 2;
+                      } else {
+                        videoDisplayHeight = containerRect.height;
+                        videoDisplayWidth = containerRect.height * videoRatio;
+                        offsetX = (containerRect.width - videoDisplayWidth) / 2;
+                        offsetY = 0;
+                      }
+                      
+                      // Convert normalized 0-1 coords to pixel position within container
+                      const pixelX = offsetX + (remotePointer.x / 100) * videoDisplayWidth;
+                      const pixelY = offsetY + (remotePointer.y / 100) * videoDisplayHeight;
+                      
+                      // Convert to percentage of container
+                      const leftPct = (pixelX / containerRect.width) * 100;
+                      const topPct = (pixelY / containerRect.height) * 100;
+                      
+                      return (
+                        <motion.div
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          exit={{ scale: 0, opacity: 0 }}
+                          className="absolute z-20 pointer-events-none"
+                          style={{
+                            left: `${leftPct}%`,
+                            top: `${topPct}%`,
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                        >
+                          <div className="relative">
+                            <MousePointer2 className="w-6 h-6 text-primary drop-shadow-lg" style={{ filter: 'drop-shadow(0 0 4px hsl(var(--primary)))' }} />
+                            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">
+                              Engineer
+                            </div>
+                            <div className="absolute inset-0 w-8 h-8 -m-1 rounded-full bg-primary/30 animate-ping" />
+                          </div>
+                        </motion.div>
+                      );
+                    })()}
+                  </AnimatePresence>
+                </>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 p-8">
                   <Monitor size={64} className="opacity-30" />
@@ -349,6 +498,13 @@ function SessionContent() {
                     )}
                   </div>
                 )}
+                {/* Control mode indicator for engineer */}
+                {role === 'engineer' && controlMode && hasRemoteStream && (
+                  <div className="absolute top-3 right-3 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/90 text-primary-foreground text-sm font-medium">
+                    <MousePointer2 size={14} />
+                    Control Mode Active
+                  </div>
+                )}
               </>
             )}
             
@@ -380,17 +536,32 @@ function SessionContent() {
                 )}
               </div>
             ) : canRecord ? (
-              // Engineer controls - can record
-              <div className="flex gap-3 items-center">
+              // Engineer controls - can record and control
+              <div className="flex gap-3 items-center flex-wrap">
+                {/* Control Mode Toggle */}
+                <button
+                  onClick={() => setControlMode(!controlMode)}
+                  disabled={!hasRemoteStream}
+                  data-testid="button-toggle-control"
+                  className={`px-4 py-3 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                    controlMode 
+                      ? 'bg-primary text-primary-foreground' 
+                      : 'bg-white/5 border border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  <MousePointer2 size={18} />
+                  {controlMode ? 'Control On' : 'Control'}
+                </button>
+
                 {!recordedBlob ? (
                   !isRecording ? (
                     <button
                       onClick={startRecordingSession}
-                      disabled={participants.filter(p => p.role === 'artist').length === 0}
+                      disabled={!hasRemoteStream}
                       data-testid="button-start-recording"
                       className="px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Disc className="animate-pulse" size={20} /> Start Recording
+                      <Disc className="animate-pulse" size={20} /> Record
                     </button>
                   ) : (
                     <button
@@ -398,7 +569,7 @@ function SessionContent() {
                       data-testid="button-stop-recording"
                       className="px-6 py-3 rounded-xl bg-destructive text-white font-bold flex items-center gap-2 hover:bg-destructive/90 transition-all"
                     >
-                      <Square fill="currentColor" size={20} /> Stop Recording
+                      <Square fill="currentColor" size={20} /> Stop
                     </button>
                   )
                 ) : (
@@ -421,7 +592,7 @@ function SessionContent() {
                       ) : (
                         <Save size={18} />
                       )}
-                      Save to Cloud
+                      Save
                     </button>
                   </div>
                 )}
