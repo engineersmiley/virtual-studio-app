@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
+const STORAGE_KEY = "studiolink_subscriber_email";
+
 export default function Home() {
   const [, navigate] = useLocation();
   const searchString = useSearch();
@@ -26,7 +28,41 @@ export default function Home() {
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
   const [email, setEmail] = useState("");
   const [showSubscribe, setShowSubscribe] = useState(false);
+  const [checkEmail, setCheckEmail] = useState("");
   const { toast } = useToast();
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      setEmail(stored);
+      setCheckEmail(stored);
+    }
+  }, []);
+
+  const { data: subscriptionData, isLoading: checkingSubscription, refetch: recheckSubscription } = useQuery<{
+    hasSubscription: boolean;
+    status: string | null;
+  }>({
+    queryKey: ['/api/subscription-status', checkEmail],
+    queryFn: async () => {
+      if (!checkEmail) return { hasSubscription: false, status: null };
+      const res = await fetch(`/api/subscription-status?email=${encodeURIComponent(checkEmail)}`);
+      return res.json();
+    },
+    enabled: !!checkEmail,
+  });
+
+  const handleCheckAccess = () => {
+    if (email.trim()) {
+      localStorage.setItem(STORAGE_KEY, email);
+      setCheckEmail(email);
+      if (checkEmail === email) {
+        recheckSubscription();
+      }
+    }
+  };
+
+  const isSubscribed = subscriptionData?.hasSubscription;
 
   const justSubscribed = searchString.includes('subscribed=true');
   const cancelled = searchString.includes('cancelled=true');
