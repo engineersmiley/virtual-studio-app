@@ -425,6 +425,24 @@ export async function registerRoutes(
         return res.status(409).json({ error: 'An agent is already connected to this session' });
       }
       
+      // Require an artist to be currently present in the session
+      const room = rooms.get(normalizedCode);
+      if (!room) {
+        return res.status(400).json({ error: 'Session not active - no participants connected' });
+      }
+      
+      // Find the artist in the room
+      let artistUserId: string | null = null;
+      room.forEach((participant, participantId) => {
+        if (participant.role === 'artist') {
+          artistUserId = participantId;
+        }
+      });
+      
+      if (!artistUserId) {
+        return res.status(400).json({ error: 'No artist currently in the session. Artist must join before requesting agent token.' });
+      }
+      
       // Check rate limiting
       const now = Date.now();
       let rateData = tokenIssuanceRateLimit.get(normalizedCode);
@@ -441,14 +459,13 @@ export async function registerRoutes(
         tokenIssuanceRateLimit.set(normalizedCode, rateData);
       }
       
-      // Generate token
+      // Generate token - bind to the existing artist's userId for attribution
       const token = crypto.randomBytes(32).toString('hex');
-      const userId = crypto.randomUUID();
       const expiresAt = Date.now() + 4 * 60 * 60 * 1000; // 4 hours
       
       const tokenData: AgentToken = {
         sessionCode: normalizedCode,
-        userId,
+        userId: artistUserId, // Use the artist's existing userId, not a new one
         email,
         role: 'artist',
         expiresAt,

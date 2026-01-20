@@ -42,6 +42,19 @@ Preferred communication style: Simple, everyday language.
 5. **Audio Visualization**: Real-time frequency analysis rendered to canvas
 6. **PWA Support**: Installable as an app on desktop and mobile, with iOS install instructions
 7. **Stripe Subscription**: Monthly Pro subscription at $9.99/month with checkout, customer portal, and webhook handling
+8. **Remote Control**: 
+   - **Pointer Overlay**: Engineers can show click position on artist's screen via WebRTC data channels
+   - **Virtual Studio Agent (Coming Soon)**: Electron desktop app for full mouse/keyboard control with consent flow
+   - **Interim Solutions**: RustDesk/AnyDesk download links on Remote Control page
+
+### Remote Control Security Model
+The Virtual Studio Agent uses a multi-layered security approach:
+1. **Token Binding**: Agent tokens are only issued when an artist is actively in the session, bound to their userId
+2. **Rate Limiting**: Max 3 tokens per session per hour to prevent abuse
+3. **Single Agent**: Only one agent can connect to a session at a time
+4. **Explicit Consent**: Artist must click "Allow" in a dialog for each control request
+5. **Live Authorization**: Control commands verified against live room membership (engineer role required)
+6. **WebSocket-Bound**: Authorization uses connection metadata, not client-supplied payload
 
 ### Shared Code Pattern
 The `shared/` directory contains:
