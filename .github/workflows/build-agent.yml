@@ -90,23 +90,19 @@ jobs:
           cp package-legacy.json package.json
           npm install
 
-      - name: Build legacy macOS
-        working-directory: virtual-studio-agent
-        run: npm run build:mac
-
       - name: Rename legacy DMG
-        working-directory: virtual-studio-agent/dist-legacy
         run: |
+          cd virtual-studio-agent/dist-legacy
           for f in *.dmg; do mv "$f" "${f%.dmg}-legacy.dmg"; done
 
       - name: List build output
         working-directory: virtual-studio-agent/dist-legacy
         run: ls -la
 
-      - name: Upload artifacts
+      - name: Upload legacy macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: virtual-studio-agent-mac-legacy
+          name: mac-legacy-installer
           path: virtual-studio-agent/dist-legacy/*.zip
 
   build-linux:
