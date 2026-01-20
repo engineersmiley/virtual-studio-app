@@ -56,6 +56,7 @@ function SessionContent() {
     participants,
     error,
     localStream,
+    hasRemoteStream,
     connect,
     disconnect,
     startSharing,
@@ -312,9 +313,15 @@ function SessionContent() {
                   className="w-full h-full object-contain"
                 />
               ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4">
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 p-8">
                   <Monitor size={64} className="opacity-30" />
-                  <p className="font-tech">Click "Start Sharing" to broadcast your screen</p>
+                  <p className="font-tech text-center">Click "Start Sharing" to broadcast your screen</p>
+                  <div className="mt-4 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30 max-w-md text-center">
+                    <AlertTriangle className="w-5 h-5 text-yellow-500 mx-auto mb-2" />
+                    <p className="text-sm text-yellow-200/80">
+                      <strong>Tip:</strong> Share your DAW or a specific application window - not the browser running Virtual Studio, or you'll see a mirror effect.
+                    </p>
+                  </div>
                 </div>
               )
             ) : (
@@ -326,11 +333,20 @@ function SessionContent() {
                   playsInline
                   className="w-full h-full object-contain"
                 />
-                {participants.filter(p => p.role === 'artist').length === 0 && (
+                {!hasRemoteStream && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
-                    <Radio size={64} className="opacity-30" />
-                    <p className="font-tech">Waiting for artist to connect and share...</p>
-                    <p className="text-sm opacity-50">Share this room code with the artist: <span className="text-primary font-mono">{roomId}</span></p>
+                    <Radio size={64} className="opacity-30 animate-pulse" />
+                    {participants.filter(p => p.role === 'artist').length === 0 ? (
+                      <>
+                        <p className="font-tech">Waiting for artist to connect...</p>
+                        <p className="text-sm opacity-50">Share this room code with the artist: <span className="text-primary font-mono">{roomId}</span></p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-tech">Artist connected! Waiting for screen share...</p>
+                        <p className="text-sm opacity-50">The artist needs to click "Start Sharing"</p>
+                      </>
+                    )}
                   </div>
                 )}
               </>

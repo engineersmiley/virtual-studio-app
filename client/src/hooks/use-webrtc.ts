@@ -18,6 +18,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [hasRemoteStream, setHasRemoteStream] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   // Map of peer connections: userId -> RTCPeerConnection
@@ -57,7 +58,15 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
 
     pc.ontrack = (event) => {
       if (onRemoteStream && event.streams[0]) {
+        setHasRemoteStream(true);
         onRemoteStream(event.streams[0]);
+        
+        // Listen for track ending to reset hasRemoteStream
+        event.streams[0].getTracks().forEach(track => {
+          track.onended = () => {
+            setHasRemoteStream(false);
+          };
+        });
       }
     };
 
@@ -65,6 +74,14 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
       const states = Array.from(peerConnectionsRef.current.values()).map(p => p.connectionState);
       const hasConnected = states.some(s => s === 'connected');
       setConnected(hasConnected);
+      
+      // Reset hasRemoteStream if connection is lost for viewers
+      if (role !== 'artist' && (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed')) {
+        const anyConnected = states.some(s => s === 'connected');
+        if (!anyConnected) {
+          setHasRemoteStream(false);
+        }
+      }
     };
 
     peerConnectionsRef.current.set(targetUserId, pc);
@@ -85,6 +102,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
     });
     peerConnectionsRef.current.clear();
     setConnected(false);
+    setHasRemoteStream(false);
   }, []);
 
   const connect = useCallback(() => {
@@ -134,6 +152,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
         case 'user-left': {
           setParticipants(prev => prev.filter(p => p.userId !== message.userId));
           closePeerConnection(message.userId);
+          // If the artist left, reset hasRemoteStream for viewers
+          if (message.role === 'artist' && role !== 'artist') {
+            setHasRemoteStream(false);
+          }
           break;
         }
 
@@ -379,6 +401,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream }: UseWebRTCOpt
     participants,
     error,
     localStream,
+    hasRemoteStream,
     connect,
     disconnect,
     startSharing,
