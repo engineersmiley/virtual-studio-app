@@ -76,7 +76,7 @@ export default function RemoteControl() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 md:grid-cols-2 mb-6">
+        <div className="grid gap-4 md:grid-cols-3 mb-6">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -120,6 +120,29 @@ export default function RemoteControl() {
                 <p className="text-xs text-muted-foreground">
                   <strong>Audio included:</strong> Unlike other remote tools, you get the artist's 
                   screen AND audio all in one place.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary" />
+                For Producers
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <ol className="list-decimal list-inside space-y-2">
+                <li>Join the Virtual Studio session as usual</li>
+                <li>Watch the artist's screen and listen to audio</li>
+                <li>Communicate via the built-in chat or voice</li>
+                <li>The engineer handles all recording controls</li>
+              </ol>
+              <div className="p-3 bg-primary/5 rounded-lg mt-4">
+                <p className="text-xs text-muted-foreground">
+                  <strong>No download needed:</strong> Producers have view-only access. 
+                  If you need remote control, join as an Engineer instead.
                 </p>
               </div>
             </CardContent>
