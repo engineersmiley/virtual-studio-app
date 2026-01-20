@@ -1,19 +1,16 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AlertTriangle, ExternalLink, AppWindow, Apple, Terminal } from "lucide-react";
+import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal } from "lucide-react";
 import { Link } from "wouter";
 
-// Configure these for your GitHub repository
-const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || "virtualstudio/virtual-studio-agent";
-const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 const AGENT_VERSION = "1.0.0";
 
-// Download URLs - electron-builder uses these naming conventions
+// Download URLs - Google Drive direct download links
 const DOWNLOAD_URLS = {
-  windows: `${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual.Studio.Agent.Setup.${AGENT_VERSION}.exe`,
-  mac: `${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual.Studio.Agent-${AGENT_VERSION}.dmg`,
-  linux: `${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual.Studio.Agent-${AGENT_VERSION}.AppImage`,
+  windows: "https://drive.google.com/uc?export=download&id=1NkHstI37uzDUA81kShLlegdZbSHUIHsC",
+  mac: "https://drive.google.com/uc?export=download&id=1xAE4a0BqKh8IdmMFxeNrHfSaooqrb369",
+  linux: "https://drive.google.com/uc?export=download&id=1g8UoPaABGbtPnV_uOLAqvGApXUbjNdHS",
 };
 
 export default function RemoteControl() {
@@ -106,10 +103,7 @@ export default function RemoteControl() {
               </a>
             </div>
             <p className="text-xs text-muted-foreground mt-4 text-center">
-              <a href={`${GITHUB_RELEASES_URL}/latest`} target="_blank" rel="noopener noreferrer" className="underline hover:text-primary flex items-center justify-center gap-1">
-                <ExternalLink className="w-3 h-3" />
-                View all releases on GitHub
-              </a>
+              Version {AGENT_VERSION} - Download the installer for your operating system above
             </p>
           </CardContent>
         </Card>
