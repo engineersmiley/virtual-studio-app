@@ -1,7 +1,7 @@
 {
   "name": "virtual-studio-agent",
   "version": "1.0.0-legacy",
-  "description": "Virtual Studio Remote Control Agent (Legacy macOS) - allows engineers to control artist's computer during sessions",
+  "description": "Virtual Studio Remote Control Agent (Legacy macOS)",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -30,7 +30,7 @@
     ],
     "mac": {
       "target": {
-        "target": "dmg",
+        "target": "zip",
         "arch": "x64"
       },
       "icon": "assets/icon.png",
@@ -38,10 +38,6 @@
       "extendInfo": {
         "LSMinimumSystemVersion": "10.10.0"
       }
-    },
-    "dmg": {
-      "format": "UDBZ",
-      "writeUpdateInfo": false
     }
   }
 }
