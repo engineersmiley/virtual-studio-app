@@ -268,19 +268,33 @@ export async function registerRoutes(
       }
 
       const user = await storage.getUserByEmail(email);
-      if (!user?.stripeCustomerId) {
+      if (!user) {
         return res.json({ hasSubscription: false });
       }
 
-      const subscription = await storage.getSubscriptionByCustomerId(user.stripeCustomerId);
-      const hasSubscription = subscription && 
-        (subscription.status === 'active' || subscription.status === 'trialing');
+      // First check user's own subscription status (fallback for webhook issues)
+      if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
+        return res.json({ 
+          hasSubscription: true, 
+          status: user.subscriptionStatus,
+          email 
+        });
+      }
 
-      res.json({ 
-        hasSubscription, 
-        status: subscription?.status || null,
-        email 
-      });
+      // Then check Stripe's subscription data
+      if (user.stripeCustomerId) {
+        const subscription = await storage.getSubscriptionByCustomerId(user.stripeCustomerId);
+        const hasSubscription = subscription && 
+          (subscription.status === 'active' || subscription.status === 'trialing');
+
+        return res.json({ 
+          hasSubscription, 
+          status: subscription?.status || null,
+          email 
+        });
+      }
+
+      res.json({ hasSubscription: false, status: null, email });
     } catch (err: any) {
       console.error('Subscription status error:', err);
       res.json({ hasSubscription: false });
