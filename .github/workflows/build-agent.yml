@@ -192,7 +192,7 @@ jobs:
             ### Requirements
             - **Windows**: Windows 10 or later
             - **macOS**: macOS 11 (Big Sur) or later (recommended)
-            - **macOS Legacy**: macOS 10.10 (Yosemite) to 10.14 (Mojave) - see security note below
+            - **macOS Legacy**: macOS 10.11 (Yosemite) to 10.14 (Mojave) - see security note below
             - **Linux**: Any modern distribution with AppImage support
             
             ### Security Note for Legacy macOS
