@@ -89,6 +89,7 @@ jobs:
         run: |
           cp package-legacy.json package.json
           npm install
+          npm run build:mac
 
       - name: Upload legacy macOS artifact
         uses: actions/upload-artifact@v4
