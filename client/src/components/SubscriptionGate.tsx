@@ -22,6 +22,7 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
+      setEmail(stored);
       setCheckEmail(stored);
     }
   }, []);
@@ -167,49 +168,50 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
               placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSubscribe()}
+              onKeyDown={(e) => e.key === 'Enter' && handleCheckAccess()}
               data-testid="input-gate-email"
               className="bg-background/50"
             />
-            
+
             <Button 
-              onClick={handleSubscribe}
-              disabled={!email.trim() || checkoutMutation.isPending}
-              data-testid="button-gate-subscribe"
-              className="w-full bg-gradient-to-r from-secondary to-secondary/80 hover:brightness-110"
+              onClick={handleCheckAccess}
+              disabled={!email.trim()}
+              data-testid="button-check-access"
+              className="w-full bg-gradient-to-r from-primary to-primary/80 hover:brightness-110"
             >
-              {checkoutMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <CreditCard className="w-4 h-4 mr-2" />
-              )}
-              Subscribe Now
+              <Check className="w-4 h-4 mr-2" />
+              Check My Access
             </Button>
+
+            {checkEmail && !subscriptionData?.hasSubscription && (
+              <p className="text-sm text-center text-destructive mb-2">
+                No active subscription found for {checkEmail}
+              </p>
+            )}
 
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-white/10" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">Already subscribed?</span>
+                <span className="bg-card px-2 text-muted-foreground">New subscriber?</span>
               </div>
             </div>
-
+            
             <Button 
               variant="outline"
-              onClick={handleCheckAccess}
-              disabled={!email.trim()}
-              data-testid="button-check-access"
+              onClick={handleSubscribe}
+              disabled={!email.trim() || checkoutMutation.isPending}
+              data-testid="button-gate-subscribe"
               className="w-full"
             >
-              Check My Access
+              {checkoutMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <CreditCard className="w-4 h-4 mr-2" />
+              )}
+              Subscribe - ${priceAmount}/month
             </Button>
-
-            {checkEmail && !subscriptionData?.hasSubscription && (
-              <p className="text-sm text-center text-destructive">
-                No active subscription found for {checkEmail}
-              </p>
-            )}
           </div>
         </div>
       </motion.div>
