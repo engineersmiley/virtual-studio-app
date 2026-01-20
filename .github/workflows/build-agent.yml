@@ -101,12 +101,6 @@ jobs:
         working-directory: virtual-studio-agent/dist-legacy
         run: ls -la
 
-      - name: Upload legacy macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-legacy-installer
-          path: virtual-studio-agent/dist-legacy/*.zip
-
   build-linux:
     runs-on: ubuntu-latest
     steps:
