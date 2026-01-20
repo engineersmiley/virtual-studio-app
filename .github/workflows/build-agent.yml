@@ -158,7 +158,7 @@ jobs:
       - name: Download macOS legacy artifact
         uses: actions/download-artifact@v4
         with:
-          name: virtual-studio-agent-mac-legacy
+          name: mac-legacy-installer
           path: ./dist
 
       - name: Download Linux artifact
