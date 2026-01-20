@@ -1,0 +1,215 @@
+
+name: Build Virtual Studio Agent
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+env:
+  AGENT_VERSION: ${{ github.event.inputs.version || '1.0.0' }}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: virtual-studio-agent
+        run: npm install
+
+      - name: Build for Windows
+        working-directory: virtual-studio-agent
+        run: npm run build:win
+
+      - name: List build output
+        working-directory: virtual-studio-agent/dist
+        run: dir
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtual-studio-agent-win
+          path: virtual-studio-agent/dist/*.exe
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: virtual-studio-agent
+        run: npm install
+
+      - name: Build for macOS
+        working-directory: virtual-studio-agent
+        run: npm run build:mac
+
+      - name: List build output
+        working-directory: virtual-studio-agent/dist
+        run: ls -la
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtual-studio-agent-mac
+          path: virtual-studio-agent/dist/*.dmg
+
+  build-mac-legacy:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup legacy build
+        working-directory: virtual-studio-agent
+        run: |
+          cp package-legacy.json package.json
+          npm install
+          npm run build:mac
+
+      - name: Upload legacy macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-legacy-installer
+          path: virtual-studio-agent/dist-legacy/*
+
+      - name: List build output
+        working-directory: virtual-studio-agent/dist-legacy
+        run: ls -la
+
+      - name: Upload legacy macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-legacy-installer
+          path: virtual-studio-agent/dist-legacy/*.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxtst-dev libpng-dev
+
+      - name: Install dependencies
+        working-directory: virtual-studio-agent
+        run: npm install
+
+      - name: Build for Linux
+        working-directory: virtual-studio-agent
+        run: npm run build:linux
+
+      - name: List build output
+        working-directory: virtual-studio-agent/dist
+        run: ls -la
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtual-studio-agent-linux
+          path: virtual-studio-agent/dist/*.AppImage
+
+  release:
+    needs: [build-windows, build-mac, build-mac-legacy, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: virtual-studio-agent-win
+          path: ./dist
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: virtual-studio-agent-mac
+          path: ./dist
+
+      - name: Download macOS legacy artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: virtual-studio-agent-mac-legacy
+          path: ./dist
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: virtual-studio-agent-linux
+          path: ./dist
+
+      - name: List all artifacts
+        run: ls -la dist/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Virtual Studio Agent ${{ github.ref_name }}
+          body: |
+            ## Virtual Studio Agent ${{ github.ref_name }}
+            
+            Download the installer for your operating system:
+            - **Windows**: Virtual Studio Agent Setup.exe
+            - **macOS**: Virtual Studio Agent.dmg (macOS 11+ recommended)
+            - **macOS Legacy**: Virtual Studio Agent (Legacy)-legacy.dmg (macOS 10.10-10.14)
+            - **Linux**: Virtual Studio Agent.AppImage
+            
+            ### Installation
+            1. Download the installer for your OS
+            2. Run the installer
+            3. Open Virtual Studio Agent
+            4. Enter your session code and connect
+            
+            ### Requirements
+            - **Windows**: Windows 10 or later
+            - **macOS**: macOS 11 (Big Sur) or later (recommended)
+            - **macOS Legacy**: macOS 10.10 (Yosemite) to 10.14 (Mojave) - see security note below
+            - **Linux**: Any modern distribution with AppImage support
+            
+            ### Security Note for Legacy macOS
+            The legacy macOS build uses an older version of Electron that no longer receives security updates. 
+            Use this only if you cannot upgrade your macOS version. We recommend updating to macOS 11 or later for the best security.
+          files: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
