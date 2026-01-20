@@ -448,7 +448,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
   // Send a control event to artist (for engineers only)
   const sendControlEvent = useCallback((type: 'click' | 'move' | 'pointer', x: number, y: number) => {
     // Only engineers can send control events
-    if (role !== 'engineer') return;
+    if (role !== 'engineer') {
+      console.log('[Control] Not engineer, ignoring event');
+      return;
+    }
     
     // Throttle pointer events to avoid flooding the channel
     if (type === 'pointer') {
@@ -468,11 +471,18 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
     };
     
     // Send to all open data channels (typically just the artist)
-    dataChannelsRef.current.forEach((channel) => {
+    const channelCount = dataChannelsRef.current.size;
+    console.log(`[Control] Sending ${type} event to ${channelCount} channels, coords: (${x.toFixed(2)}, ${y.toFixed(2)})`);
+    
+    let sentCount = 0;
+    dataChannelsRef.current.forEach((channel, peerId) => {
+      console.log(`[Control] Channel to ${peerId}: state=${channel.readyState}`);
       if (channel.readyState === 'open') {
         channel.send(JSON.stringify(event));
+        sentCount++;
       }
     });
+    console.log(`[Control] Sent to ${sentCount} open channels`);
   }, [userId, role]);
 
   // Cleanup on unmount

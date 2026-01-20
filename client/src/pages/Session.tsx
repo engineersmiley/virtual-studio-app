@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
   Users, Radio, ArrowLeft, CheckCircle, AlertTriangle,
-  Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move
+  Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move, Maximize, Minimize
 } from 'lucide-react';
 import type { SessionRole } from '@shared/schema';
 
@@ -28,6 +28,7 @@ function SessionContent() {
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [copied, setCopied] = useState(false);
   const [controlMode, setControlMode] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [remotePointer, setRemotePointer] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const pointerTimeoutRef = useRef<number | null>(null);
   
@@ -68,6 +69,33 @@ function SessionContent() {
     pointerTimeoutRef.current = window.setTimeout(() => {
       setRemotePointer(prev => ({ ...prev, visible: false }));
     }, 2000);
+  }, []);
+
+  // Fullscreen toggle for video container
+  const toggleFullscreen = useCallback(() => {
+    const container = videoContainerRef.current;
+    if (!container) return;
+    
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch(err => {
+        console.error('Error entering fullscreen:', err);
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+      });
+    }
+  }, []);
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
   const {
@@ -500,10 +528,22 @@ function SessionContent() {
                 )}
                 {/* Control mode indicator for engineer */}
                 {role === 'engineer' && controlMode && hasRemoteStream && (
-                  <div className="absolute top-3 right-3 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/90 text-primary-foreground text-sm font-medium">
+                  <div className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/90 text-primary-foreground text-sm font-medium">
                     <MousePointer2 size={14} />
                     Control Mode Active
                   </div>
+                )}
+                
+                {/* Fullscreen button for engineers viewing stream */}
+                {role === 'engineer' && hasRemoteStream && (
+                  <button
+                    onClick={toggleFullscreen}
+                    data-testid="button-fullscreen"
+                    className="absolute top-3 right-3 z-20 p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white transition-colors"
+                    title={isFullscreen ? 'Exit Fullscreen' : 'View Fullscreen'}
+                  >
+                    {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                  </button>
                 )}
               </>
             )}
