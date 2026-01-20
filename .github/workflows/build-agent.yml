@@ -107,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: virtual-studio-agent-mac-legacy
-          path: virtual-studio-agent/dist-legacy/*.dmg
+          path: virtual-studio-agent/dist-legacy/*.zip
 
   build-linux:
     runs-on: ubuntu-latest
