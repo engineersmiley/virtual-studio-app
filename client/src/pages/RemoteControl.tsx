@@ -1,8 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AlertTriangle, ExternalLink } from "lucide-react";
-import { SiWindows, SiApple, SiLinux } from "react-icons/si";
+import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AlertTriangle, ExternalLink, AppWindow, Apple, Terminal } from "lucide-react";
 import { Link } from "wouter";
 
 // Configure these for your GitHub repository
@@ -68,7 +67,7 @@ export default function RemoteControl() {
                   className="w-full h-auto py-4 flex-col gap-2"
                   data-testid="button-download-agent-windows"
                 >
-                  <SiWindows className="w-8 h-8" />
+                  <AppWindow className="w-8 h-8" />
                   <span className="font-semibold">Windows</span>
                   <span className="text-xs opacity-70">.exe installer</span>
                 </Button>
@@ -84,7 +83,7 @@ export default function RemoteControl() {
                   className="w-full h-auto py-4 flex-col gap-2"
                   data-testid="button-download-agent-mac"
                 >
-                  <SiApple className="w-8 h-8" />
+                  <Apple className="w-8 h-8" />
                   <span className="font-semibold">macOS</span>
                   <span className="text-xs opacity-70">.dmg installer</span>
                 </Button>
@@ -100,7 +99,7 @@ export default function RemoteControl() {
                   className="w-full h-auto py-4 flex-col gap-2"
                   data-testid="button-download-agent-linux"
                 >
-                  <SiLinux className="w-8 h-8" />
+                  <Terminal className="w-8 h-8" />
                   <span className="font-semibold">Linux</span>
                   <span className="text-xs opacity-70">.AppImage file</span>
                 </Button>
