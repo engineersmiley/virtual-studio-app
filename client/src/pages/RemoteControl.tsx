@@ -11,7 +11,7 @@ const AGENT_VERSION = "1.0.0";
 const DOWNLOAD_URLS = {
   windows: "https://drive.google.com/uc?export=download&id=1NkHstI37uzDUA81kShLlegdZbSHUIHsC",
   mac: "https://drive.google.com/uc?export=download&id=1xAE4a0BqKh8IdmMFxeNrHfSaooqrb369",
-  macLegacy: "", // Will be populated after legacy build is created
+  macLegacy: "https://drive.google.com/uc?export=download&id=1e9bxGLyg9bFgvUCod8KaOazhJUE9tmui",
   linux: "https://drive.google.com/uc?export=download&id=1g8UoPaABGbtPnV_uOLAqvGApXUbjNdHS",
 };
 
@@ -241,6 +241,73 @@ export default function RemoteControl() {
               <div>
                 <p className="font-medium">Linux</p>
                 <p className="text-muted-foreground">Make the AppImage executable: <code className="bg-muted px-1 rounded">chmod +x virtual-studio-agent.AppImage</code></p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <AppWindow className="w-5 h-5" />
+              Create Desktop Icons
+            </CardTitle>
+            <CardDescription>
+              Add Virtual Studio and the Agent to your desktop for quick access
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm space-y-6">
+            <div>
+              <h3 className="font-semibold mb-3">Virtual Studio (Web App)</h3>
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <AppWindow className="w-5 h-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="font-medium">Windows (Chrome/Edge)</p>
+                    <p className="text-muted-foreground">Open Virtual Studio in your browser, click the menu (3 dots) in the top right, select "Install Virtual Studio" or "Create shortcut". Check "Open as window" for an app-like experience.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Apple className="w-5 h-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="font-medium">macOS (Safari)</p>
+                    <p className="text-muted-foreground">Open Virtual Studio in Safari, click File menu, select "Add to Dock". For Chrome: click menu (3 dots), "Save and Share", then "Create Shortcut".</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Terminal className="w-5 h-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="font-medium">Linux (Chrome/Firefox)</p>
+                    <p className="text-muted-foreground">In Chrome: click menu (3 dots), select "Install Virtual Studio". In Firefox: bookmark the page, then drag the bookmark to your desktop.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="border-t pt-4">
+              <h3 className="font-semibold mb-3">Virtual Studio Agent (Desktop App)</h3>
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <AppWindow className="w-5 h-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="font-medium">Windows</p>
+                    <p className="text-muted-foreground">After running the installer, the Agent is added to your Start Menu automatically. Right-click it and select "Pin to taskbar" or "Create desktop shortcut".</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Apple className="w-5 h-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="font-medium">macOS</p>
+                    <p className="text-muted-foreground">Open the .dmg file, drag "Virtual Studio Agent" to your Applications folder. Then drag it from Applications to your Dock for quick access.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Terminal className="w-5 h-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="font-medium">Linux</p>
+                    <p className="text-muted-foreground">Move the .AppImage file to a permanent location (like ~/Applications). Right-click and select "Allow executing as program". You can use AppImageLauncher to integrate it with your app menu.</p>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
