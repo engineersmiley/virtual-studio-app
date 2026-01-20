@@ -32,6 +32,11 @@ function SessionContent() {
   const [remotePointer, setRemotePointer] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const pointerTimeoutRef = useRef<number | null>(null);
   
+  // Agent/Full control state
+  const [agentConnected, setAgentConnected] = useState(false);
+  const [fullControlActive, setFullControlActive] = useState(false);
+  const [controlPending, setControlPending] = useState(false);
+  
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
@@ -104,17 +109,27 @@ function SessionContent() {
     error,
     localStream,
     hasRemoteStream,
+    agentConnected: wsAgentConnected,
+    controlAllowed: wsControlAllowed,
+    controlPending: wsControlPending,
     connect,
     disconnect,
     startSharing,
     stopSharing,
     sendControlEvent,
+    requestFullControl,
+    endFullControl,
   } = useWebRTC({
     roomId,
     userId,
     role,
     onRemoteStream: handleRemoteStream,
     onRemoteControl: handleRemoteControl,
+    onAgentStatus: (status) => {
+      setAgentConnected(status.connected);
+      setFullControlActive(status.controlAllowed);
+      setControlPending(status.controlPending);
+    },
   });
 
   useEffect(() => {
@@ -578,7 +593,7 @@ function SessionContent() {
             ) : canRecord ? (
               // Engineer controls - can record and control
               <div className="flex gap-3 items-center flex-wrap">
-                {/* Control Mode Toggle - Always visible for engineer */}
+                {/* Control Mode Toggle - Pointer overlay */}
                 <button
                   onClick={() => setControlMode(!controlMode)}
                   data-testid="button-toggle-control"
@@ -591,9 +606,33 @@ function SessionContent() {
                   }`}
                 >
                   <MousePointer2 size={20} />
-                  {controlMode ? 'Control On' : 'Control'}
+                  {controlMode ? 'Pointer On' : 'Pointer'}
                   {!hasRemoteStream && <span className="text-xs ml-1">(waiting)</span>}
                 </button>
+                
+                {/* Full Control - When agent is connected */}
+                {agentConnected && (
+                  fullControlActive ? (
+                    <button
+                      onClick={endFullControl}
+                      data-testid="button-end-full-control"
+                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all shadow-lg shadow-purple-500/30"
+                    >
+                      <Monitor size={20} />
+                      End Control
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => requestFullControl('Engineer')}
+                      disabled={controlPending}
+                      data-testid="button-request-full-control"
+                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
+                    >
+                      <Monitor size={20} />
+                      {controlPending ? 'Requesting...' : 'Full Control'}
+                    </button>
+                  )
+                )}
 
                 {!recordedBlob ? (
                   !isRecording ? (

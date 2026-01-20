@@ -14,20 +14,30 @@ interface RemoteControlEvent {
   fromRole: SessionRole;
 }
 
+interface AgentStatus {
+  connected: boolean;
+  controlAllowed: boolean;
+  controlPending: boolean;
+}
+
 interface UseWebRTCOptions {
   roomId: string;
   userId: string;
   role: SessionRole;
   onRemoteStream?: (stream: MediaStream) => void;
   onRemoteControl?: (event: RemoteControlEvent) => void;
+  onAgentStatus?: (status: AgentStatus) => void;
 }
 
-export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteControl }: UseWebRTCOptions) {
+export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteControl, onAgentStatus }: UseWebRTCOptions) {
   const [connected, setConnected] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
+  const [agentConnected, setAgentConnected] = useState(false);
+  const [controlAllowed, setControlAllowed] = useState(false);
+  const [controlPending, setControlPending] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   // Map of peer connections: userId -> RTCPeerConnection
@@ -39,14 +49,29 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
   const onRemoteControlRef = useRef(onRemoteControl);
   const participantsRef = useRef<Participant[]>([]);
   
+  const onAgentStatusRef = useRef(onAgentStatus);
+  
   // Keep refs updated
   useEffect(() => {
     onRemoteControlRef.current = onRemoteControl;
   }, [onRemoteControl]);
   
   useEffect(() => {
+    onAgentStatusRef.current = onAgentStatus;
+  }, [onAgentStatus]);
+  
+  useEffect(() => {
     participantsRef.current = participants;
   }, [participants]);
+  
+  // Notify parent of agent status changes
+  useEffect(() => {
+    onAgentStatusRef.current?.({
+      connected: agentConnected,
+      controlAllowed,
+      controlPending,
+    });
+  }, [agentConnected, controlAllowed, controlPending]);
 
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -263,6 +288,30 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
 
         case 'error': {
           setError(message.payload?.message || 'Connection error');
+          break;
+        }
+        
+        // Agent status messages
+        case 'agent-connected': {
+          setAgentConnected(true);
+          break;
+        }
+        
+        case 'agent-disconnected': {
+          setAgentConnected(false);
+          setControlAllowed(false);
+          setControlPending(false);
+          break;
+        }
+        
+        case 'control-response': {
+          setControlPending(false);
+          setControlAllowed(message.allowed === true);
+          break;
+        }
+        
+        case 'control-stopped': {
+          setControlAllowed(false);
           break;
         }
       }
@@ -502,18 +551,74 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
     };
   }, []);
 
+  // Request full control from agent
+  const requestFullControl = useCallback((name: string = 'Engineer') => {
+    if (role !== 'engineer' || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.log('[Control] Cannot request control - not engineer or not connected');
+      return;
+    }
+    
+    setControlPending(true);
+    wsRef.current.send(JSON.stringify({
+      type: 'control-request',
+      sessionCode: roomId,
+      userId,
+      fromUserId: userId,
+      fromName: name,
+      fromRole: 'engineer',
+    }));
+    console.log('[Control] Sent control request');
+  }, [roomId, userId, role]);
+  
+  // End full control
+  const endFullControl = useCallback(() => {
+    if (role !== 'engineer' || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    
+    wsRef.current.send(JSON.stringify({
+      type: 'control-end',
+      sessionCode: roomId,
+      userId,
+    }));
+    setControlAllowed(false);
+    console.log('[Control] Ended control');
+  }, [roomId, userId, role]);
+  
+  // Send full control command (mouse/keyboard to agent)
+  const sendFullControlCommand = useCallback((command: {
+    type: 'mouse-move' | 'mouse-click' | 'mouse-double-click' | 'mouse-scroll' | 'key-press' | 'key-type';
+    [key: string]: any;
+  }) => {
+    if (role !== 'engineer' || !controlAllowed || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    
+    wsRef.current.send(JSON.stringify({
+      ...command,
+      sessionCode: roomId,
+      userId,
+    }));
+  }, [roomId, userId, role, controlAllowed]);
+
   return {
     connected,
     participants,
     error,
     localStream,
     hasRemoteStream,
+    agentConnected,
+    controlAllowed,
+    controlPending,
     connect,
     disconnect,
     startSharing,
     stopSharing,
     sendControlEvent,
+    requestFullControl,
+    endFullControl,
+    sendFullControlCommand,
   };
 }
 
-export type { RemoteControlEvent };
+export type { RemoteControlEvent, AgentStatus };

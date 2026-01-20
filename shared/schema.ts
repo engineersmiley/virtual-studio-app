@@ -80,3 +80,114 @@ export type SignalingMessage = {
   role: SessionRole;
   payload?: any;
 };
+
+// Remote Control Message Types
+export const ControlMessageType = {
+  CONTROL_REQUEST: 'control-request',
+  CONTROL_RESPONSE: 'control-response',
+  CONTROL_END: 'control-end',
+  MOUSE_MOVE: 'mouse-move',
+  MOUSE_CLICK: 'mouse-click',
+  MOUSE_DOUBLE_CLICK: 'mouse-double-click',
+  MOUSE_SCROLL: 'mouse-scroll',
+  KEY_PRESS: 'key-press',
+  KEY_TYPE: 'key-type',
+  CONTROL_STOPPED: 'control-stopped',
+} as const;
+
+export type ControlMessageTypeKey = keyof typeof ControlMessageType;
+
+// Control message schemas
+export const controlRequestSchema = z.object({
+  type: z.literal('control-request'),
+  sessionCode: z.string(),
+  fromUserId: z.string(),
+  fromName: z.string(),
+  fromRole: z.enum(['engineer']),
+});
+
+export const controlResponseSchema = z.object({
+  type: z.literal('control-response'),
+  sessionCode: z.string(),
+  allowed: z.boolean(),
+});
+
+export const mouseMoveSchema = z.object({
+  type: z.literal('mouse-move'),
+  x: z.number(),
+  y: z.number(),
+  timestamp: z.number().optional(),
+});
+
+export const mouseClickSchema = z.object({
+  type: z.literal('mouse-click'),
+  x: z.number(),
+  y: z.number(),
+  button: z.enum(['left', 'right', 'middle']).default('left'),
+});
+
+export const mouseDoubleClickSchema = z.object({
+  type: z.literal('mouse-double-click'),
+  x: z.number(),
+  y: z.number(),
+});
+
+export const mouseScrollSchema = z.object({
+  type: z.literal('mouse-scroll'),
+  deltaX: z.number(),
+  deltaY: z.number(),
+});
+
+export const keyPressSchema = z.object({
+  type: z.literal('key-press'),
+  key: z.string(),
+  modifiers: z.object({
+    ctrl: z.boolean().optional(),
+    alt: z.boolean().optional(),
+    shift: z.boolean().optional(),
+    meta: z.boolean().optional(),
+  }).optional(),
+});
+
+export const keyTypeSchema = z.object({
+  type: z.literal('key-type'),
+  text: z.string(),
+});
+
+export const controlEndSchema = z.object({
+  type: z.literal('control-end'),
+  sessionCode: z.string(),
+});
+
+// Union of all control messages
+export const controlMessageSchema = z.discriminatedUnion('type', [
+  controlRequestSchema,
+  controlResponseSchema,
+  mouseMoveSchema,
+  mouseClickSchema,
+  mouseDoubleClickSchema,
+  mouseScrollSchema,
+  keyPressSchema,
+  keyTypeSchema,
+  controlEndSchema,
+]);
+
+export type ControlMessage = z.infer<typeof controlMessageSchema>;
+export type ControlRequest = z.infer<typeof controlRequestSchema>;
+export type ControlResponse = z.infer<typeof controlResponseSchema>;
+export type MouseMove = z.infer<typeof mouseMoveSchema>;
+export type MouseClick = z.infer<typeof mouseClickSchema>;
+export type MouseScroll = z.infer<typeof mouseScrollSchema>;
+export type KeyPress = z.infer<typeof keyPressSchema>;
+export type KeyType = z.infer<typeof keyTypeSchema>;
+
+// Agent connection token
+export const agentTokenSchema = z.object({
+  sessionCode: z.string().length(6),
+  userId: z.string(),
+  email: z.string().email(),
+  role: z.enum(['artist']),
+  expiresAt: z.number(),
+});
+
+export type AgentToken = z.infer<typeof agentTokenSchema>;

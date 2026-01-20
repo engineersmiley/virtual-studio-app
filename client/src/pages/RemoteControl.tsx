@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Download, Shield, Users, ArrowLeft, Laptop } from "lucide-react";
+import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings } from "lucide-react";
 import { Link } from "wouter";
 
 export default function RemoteControl() {
@@ -32,14 +32,53 @@ export default function RemoteControl() {
           </p>
         </div>
 
+        {/* Virtual Studio Agent - Coming Soon */}
+        <Card className="mb-6 border-primary/30 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-primary" />
+              Virtual Studio Agent
+              <Badge variant="secondary" className="ml-2">Coming Soon</Badge>
+            </CardTitle>
+            <CardDescription>
+              Our integrated remote control solution - control your artist's computer directly from Virtual Studio with audio streaming included.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="p-4 bg-background/50 rounded-lg">
+                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                  <Settings className="w-4 h-4" />
+                  How It Will Work
+                </h4>
+                <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+                  <li>Artist downloads and installs Virtual Studio Agent</li>
+                  <li>Agent connects to your Virtual Studio session</li>
+                  <li>Engineer clicks "Full Control" in the session</li>
+                  <li>Artist approves the control request</li>
+                  <li>Engineer can now control the artist's computer - with audio!</li>
+                </ol>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                <strong>Why is this better?</strong> Unlike RustDesk/AnyDesk, Virtual Studio Agent integrates directly with your session - 
+                so you get remote control AND audio streaming in one seamless experience. No separate apps needed.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <div className="text-center mb-6">
+          <p className="text-muted-foreground">While we finish developing Virtual Studio Agent, use one of these free tools:</p>
+        </div>
+
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Download className="w-5 h-5" />
-              Download RustDesk
+              Option 1: RustDesk
             </CardTitle>
             <CardDescription>
-              Free, open-source remote control software. Recommended for Virtual Studio.
+              Free, open-source remote control software. Recommended for most users.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -101,7 +140,7 @@ export default function RemoteControl() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Download className="w-5 h-5" />
-              Alternative: AnyDesk
+              Option 2: AnyDesk
             </CardTitle>
             <CardDescription>
               Another free remote control option. Great for older systems (macOS 10.9-10.11, older Windows).

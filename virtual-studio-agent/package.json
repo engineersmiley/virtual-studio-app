@@ -1,0 +1,57 @@
+{
+  "name": "virtual-studio-agent",
+  "version": "1.0.0",
+  "description": "Virtual Studio Remote Control Agent - allows engineers to control artist's computer during sessions",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --win --mac --linux"
+  },
+  "author": "Virtual Studio",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "@nut-tree/nut-js": "^3.1.2",
+    "ws": "^8.14.2"
+  },
+  "build": {
+    "appId": "com.virtualstudio.agent",
+    "productName": "Virtual Studio Agent",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.utilities",
+      "entitlements": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Virtual Studio Agent needs to control your computer for remote sessions.",
+        "NSAccessibilityUsageDescription": "Virtual Studio Agent needs accessibility permissions to control mouse and keyboard."
+      }
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true
+    }
+  }
+}
