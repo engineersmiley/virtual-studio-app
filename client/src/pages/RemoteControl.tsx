@@ -102,7 +102,7 @@ export default function RemoteControl() {
                       className="w-full text-xs"
                       data-testid="button-download-agent-mac-legacy"
                     >
-                      <span>macOS 10.10-10.14 (Legacy)</span>
+                      <span>macOS 10.11-10.14 (Legacy)</span>
                     </Button>
                   </a>
                 )}
