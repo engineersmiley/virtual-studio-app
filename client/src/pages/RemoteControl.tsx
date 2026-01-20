@@ -1,16 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings } from "lucide-react";
+import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 
 export default function RemoteControl() {
-  const downloadLinks = {
-    windows: "https://github.com/rustdesk/rustdesk/releases/download/1.3.8/rustdesk-1.3.8-x86_64.exe",
-    mac: "https://github.com/rustdesk/rustdesk/releases/download/1.3.8/rustdesk-1.3.8-x86_64.dmg",
-    linux: "https://github.com/rustdesk/rustdesk/releases/download/1.3.8/rustdesk-1.3.8-x86_64.deb"
-  };
-
   return (
     <div className="min-h-screen bg-background">
       <div className="container max-w-4xl mx-auto px-4 py-8">
@@ -32,130 +26,26 @@ export default function RemoteControl() {
           </p>
         </div>
 
-        {/* Virtual Studio Agent - Coming Soon */}
         <Card className="mb-6 border-primary/30 bg-primary/5">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
               Virtual Studio Agent
-              <Badge variant="secondary" className="ml-2">Coming Soon</Badge>
+              <Badge className="ml-2">Download Now</Badge>
             </CardTitle>
             <CardDescription>
-              Our integrated remote control solution - control your artist's computer directly from Virtual Studio with audio streaming included.
+              Control your artist's computer directly from Virtual Studio with audio streaming included - all in one integrated experience.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="p-4 bg-background/50 rounded-lg">
-                <h4 className="font-semibold mb-2 flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  How It Will Work
-                </h4>
-                <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
-                  <li>Artist downloads and installs Virtual Studio Agent</li>
-                  <li>Agent connects to your Virtual Studio session</li>
-                  <li>Engineer clicks "Full Control" in the session</li>
-                  <li>Artist approves the control request</li>
-                  <li>Engineer can now control the artist's computer - with audio!</li>
-                </ol>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                <strong>Why is this better?</strong> Unlike RustDesk/AnyDesk, Virtual Studio Agent integrates directly with your session - 
-                so you get remote control AND audio streaming in one seamless experience. No separate apps needed.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <div className="text-center mb-6">
-          <p className="text-muted-foreground">While we finish developing Virtual Studio Agent, use one of these free tools:</p>
-        </div>
-
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Download className="w-5 h-5" />
-              Option 1: RustDesk
-            </CardTitle>
-            <CardDescription>
-              Free, open-source remote control software. Recommended for most users.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-3 mb-6">
               <Button 
                 asChild 
                 size="lg" 
-                variant="outline" 
                 className="w-full flex-col gap-1"
-                data-testid="button-download-windows"
+                data-testid="button-download-agent-windows"
               >
-                <a href={downloadLinks.windows} target="_blank" rel="noopener noreferrer">
-                  <Laptop className="w-6 h-6" />
-                  <span>Windows</span>
-                  <Badge variant="secondary" className="text-xs">Recommended</Badge>
-                </a>
-              </Button>
-              <Button 
-                asChild 
-                size="lg" 
-                variant="outline" 
-                className="w-full flex-col gap-1"
-                data-testid="button-download-mac"
-              >
-                <a href={downloadLinks.mac} target="_blank" rel="noopener noreferrer">
-                  <Laptop className="w-6 h-6" />
-                  <span>macOS</span>
-                </a>
-              </Button>
-              <Button 
-                asChild 
-                size="lg" 
-                variant="outline" 
-                className="w-full flex-col gap-1"
-                data-testid="button-download-linux"
-              >
-                <a href={downloadLinks.linux} target="_blank" rel="noopener noreferrer">
-                  <Laptop className="w-6 h-6" />
-                  <span>Linux</span>
-                </a>
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-4 text-center">
-              Can't find your version?{" "}
-              <a 
-                href="https://rustdesk.com/download" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="text-primary hover:underline"
-                data-testid="link-all-downloads"
-              >
-                View all downloads
-              </a>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Download className="w-5 h-5" />
-              Option 2: AnyDesk
-            </CardTitle>
-            <CardDescription>
-              Another free remote control option. Great for older systems (macOS 10.9-10.11, older Windows).
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Button 
-                asChild 
-                size="lg" 
-                variant="outline" 
-                className="w-full flex-col gap-1"
-                data-testid="button-download-anydesk-windows"
-              >
-                <a href="https://anydesk.com/en/downloads/windows" target="_blank" rel="noopener noreferrer">
+                <a href="/downloads/virtual-studio-agent-win.exe" download>
                   <Laptop className="w-6 h-6" />
                   <span>Windows</span>
                 </a>
@@ -163,11 +53,10 @@ export default function RemoteControl() {
               <Button 
                 asChild 
                 size="lg" 
-                variant="outline" 
                 className="w-full flex-col gap-1"
-                data-testid="button-download-anydesk-mac"
+                data-testid="button-download-agent-mac"
               >
-                <a href="https://anydesk.com/en/downloads/mac-os" target="_blank" rel="noopener noreferrer">
+                <a href="/downloads/virtual-studio-agent-mac.dmg" download>
                   <Laptop className="w-6 h-6" />
                   <span>macOS</span>
                 </a>
@@ -175,28 +64,15 @@ export default function RemoteControl() {
               <Button 
                 asChild 
                 size="lg" 
-                variant="outline" 
                 className="w-full flex-col gap-1"
-                data-testid="button-download-anydesk-linux"
+                data-testid="button-download-agent-linux"
               >
-                <a href="https://anydesk.com/en/downloads/linux" target="_blank" rel="noopener noreferrer">
+                <a href="/downloads/virtual-studio-agent-linux.AppImage" download>
                   <Laptop className="w-6 h-6" />
                   <span>Linux</span>
                 </a>
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-4 text-center">
-              For older macOS (10.9-10.11), download{" "}
-              <a 
-                href="https://anydesk.en.uptodown.com/mac/versions" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="text-primary hover:underline"
-                data-testid="link-anydesk-older-versions"
-              >
-                version 6.5.0 or earlier
-              </a>
-            </p>
           </CardContent>
         </Card>
 
@@ -210,16 +86,16 @@ export default function RemoteControl() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <ol className="list-decimal list-inside space-y-2">
-                <li>Download and install RustDesk</li>
-                <li>Open RustDesk - you'll see your <strong>ID</strong> and <strong>Password</strong></li>
-                <li>Share both with your engineer (via text, email, or in session chat)</li>
-                <li>Accept the connection when prompted</li>
-                <li>Your engineer can now control your computer!</li>
+                <li>Download Virtual Studio Agent above</li>
+                <li>Install and open the app</li>
+                <li>Enter your session code and email</li>
+                <li>Click "Connect" to link with your session</li>
+                <li>When your engineer requests control, click "Allow"</li>
               </ol>
               <div className="p-3 bg-primary/5 rounded-lg mt-4">
                 <p className="text-xs text-muted-foreground">
-                  <strong>Tip:</strong> You can set a permanent password in RustDesk settings 
-                  so you don't need to share a new one each session.
+                  <strong>You're always in control:</strong> You must approve each control request, 
+                  and you can stop control anytime by pressing Escape.
                 </p>
               </div>
             </CardContent>
@@ -234,21 +110,56 @@ export default function RemoteControl() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <ol className="list-decimal list-inside space-y-2">
-                <li>Download and install RustDesk</li>
-                <li>Ask your artist for their <strong>ID</strong> and <strong>Password</strong></li>
-                <li>Enter the ID in the "Remote Desktop" field</li>
-                <li>Click Connect and enter the password</li>
-                <li>You now have full control of their computer!</li>
+                <li>Join the Virtual Studio session as usual</li>
+                <li>Wait for the artist to connect their Agent app</li>
+                <li>You'll see "Agent Connected" in the session</li>
+                <li>Click "Full Control" to request control</li>
+                <li>Once the artist approves, you have full control!</li>
               </ol>
               <div className="p-3 bg-primary/5 rounded-lg mt-4">
                 <p className="text-xs text-muted-foreground">
-                  <strong>Tip:</strong> Use this alongside Virtual Studio's screen sharing 
-                  to see the artist's screen in the browser while controlling via RustDesk.
+                  <strong>Audio included:</strong> Unlike other remote tools, you get the artist's 
+                  screen AND audio all in one place.
                 </p>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              System Permissions
+            </CardTitle>
+            <CardDescription>
+              The agent needs permission to control your mouse and keyboard
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm space-y-4">
+            <div className="flex items-start gap-3">
+              <Laptop className="w-5 h-5 text-muted-foreground mt-0.5" />
+              <div>
+                <p className="font-medium">Windows</p>
+                <p className="text-muted-foreground">Run the installer as Administrator. If prompted by Windows Security, click "More info" then "Run anyway".</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <Laptop className="w-5 h-5 text-muted-foreground mt-0.5" />
+              <div>
+                <p className="font-medium">macOS</p>
+                <p className="text-muted-foreground">Go to System Preferences &gt; Security & Privacy &gt; Privacy &gt; Accessibility, and add Virtual Studio Agent to the allowed apps.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <Laptop className="w-5 h-5 text-muted-foreground mt-0.5" />
+              <div>
+                <p className="font-medium">Linux</p>
+                <p className="text-muted-foreground">Make the AppImage executable: <code className="bg-muted px-1 rounded">chmod +x virtual-studio-agent.AppImage</code></p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -257,19 +168,23 @@ export default function RemoteControl() {
               Security & Privacy
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-2">
-            <p>
-              <strong>RustDesk is open-source</strong> - the code is publicly available for anyone to audit.
-            </p>
-            <p>
-              <strong>End-to-end encrypted</strong> - all connections are secured with strong encryption.
-            </p>
-            <p>
-              <strong>You're in control</strong> - the artist must accept each connection and can disconnect anytime.
-            </p>
-            <p>
-              <strong>No account required</strong> - works immediately after installation.
-            </p>
+          <CardContent className="text-sm text-muted-foreground space-y-3">
+            <div className="flex items-start gap-2">
+              <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+              <p><strong>Explicit consent required</strong> - The artist must approve each control request</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+              <p><strong>Session-bound</strong> - Control only works within your active Virtual Studio session</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+              <p><strong>Instant disconnect</strong> - Press Escape anytime to immediately stop control</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+              <p><strong>Engineer verification</strong> - Only verified engineers in your session can request control</p>
+            </div>
           </CardContent>
         </Card>
 
