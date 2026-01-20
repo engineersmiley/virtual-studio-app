@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Virtual Studio Agent</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+      color: #ffffff;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 360px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .logo {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #00f0ff, #ff00ff);
+      border-radius: 50%;
+      margin: 0 auto 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+    }
+    
+    h1 {
+      font-size: 24px;
+      color: #00f0ff;
+      margin-bottom: 5px;
+    }
+    
+    .subtitle {
+      color: #888;
+      font-size: 14px;
+    }
+    
+    .status-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #666;
+    }
+    
+    .status-dot.connected {
+      background: #00ff88;
+      box-shadow: 0 0 10px #00ff88;
+    }
+    
+    .status-dot.control-active {
+      background: #ff00ff;
+      box-shadow: 0 0 10px #ff00ff;
+    }
+    
+    .status-text {
+      font-size: 14px;
+      color: #ccc;
+    }
+    
+    .input-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    input {
+      width: 100%;
+      padding: 12px 15px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-align: center;
+    }
+    
+    input:focus {
+      outline: none;
+      border-color: #00f0ff;
+      box-shadow: 0 0 10px rgba(0,240,255,0.3);
+    }
+    
+    input::placeholder {
+      color: #555;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+    
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(90deg, #00f0ff, #00a0ff);
+      color: #000;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(0,240,255,0.4);
+    }
+    
+    .btn-danger {
+      background: linear-gradient(90deg, #ff0055, #ff00ff);
+      color: #fff;
+    }
+    
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(255,0,85,0.4);
+    }
+    
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .control-info {
+      background: rgba(255,0,255,0.1);
+      border: 1px solid rgba(255,0,255,0.3);
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 15px;
+      font-size: 13px;
+      color: #ff88ff;
+    }
+    
+    .control-info strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #ff00ff;
+    }
+    
+    .instructions {
+      margin-top: 20px;
+      padding: 15px;
+      background: rgba(0,240,255,0.05);
+      border-radius: 8px;
+      font-size: 12px;
+      color: #888;
+    }
+    
+    .instructions h3 {
+      color: #00f0ff;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    
+    .instructions ol {
+      padding-left: 20px;
+    }
+    
+    .instructions li {
+      margin-bottom: 5px;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .error {
+      background: rgba(255,0,0,0.1);
+      border: 1px solid rgba(255,0,0,0.3);
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 10px;
+      color: #ff6666;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">🎙️</div>
+      <h1>Virtual Studio Agent</h1>
+      <p class="subtitle">Remote Control for Sessions</p>
+    </div>
+    
+    <div class="status-card">
+      <div class="status-indicator">
+        <div class="status-dot" id="connectionDot"></div>
+        <span class="status-text" id="connectionText">Not Connected</span>
+      </div>
+      
+      <div class="status-indicator" id="controlStatus">
+        <div class="status-dot" id="controlDot"></div>
+        <span class="status-text" id="controlText">Control Inactive</span>
+      </div>
+    </div>
+    
+    <div id="connectForm">
+      <div class="input-group">
+        <label>Session Code</label>
+        <input type="text" id="sessionCode" placeholder="Enter 6-character code" maxlength="6">
+      </div>
+      
+      <div class="input-group">
+        <label>Session Token (from Virtual Studio)</label>
+        <input type="text" id="sessionToken" placeholder="Paste token here">
+      </div>
+      
+      <button class="btn btn-primary" id="connectBtn">Connect to Session</button>
+      
+      <div id="errorMessage" class="error hidden"></div>
+    </div>
+    
+    <div id="connectedView" class="hidden">
+      <div class="control-info" id="controlInfo">
+        <strong>Waiting for Control Request</strong>
+        When the engineer requests control, you'll see a prompt to allow or deny it.
+      </div>
+      
+      <button class="btn btn-danger" id="stopControlBtn" style="margin-top: 15px; display: none;">
+        Stop Remote Control
+      </button>
+      
+      <button class="btn btn-secondary" id="disconnectBtn" style="margin-top: 10px;">
+        Disconnect
+      </button>
+    </div>
+    
+    <div class="instructions">
+      <h3>How it works:</h3>
+      <ol>
+        <li>Open Virtual Studio in your browser</li>
+        <li>Join or create a session as an Artist</li>
+        <li>Copy the session code and token</li>
+        <li>Paste them here and click Connect</li>
+        <li>When your engineer requests control, approve it</li>
+      </ol>
+    </div>
+  </div>
+  
+  <script>
+    const sessionCodeInput = document.getElementById('sessionCode');
+    const sessionTokenInput = document.getElementById('sessionToken');
+    const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const stopControlBtn = document.getElementById('stopControlBtn');
+    const connectForm = document.getElementById('connectForm');
+    const connectedView = document.getElementById('connectedView');
+    const connectionDot = document.getElementById('connectionDot');
+    const connectionText = document.getElementById('connectionText');
+    const controlDot = document.getElementById('controlDot');
+    const controlText = document.getElementById('controlText');
+    const controlInfo = document.getElementById('controlInfo');
+    const errorMessage = document.getElementById('errorMessage');
+    
+    connectBtn.addEventListener('click', async () => {
+      const sessionCode = sessionCodeInput.value.trim().toUpperCase();
+      const sessionToken = sessionTokenInput.value.trim();
+      
+      if (!sessionCode || sessionCode.length !== 6) {
+        showError('Please enter a valid 6-character session code');
+        return;
+      }
+      
+      if (!sessionToken) {
+        showError('Please enter the session token');
+        return;
+      }
+      
+      hideError();
+      connectBtn.disabled = true;
+      connectBtn.textContent = 'Connecting...';
+      
+      try {
+        const result = await window.agent.connect(sessionCode, sessionToken);
+        if (!result.success) {
+          showError(result.error || 'Connection failed');
+          connectBtn.disabled = false;
+          connectBtn.textContent = 'Connect to Session';
+        }
+      } catch (error) {
+        showError('Connection error: ' + error.message);
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect to Session';
+      }
+    });
+    
+    disconnectBtn.addEventListener('click', async () => {
+      await window.agent.disconnect();
+    });
+    
+    stopControlBtn.addEventListener('click', async () => {
+      await window.agent.stopControl();
+    });
+    
+    window.agent.onConnectionStatus((data) => {
+      if (data.connected) {
+        connectionDot.classList.add('connected');
+        connectionText.textContent = `Connected to ${data.session}`;
+        connectForm.classList.add('hidden');
+        connectedView.classList.remove('hidden');
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect to Session';
+      } else {
+        connectionDot.classList.remove('connected');
+        connectionText.textContent = 'Not Connected';
+        connectForm.classList.remove('hidden');
+        connectedView.classList.add('hidden');
+        controlDot.classList.remove('control-active');
+        controlText.textContent = 'Control Inactive';
+        stopControlBtn.style.display = 'none';
+      }
+    });
+    
+    window.agent.onControlStatus((data) => {
+      if (data.enabled) {
+        controlDot.classList.add('control-active');
+        controlText.textContent = 'Control Active';
+        controlInfo.innerHTML = '<strong>Remote Control Active</strong>Your engineer can now control your computer. Press the Stop button or press Escape to stop.';
+        stopControlBtn.style.display = 'block';
+      } else {
+        controlDot.classList.remove('control-active');
+        controlText.textContent = 'Control Inactive';
+        controlInfo.innerHTML = '<strong>Waiting for Control Request</strong>When the engineer requests control, you\'ll see a prompt to allow or deny it.';
+        stopControlBtn.style.display = 'none';
+      }
+    });
+    
+    window.agent.onError((error) => {
+      showError(error);
+    });
+    
+    function showError(message) {
+      errorMessage.textContent = message;
+      errorMessage.classList.remove('hidden');
+    }
+    
+    function hideError() {
+      errorMessage.classList.add('hidden');
+    }
+    
+    async function init() {
+      const status = await window.agent.getStatus();
+      if (status.connected) {
+        connectionDot.classList.add('connected');
+        connectionText.textContent = `Connected to ${status.session}`;
+        connectForm.classList.add('hidden');
+        connectedView.classList.remove('hidden');
+        
+        if (status.controlEnabled) {
+          controlDot.classList.add('control-active');
+          controlText.textContent = 'Control Active';
+          stopControlBtn.style.display = 'block';
+        }
+      }
+    }
+    
+    init();
+  </script>
+</body>
+</html>

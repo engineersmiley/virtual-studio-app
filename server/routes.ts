@@ -1,0 +1,808 @@
+import type { Express } from "express";
+import type { Server } from "http";
+import { storage } from "./storage";
+import { api } from "@shared/routes";
+import { z } from "zod";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import express from "express";
+import { WebSocketServer, WebSocket } from "ws";
+import { stripeService } from "./stripeService";
+import { getStripePublishableKey, getUncachableStripeClient } from "./stripeClient";
+import { sendWelcomeEmail } from "./gmailService";
+import type { SessionRole, ControlMessage, AgentToken } from "@shared/schema";
+import crypto from "crypto";
+
+const uploadDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, uniqueSuffix + '-' + file.originalname);
+    }
+  }),
+  limits: {
+    fileSize: 500 * 1024 * 1024,
+  }
+});
+
+// Room management for WebRTC signaling
+interface RoomParticipant {
+  ws: WebSocket;
+  role: SessionRole;
+  userId: string;
+}
+
+const rooms = new Map<string, Map<string, RoomParticipant>>();
+
+// Agent connection management for remote control
+interface AgentConnection {
+  ws: WebSocket;
+  sessionCode: string;
+  userId: string;
+  controlEnabled: boolean;
+}
+
+const agentConnections = new Map<string, AgentConnection>(); // sessionCode -> agent
+const agentTokens = new Map<string, AgentToken>(); // token -> AgentToken data
+const controlPermissions = new Map<string, boolean>(); // sessionCode -> control allowed
+
+export async function registerRoutes(
+  httpServer: Server,
+  app: Express
+): Promise<Server> {
+  
+  // Serve uploaded files statically
+  app.use('/uploads', express.static(uploadDir));
+
+  // ============ SUBSCRIPTION VERIFICATION HELPER ============
+  
+  async function verifySubscription(emailHeader: string | string[] | undefined): Promise<boolean> {
+    const email = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader;
+    if (!email) return false;
+    const user = await storage.getUserByEmail(email);
+    if (!user?.stripeCustomerId) return false;
+    const subscription = await storage.getSubscriptionByCustomerId(user.stripeCustomerId);
+    return subscription && (subscription.status === 'active' || subscription.status === 'trialing');
+  }
+
+  // ============ SESSION ROUTES ============
+  
+  app.post(api.sessions.create.path, async (req, res) => {
+    try {
+      const subscriberEmail = req.headers['x-subscriber-email'] as string;
+      const hasSubscription = await verifySubscription(subscriberEmail);
+      
+      if (!hasSubscription) {
+        return res.status(403).json({ message: 'Active subscription required' });
+      }
+
+      const { name } = api.sessions.create.input.parse(req.body);
+      const session = await storage.createSession(name);
+      res.status(201).json(session);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.get(api.sessions.list.path, async (req, res) => {
+    const sessionsList = await storage.getSessions();
+    res.json(sessionsList);
+  });
+
+  app.get(api.sessions.get.path, async (req, res) => {
+    const id = req.params.id as string;
+    const session = await storage.getSession(id);
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+    res.json(session);
+  });
+
+  app.post(api.sessions.end.path, async (req, res) => {
+    const id = req.params.id as string;
+    const session = await storage.endSession(id);
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+    res.json(session);
+  });
+
+  // ============ RECORDING ROUTES ============
+
+  app.get(api.recordings.list.path, async (req, res) => {
+    const recordingsList = await storage.getRecordings();
+    res.json(recordingsList);
+  });
+
+  app.get(api.recordings.get.path, async (req, res) => {
+    const recording = await storage.getRecording(Number(req.params.id));
+    if (!recording) {
+      return res.status(404).json({ message: 'Recording not found' });
+    }
+    res.json(recording);
+  });
+
+  app.post(api.recordings.upload.path, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
+
+      const duration = parseInt(req.body.duration || '0');
+      
+      const recordingData = {
+        title: req.body.title || req.file.originalname,
+        description: req.body.description || '',
+        filename: req.file.filename,
+        fileSize: req.file.size,
+        duration: duration,
+        mimeType: req.file.mimetype,
+        isHighQuality: req.body.isHighQuality === 'true',
+        sessionName: req.body.sessionName || null,
+        sessionId: req.body.sessionId || null,
+      };
+
+      const recording = await storage.createRecording(recordingData);
+      res.status(201).json(recording);
+    } catch (err) {
+      console.error('Upload error:', err);
+      res.status(500).json({ message: 'Failed to save recording' });
+    }
+  });
+
+  app.delete(api.recordings.delete.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const recording = await storage.getRecording(id);
+    
+    if (recording) {
+      try {
+        const filePath = path.join(uploadDir, recording.filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        console.error('Error deleting file:', e);
+      }
+      
+      await storage.deleteRecording(id);
+      res.status(204).send();
+    } else {
+      res.status(404).json({ message: 'Recording not found' });
+    }
+  });
+
+  // ============ STRIPE ROUTES ============
+
+  app.get('/api/stripe/config', async (req, res) => {
+    try {
+      const publishableKey = await getStripePublishableKey();
+      res.json({ publishableKey });
+    } catch (err) {
+      console.error('Error getting Stripe config:', err);
+      res.status(500).json({ error: 'Stripe not configured' });
+    }
+  });
+
+  app.post('/api/stripe/checkout', async (req, res) => {
+    try {
+      const { email, priceId } = req.body;
+      if (!email || !priceId) {
+        return res.status(400).json({ error: 'Email and priceId required' });
+      }
+
+      let user = await storage.getUserByEmail(email);
+      let customerId = user?.stripeCustomerId;
+
+      if (!user) {
+        const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        user = await storage.createUser({ id: userId, email });
+      }
+
+      // Verify customer exists in current Stripe mode, create new if not
+      if (customerId) {
+        try {
+          await stripeService.getCustomer(customerId);
+        } catch (err: any) {
+          // Customer doesn't exist (likely from test mode), create new one
+          console.log('Customer not found in Stripe, creating new one');
+          customerId = null;
+        }
+      }
+
+      if (!customerId) {
+        const customer = await stripeService.createCustomer(email, user.id);
+        await storage.updateUserStripeInfo(user.id, { stripeCustomerId: customer.id });
+        customerId = customer.id;
+      }
+
+      // Use custom domain in production, fallback to Replit domain
+      const customDomain = 'virtualstudio.sale';
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
+      const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
+      const baseUrl = `https://${isProduction ? customDomain : replitDomain}`;
+      const session = await stripeService.createCheckoutSession(
+        customerId,
+        priceId,
+        `${baseUrl}/?subscribed=true`,
+        `${baseUrl}/?cancelled=true`
+      );
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/stripe/portal', async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: 'Email required' });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user?.stripeCustomerId) {
+        return res.status(404).json({ error: 'No subscription found' });
+      }
+
+      // Use custom domain in production
+      const customDomain = 'virtualstudio.sale';
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
+      const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
+      const baseUrl = `https://${isProduction ? customDomain : replitDomain}`;
+      const portalSession = await stripeService.createCustomerPortalSession(
+        user.stripeCustomerId,
+        baseUrl || '/'
+      );
+
+      res.json({ url: portalSession.url });
+    } catch (err: any) {
+      console.error('Portal error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/subscription-status', async (req, res) => {
+    try {
+      const email = req.query.email as string;
+      if (!email) {
+        return res.json({ hasSubscription: false });
+      }
+
+      // First check our database
+      const user = await storage.getUserByEmail(email);
+      
+      if (user) {
+        // Check user's own subscription status (fallback for webhook issues)
+        if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
+          return res.json({ 
+            hasSubscription: true, 
+            status: user.subscriptionStatus,
+            email 
+          });
+        }
+
+        // Check Stripe's synced subscription data
+        if (user.stripeCustomerId) {
+          const subscription = await storage.getSubscriptionByCustomerId(user.stripeCustomerId);
+          if (subscription && (subscription.status === 'active' || subscription.status === 'trialing')) {
+            return res.json({ 
+              hasSubscription: true, 
+              status: subscription.status,
+              email 
+            });
+          }
+        }
+      }
+
+      // Fallback: Check Stripe API directly by email (for webhook failures)
+      try {
+        const stripeClient = await getUncachableStripeClient();
+        const customers = await stripeClient.customers.list({ email, limit: 1 });
+        if (customers.data.length > 0) {
+          const customerId = customers.data[0].id;
+          const subscriptions = await stripeClient.subscriptions.list({ 
+            customer: customerId, 
+            status: 'active',
+            limit: 1 
+          });
+          
+          if (subscriptions.data.length > 0) {
+            // Create/update user record for future lookups
+            const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            await storage.createUser({
+              id: userId,
+              email,
+              stripeCustomerId: customerId,
+              stripeSubscriptionId: subscriptions.data[0].id,
+              subscriptionStatus: 'active'
+            });
+            
+            return res.json({ 
+              hasSubscription: true, 
+              status: 'active',
+              email 
+            });
+          }
+        }
+      } catch (stripeErr) {
+        console.error('Stripe API fallback error:', stripeErr);
+      }
+
+      res.json({ hasSubscription: false, status: null, email });
+    } catch (err: any) {
+      console.error('Subscription status error:', err);
+      res.json({ hasSubscription: false });
+    }
+  });
+
+  app.get('/api/stripe/prices', async (req, res) => {
+    try {
+      let prices = await storage.listPrices(true);
+      
+      // Fallback to known live recurring price if database sync is incomplete
+      if (prices.length === 0) {
+        console.log('No prices in database, using fallback price');
+        prices = [{
+          id: 'price_1SrMmqQ1s5vL0wPuGs4qng2H',
+          type: 'recurring',
+          unit_amount: 999,
+          currency: 'usd',
+          livemode: true,
+          active: true,
+          recurring: { interval: 'month', interval_count: 1 }
+        }];
+      }
+      
+      res.json({ prices });
+    } catch (err: any) {
+      console.error('Prices error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Test endpoint to manually send welcome email (development only)
+  app.post('/api/test-welcome-email', async (req, res) => {
+    // Only allow in development to prevent abuse
+    if (process.env.NODE_ENV === 'production' || process.env.REPLIT_DEPLOYMENT === '1') {
+      return res.status(403).json({ error: 'Not available in production' });
+    }
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+      console.log(`Manually sending welcome email to ${email}`);
+      await sendWelcomeEmail(email);
+      res.json({ success: true, message: `Welcome email sent to ${email}` });
+    } catch (err: any) {
+      console.error('Test email error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============ AGENT TOKEN GENERATION ============
+  
+  // Rate limiting: track token issuance per session to prevent abuse
+  const tokenIssuanceRateLimit = new Map<string, { count: number; resetAt: number }>();
+  const MAX_TOKENS_PER_SESSION = 3; // Max 3 tokens per session per hour
+  const RATE_LIMIT_WINDOW = 60 * 60 * 1000; // 1 hour
+  
+  app.post('/api/agent/token', async (req, res) => {
+    try {
+      const { sessionCode, email } = req.body;
+      const normalizedCode = sessionCode?.toUpperCase();
+      
+      if (!sessionCode || !email) {
+        return res.status(400).json({ error: 'Session code and email required' });
+      }
+      
+      // Verify subscription
+      const hasSubscription = await verifySubscription(email);
+      if (!hasSubscription) {
+        return res.status(403).json({ error: 'Active subscription required' });
+      }
+      
+      // Verify session exists
+      const session = await storage.getSession(normalizedCode);
+      if (!session || !session.isActive) {
+        return res.status(404).json({ error: 'Session not found or inactive' });
+      }
+      
+      // Check if an agent is already connected to this session
+      if (agentConnections.has(normalizedCode)) {
+        return res.status(409).json({ error: 'An agent is already connected to this session' });
+      }
+      
+      // Require an artist to be currently present in the session
+      const room = rooms.get(normalizedCode);
+      if (!room) {
+        return res.status(400).json({ error: 'Session not active - no participants connected' });
+      }
+      
+      // Find the artist in the room
+      let artistUserId: string | null = null;
+      room.forEach((participant, participantId) => {
+        if (participant.role === 'artist') {
+          artistUserId = participantId;
+        }
+      });
+      
+      if (!artistUserId) {
+        return res.status(400).json({ error: 'No artist currently in the session. Artist must join before requesting agent token.' });
+      }
+      
+      // Check rate limiting
+      const now = Date.now();
+      let rateData = tokenIssuanceRateLimit.get(normalizedCode);
+      if (rateData && rateData.resetAt > now) {
+        if (rateData.count >= MAX_TOKENS_PER_SESSION) {
+          return res.status(429).json({ 
+            error: 'Too many token requests for this session. Try again later.',
+            retryAfter: Math.ceil((rateData.resetAt - now) / 1000)
+          });
+        }
+        rateData.count++;
+      } else {
+        rateData = { count: 1, resetAt: now + RATE_LIMIT_WINDOW };
+        tokenIssuanceRateLimit.set(normalizedCode, rateData);
+      }
+      
+      // Generate token - bind to the existing artist's userId for attribution
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = Date.now() + 4 * 60 * 60 * 1000; // 4 hours
+      
+      const tokenData: AgentToken = {
+        sessionCode: normalizedCode,
+        userId: artistUserId, // Use the artist's existing userId, not a new one
+        email,
+        role: 'artist',
+        expiresAt,
+      };
+      
+      agentTokens.set(token, tokenData);
+      
+      // Clean up expired tokens periodically
+      setTimeout(() => {
+        agentTokens.delete(token);
+      }, 4 * 60 * 60 * 1000);
+      
+      console.log(`Agent token issued for session ${normalizedCode} to ${email}`);
+      res.json({ token, expiresAt, sessionCode: normalizedCode });
+    } catch (err: any) {
+      console.error('Agent token error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============ WEBSOCKET SIGNALING SERVER ============
+  
+  // Map to track WebSocket connection metadata (for authorization)
+  const wsConnectionData = new WeakMap<WebSocket, { userId: string; roomId: string; role: string }>();
+  
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+  wss.on('connection', (ws) => {
+    let currentRoom: string | null = null;
+    let currentUserId: string | null = null;
+
+    ws.on('message', (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        const { type, roomId, userId, role, payload } = message;
+
+        switch (type) {
+          case 'join': {
+            currentRoom = (roomId as string).toUpperCase();
+            currentUserId = userId as string;
+            
+            // Store connection metadata for authorization
+            wsConnectionData.set(ws, { userId: currentUserId, roomId: currentRoom, role: role as string });
+            
+            if (!rooms.has(currentRoom)) {
+              rooms.set(currentRoom, new Map());
+            }
+            
+            const room = rooms.get(currentRoom)!;
+            room.set(currentUserId, { ws, role, userId: currentUserId });
+            
+            // Notify others in the room
+            room.forEach((participant, pId) => {
+              if (pId !== userId && participant.ws.readyState === WebSocket.OPEN) {
+                participant.ws.send(JSON.stringify({
+                  type: 'user-joined',
+                  userId,
+                  role,
+                  roomId: currentRoom
+                }));
+              }
+            });
+
+            // Send list of existing participants to the new user
+            const participants = Array.from(room.entries())
+              .filter(([pId]) => pId !== userId)
+              .map(([pId, p]) => ({ userId: pId, role: p.role }));
+            
+            ws.send(JSON.stringify({
+              type: 'room-state',
+              roomId: currentRoom,
+              participants
+            }));
+            break;
+          }
+
+          case 'offer':
+          case 'answer':
+          case 'ice-candidate': {
+            if (!currentRoom) return;
+            const room = rooms.get(currentRoom);
+            if (!room) return;
+            
+            // Forward to target user or broadcast
+            const targetId = payload?.targetUserId;
+            if (targetId && room.has(targetId)) {
+              const target = room.get(targetId)!;
+              if (target.ws.readyState === WebSocket.OPEN) {
+                target.ws.send(JSON.stringify({
+                  type,
+                  userId: currentUserId,
+                  payload
+                }));
+              }
+            } else {
+              // Broadcast to all others
+              room.forEach((participant, pId) => {
+                if (pId !== currentUserId && participant.ws.readyState === WebSocket.OPEN) {
+                  participant.ws.send(JSON.stringify({
+                    type,
+                    userId: currentUserId,
+                    payload
+                  }));
+                }
+              });
+            }
+            break;
+          }
+
+          case 'leave': {
+            handleLeave();
+            break;
+          }
+        }
+      } catch (err) {
+        console.error('WebSocket message error:', err);
+      }
+    });
+
+    function handleLeave() {
+      if (currentRoom && currentUserId) {
+        const room = rooms.get(currentRoom);
+        if (room) {
+          room.delete(currentUserId);
+          
+          // Notify others
+          room.forEach((participant) => {
+            if (participant.ws.readyState === WebSocket.OPEN) {
+              participant.ws.send(JSON.stringify({
+                type: 'user-left',
+                userId: currentUserId,
+                roomId: currentRoom
+              }));
+            }
+          });
+          
+          if (room.size === 0) {
+            rooms.delete(currentRoom);
+          }
+        }
+      }
+      // Clean up connection metadata
+      wsConnectionData.delete(ws);
+      currentRoom = null;
+      currentUserId = null;
+    }
+
+    ws.on('close', handleLeave);
+    ws.on('error', handleLeave);
+  });
+
+  // ============ AGENT WEBSOCKET SERVER ============
+  
+  const agentWss = new WebSocketServer({ server: httpServer, path: '/agent' });
+
+  agentWss.on('connection', (ws, req) => {
+    let agentSession: string | null = null;
+    let agentUserId: string | null = null;
+
+    // Parse query params for auth
+    const url = new URL(req.url || '', `http://${req.headers.host}`);
+    const token = url.searchParams.get('token');
+    const sessionCode = url.searchParams.get('session')?.toUpperCase();
+
+    if (!token || !sessionCode) {
+      ws.close(4001, 'Missing token or session');
+      return;
+    }
+
+    // Verify token
+    const tokenData = agentTokens.get(token);
+    if (!tokenData || tokenData.sessionCode !== sessionCode || tokenData.expiresAt < Date.now()) {
+      ws.close(4002, 'Invalid or expired token');
+      return;
+    }
+
+    agentSession = sessionCode;
+    agentUserId = tokenData.userId;
+
+    // Register agent connection
+    agentConnections.set(sessionCode, {
+      ws,
+      sessionCode,
+      userId: agentUserId,
+      controlEnabled: false,
+    });
+
+    console.log(`Agent connected to session ${sessionCode}`);
+
+    // Notify web clients that agent is connected
+    const room = rooms.get(sessionCode);
+    if (room) {
+      room.forEach((participant) => {
+        if (participant.ws.readyState === WebSocket.OPEN) {
+          participant.ws.send(JSON.stringify({
+            type: 'agent-connected',
+            sessionCode,
+          }));
+        }
+      });
+    }
+
+    ws.on('message', (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+
+        switch (message.type) {
+          case 'control-response': {
+            // Artist responded to control request
+            const room = rooms.get(agentSession!);
+            if (room) {
+              controlPermissions.set(agentSession!, message.allowed);
+              
+              // Notify engineers in the room
+              room.forEach((participant) => {
+                if (participant.role === 'engineer' && participant.ws.readyState === WebSocket.OPEN) {
+                  participant.ws.send(JSON.stringify({
+                    type: 'control-response',
+                    allowed: message.allowed,
+                    sessionCode: agentSession,
+                  }));
+                }
+              });
+            }
+            break;
+          }
+
+          case 'control-stopped': {
+            // Artist stopped control
+            controlPermissions.set(agentSession!, false);
+            const agent = agentConnections.get(agentSession!);
+            if (agent) {
+              agent.controlEnabled = false;
+            }
+
+            // Notify engineers
+            const room = rooms.get(agentSession!);
+            if (room) {
+              room.forEach((participant) => {
+                if (participant.role === 'engineer' && participant.ws.readyState === WebSocket.OPEN) {
+                  participant.ws.send(JSON.stringify({
+                    type: 'control-stopped',
+                    sessionCode: agentSession,
+                  }));
+                }
+              });
+            }
+            break;
+          }
+        }
+      } catch (err) {
+        console.error('Agent message error:', err);
+      }
+    });
+
+    ws.on('close', () => {
+      if (agentSession) {
+        agentConnections.delete(agentSession);
+        controlPermissions.delete(agentSession);
+        
+        // Notify web clients that agent disconnected
+        const room = rooms.get(agentSession);
+        if (room) {
+          room.forEach((participant) => {
+            if (participant.ws.readyState === WebSocket.OPEN) {
+              participant.ws.send(JSON.stringify({
+                type: 'agent-disconnected',
+                sessionCode: agentSession,
+              }));
+            }
+          });
+        }
+        
+        console.log(`Agent disconnected from session ${agentSession}`);
+      }
+    });
+
+    ws.on('error', () => {
+      if (agentSession) {
+        agentConnections.delete(agentSession);
+        controlPermissions.delete(agentSession);
+      }
+    });
+  });
+
+  // Control message types to forward to agent
+  const controlMessageTypes = new Set([
+    'control-request', 'mouse-move', 'mouse-click', 'mouse-double-click',
+    'mouse-scroll', 'key-press', 'key-type', 'control-end'
+  ]);
+  
+  // Add control message handling to main WebSocket
+  // When engineer sends control commands, forward to agent
+  wss.on('connection', (ws) => {
+    ws.on('message', (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        
+        // Handle control messages from engineers
+        if (controlMessageTypes.has(message.type)) {
+          // Use stored connection data for authorization (not trusting message payload)
+          const connData = wsConnectionData.get(ws);
+          if (!connData) return;
+          
+          const sessionCode = connData.roomId;
+          
+          // Double-check: verify against live room membership (not just WeakMap)
+          const room = rooms.get(sessionCode);
+          if (!room) return;
+          
+          const liveParticipant = room.get(connData.userId);
+          if (!liveParticipant || liveParticipant.role !== 'engineer') {
+            // User not in room or not an engineer
+            return;
+          }
+          
+          const agent = agentConnections.get(sessionCode);
+          if (agent && agent.ws.readyState === WebSocket.OPEN) {
+            // For control requests, check if control is already allowed
+            if (message.type !== 'control-request' && message.type !== 'control-end' && !controlPermissions.get(sessionCode)) {
+              // Control not allowed, ignore
+              return;
+            }
+            
+            // Forward message with verified session code
+            agent.ws.send(JSON.stringify({
+              ...message,
+              sessionCode,
+              verifiedUserId: connData.userId,
+            }));
+          }
+        }
+      } catch (err) {
+        // Ignore parse errors - they'll be handled by the main handler
+      }
+    });
+  });
+
+  return httpServer;
+}
