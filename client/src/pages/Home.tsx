@@ -227,30 +227,87 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Pro Subscription Banner */}
-          {!showSubscribe ? (
+          {/* Pro Subscription / Access Check Banner */}
+          {isSubscribed ? (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="glass-panel rounded-2xl p-6 mb-8 max-w-2xl mx-auto border border-primary/50 bg-primary/10"
+            >
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <Check className="w-8 h-8 text-primary" />
+                  <div className="text-left">
+                    <h3 className="font-display font-bold text-lg text-primary">Pro Member</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Welcome back, {checkEmail}
+                    </p>
+                  </div>
+                </div>
+                <Button 
+                  variant="outline"
+                  onClick={() => { localStorage.removeItem(STORAGE_KEY); setCheckEmail(""); setEmail(""); }}
+                  data-testid="button-logout"
+                  className="text-muted-foreground"
+                >
+                  Sign Out
+                </Button>
+              </div>
+            </motion.div>
+          ) : !showSubscribe ? (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="glass-panel rounded-2xl p-6 mb-8 max-w-2xl mx-auto border border-secondary/30"
             >
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
-                  <Crown className="w-8 h-8 text-secondary" />
-                  <div className="text-left">
-                    <h3 className="font-display font-bold text-lg">Virtual Studio Pro</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Unlimited sessions for ${priceAmount}/month
-                    </p>
-                  </div>
+              <div className="text-center mb-4">
+                <Crown className="w-10 h-10 text-secondary mx-auto mb-2" />
+                <h3 className="font-display font-bold text-lg">Virtual Studio Pro</h3>
+                <p className="text-sm text-muted-foreground">
+                  Unlimited sessions for ${priceAmount}/month
+                </p>
+              </div>
+              
+              <div className="space-y-3 max-w-sm mx-auto">
+                <Input
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCheckAccess()}
+                  data-testid="input-home-email"
+                  className="bg-background/50"
+                />
+                
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={handleCheckAccess}
+                    disabled={!email.trim() || checkingSubscription}
+                    data-testid="button-check-access-home"
+                    className="flex-1"
+                  >
+                    {checkingSubscription ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <Check className="w-4 h-4 mr-2" />
+                    )}
+                    Check Access
+                  </Button>
+                  <Button 
+                    onClick={() => setShowSubscribe(true)}
+                    data-testid="button-get-pro"
+                    className="flex-1 bg-gradient-to-r from-secondary to-secondary/80 hover:brightness-110"
+                  >
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    Subscribe
+                  </Button>
                 </div>
-                <Button 
-                  onClick={() => setShowSubscribe(true)}
-                  data-testid="button-get-pro"
-                  className="bg-gradient-to-r from-secondary to-secondary/80 hover:brightness-110"
-                >
-                  Get Pro <ArrowRight className="ml-2 w-4 h-4" />
-                </Button>
+
+                {checkEmail && !subscriptionData?.hasSubscription && !checkingSubscription && (
+                  <p className="text-sm text-center text-destructive">
+                    No active subscription found for {checkEmail}
+                  </p>
+                )}
               </div>
             </motion.div>
           ) : (
