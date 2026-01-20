@@ -9,7 +9,7 @@ import fs from "fs";
 import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { stripeService } from "./stripeService";
-import { getStripePublishableKey } from "./stripeClient";
+import { getStripePublishableKey, getUncachableStripeClient } from "./stripeClient";
 import { sendWelcomeEmail } from "./gmailService";
 import type { SessionRole } from "@shared/schema";
 
@@ -267,31 +267,64 @@ export async function registerRoutes(
         return res.json({ hasSubscription: false });
       }
 
+      // First check our database
       const user = await storage.getUserByEmail(email);
-      if (!user) {
-        return res.json({ hasSubscription: false });
+      
+      if (user) {
+        // Check user's own subscription status (fallback for webhook issues)
+        if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
+          return res.json({ 
+            hasSubscription: true, 
+            status: user.subscriptionStatus,
+            email 
+          });
+        }
+
+        // Check Stripe's synced subscription data
+        if (user.stripeCustomerId) {
+          const subscription = await storage.getSubscriptionByCustomerId(user.stripeCustomerId);
+          if (subscription && (subscription.status === 'active' || subscription.status === 'trialing')) {
+            return res.json({ 
+              hasSubscription: true, 
+              status: subscription.status,
+              email 
+            });
+          }
+        }
       }
 
-      // First check user's own subscription status (fallback for webhook issues)
-      if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
-        return res.json({ 
-          hasSubscription: true, 
-          status: user.subscriptionStatus,
-          email 
-        });
-      }
-
-      // Then check Stripe's subscription data
-      if (user.stripeCustomerId) {
-        const subscription = await storage.getSubscriptionByCustomerId(user.stripeCustomerId);
-        const hasSubscription = subscription && 
-          (subscription.status === 'active' || subscription.status === 'trialing');
-
-        return res.json({ 
-          hasSubscription, 
-          status: subscription?.status || null,
-          email 
-        });
+      // Fallback: Check Stripe API directly by email (for webhook failures)
+      try {
+        const stripeClient = await getUncachableStripeClient();
+        const customers = await stripeClient.customers.list({ email, limit: 1 });
+        if (customers.data.length > 0) {
+          const customerId = customers.data[0].id;
+          const subscriptions = await stripeClient.subscriptions.list({ 
+            customer: customerId, 
+            status: 'active',
+            limit: 1 
+          });
+          
+          if (subscriptions.data.length > 0) {
+            // Create/update user record for future lookups
+            const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            await storage.createUser({
+              id: userId,
+              email,
+              stripeCustomerId: customerId,
+              stripeSubscriptionId: subscriptions.data[0].id,
+              subscriptionStatus: 'active'
+            });
+            
+            return res.json({ 
+              hasSubscription: true, 
+              status: 'active',
+              email 
+            });
+          }
+        }
+      } catch (stripeErr) {
+        console.error('Stripe API fallback error:', stripeErr);
       }
 
       res.json({ hasSubscription: false, status: null, email });
