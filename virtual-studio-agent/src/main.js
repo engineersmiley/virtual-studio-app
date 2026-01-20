@@ -127,7 +127,13 @@ function connectToServer(sessionCode, sessionToken) {
 }
 
 async function handleControlMessage(message) {
-  const { mouse, keyboard } = require('@nut-tree/nut-js');
+  let robot;
+  try {
+    robot = require('@jitsi/robotjs');
+  } catch (e) {
+    console.error('Failed to load robotjs:', e);
+    return;
+  }
   
   try {
     switch (message.type) {
@@ -158,46 +164,41 @@ async function handleControlMessage(message) {
         
       case 'mouse-move':
         if (controlEnabled) {
-          await mouse.setPosition({ x: message.x, y: message.y });
+          robot.moveMouse(Math.round(message.x), Math.round(message.y));
         }
         break;
         
       case 'mouse-click':
         if (controlEnabled) {
-          const { Button } = require('@nut-tree/nut-js');
-          const button = message.button === 'right' ? Button.RIGHT : Button.LEFT;
-          await mouse.click(button);
+          const button = message.button === 'right' ? 'right' : 'left';
+          robot.mouseClick(button);
         }
         break;
         
       case 'mouse-double-click':
         if (controlEnabled) {
-          const { Button } = require('@nut-tree/nut-js');
-          await mouse.doubleClick(Button.LEFT);
+          robot.mouseClick('left', true);
         }
         break;
         
       case 'mouse-scroll':
         if (controlEnabled) {
-          await mouse.scrollDown(message.deltaY > 0 ? message.deltaY : 0);
-          await mouse.scrollUp(message.deltaY < 0 ? -message.deltaY : 0);
+          robot.scrollMouse(0, Math.round(message.deltaY));
         }
         break;
         
       case 'key-press':
         if (controlEnabled) {
-          const { Key } = require('@nut-tree/nut-js');
-          const key = mapKeyToNutJs(message.key);
+          const key = mapKeyToRobotJs(message.key);
           if (key) {
-            await keyboard.pressKey(key);
-            await keyboard.releaseKey(key);
+            robot.keyTap(key);
           }
         }
         break;
         
       case 'key-type':
         if (controlEnabled) {
-          await keyboard.type(message.text);
+          robot.typeString(message.text);
         }
         break;
     }
@@ -206,51 +207,47 @@ async function handleControlMessage(message) {
   }
 }
 
-function mapKeyToNutJs(key) {
-  const { Key } = require('@nut-tree/nut-js');
-  
+function mapKeyToRobotJs(key) {
   const keyMap = {
-    'Enter': Key.Enter,
-    'Escape': Key.Escape,
-    'Backspace': Key.Backspace,
-    'Tab': Key.Tab,
-    'Space': Key.Space,
-    'ArrowUp': Key.Up,
-    'ArrowDown': Key.Down,
-    'ArrowLeft': Key.Left,
-    'ArrowRight': Key.Right,
-    'Delete': Key.Delete,
-    'Home': Key.Home,
-    'End': Key.End,
-    'PageUp': Key.PageUp,
-    'PageDown': Key.PageDown,
-    'Control': Key.LeftControl,
-    'Alt': Key.LeftAlt,
-    'Shift': Key.LeftShift,
-    'Meta': Key.LeftSuper,
-    'F1': Key.F1,
-    'F2': Key.F2,
-    'F3': Key.F3,
-    'F4': Key.F4,
-    'F5': Key.F5,
-    'F6': Key.F6,
-    'F7': Key.F7,
-    'F8': Key.F8,
-    'F9': Key.F9,
-    'F10': Key.F10,
-    'F11': Key.F11,
-    'F12': Key.F12,
+    'Enter': 'enter',
+    'Escape': 'escape',
+    'Backspace': 'backspace',
+    'Tab': 'tab',
+    'Space': 'space',
+    'ArrowUp': 'up',
+    'ArrowDown': 'down',
+    'ArrowLeft': 'left',
+    'ArrowRight': 'right',
+    'Delete': 'delete',
+    'Home': 'home',
+    'End': 'end',
+    'PageUp': 'pageup',
+    'PageDown': 'pagedown',
+    'Control': 'control',
+    'Alt': 'alt',
+    'Shift': 'shift',
+    'Meta': 'command',
+    'F1': 'f1',
+    'F2': 'f2',
+    'F3': 'f3',
+    'F4': 'f4',
+    'F5': 'f5',
+    'F6': 'f6',
+    'F7': 'f7',
+    'F8': 'f8',
+    'F9': 'f9',
+    'F10': 'f10',
+    'F11': 'f11',
+    'F12': 'f12',
   };
   
   if (keyMap[key]) {
     return keyMap[key];
   }
   
+  // For single character keys, return lowercase
   if (key.length === 1) {
-    const char = key.toUpperCase();
-    if (Key[char]) {
-      return Key[char];
-    }
+    return key.toLowerCase();
   }
   
   return null;

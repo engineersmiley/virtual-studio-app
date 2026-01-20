@@ -1,12 +1,21 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AlertTriangle, Apple, Terminal } from "lucide-react";
+import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AlertTriangle, ExternalLink } from "lucide-react";
 import { SiWindows, SiApple, SiLinux } from "react-icons/si";
 import { Link } from "wouter";
 
-const GITHUB_RELEASES_URL = "https://github.com/YOUR_USERNAME/virtual-studio/releases/latest";
+// Configure these for your GitHub repository
+const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || "virtualstudio/virtual-studio-agent";
+const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 const AGENT_VERSION = "1.0.0";
+
+// Download URLs - electron-builder uses these naming conventions
+const DOWNLOAD_URLS = {
+  windows: `${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual.Studio.Agent.Setup.${AGENT_VERSION}.exe`,
+  mac: `${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual.Studio.Agent-${AGENT_VERSION}.dmg`,
+  linux: `${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual.Studio.Agent-${AGENT_VERSION}.AppImage`,
+};
 
 export default function RemoteControl() {
   return (
@@ -49,7 +58,7 @@ export default function RemoteControl() {
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <a 
-                href={`${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual-Studio-Agent-Setup-${AGENT_VERSION}.exe`}
+                href={DOWNLOAD_URLS.windows}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full"
@@ -65,7 +74,7 @@ export default function RemoteControl() {
                 </Button>
               </a>
               <a 
-                href={`${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual-Studio-Agent-${AGENT_VERSION}.dmg`}
+                href={DOWNLOAD_URLS.mac}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full"
@@ -81,7 +90,7 @@ export default function RemoteControl() {
                 </Button>
               </a>
               <a 
-                href={`${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual-Studio-Agent-${AGENT_VERSION}.AppImage`}
+                href={DOWNLOAD_URLS.linux}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full"
@@ -98,7 +107,8 @@ export default function RemoteControl() {
               </a>
             </div>
             <p className="text-xs text-muted-foreground mt-4 text-center">
-              <a href={GITHUB_RELEASES_URL} target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">
+              <a href={`${GITHUB_RELEASES_URL}/latest`} target="_blank" rel="noopener noreferrer" className="underline hover:text-primary flex items-center justify-center gap-1">
+                <ExternalLink className="w-3 h-3" />
                 View all releases on GitHub
               </a>
             </p>

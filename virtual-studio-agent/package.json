@@ -5,6 +5,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
+    "postinstall": "electron-builder install-app-deps",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
@@ -17,7 +18,7 @@
     "electron-builder": "^24.9.1"
   },
   "dependencies": {
-    "@nut-tree/nut-js": "^3.1.2",
+    "@jitsi/robotjs": "^0.6.11",
     "ws": "^8.14.2"
   },
   "build": {

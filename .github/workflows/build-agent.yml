@@ -15,22 +15,8 @@ env:
   AGENT_VERSION: ${{ github.event.inputs.version || '1.0.0' }}
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win
-            artifact_pattern: "*.exe"
-          - os: macos-latest
-            platform: mac
-            artifact_pattern: "*.dmg"
-          - os: ubuntu-latest
-            platform: linux
-            artifact_pattern: "*.AppImage"
-
-    runs-on: ${{ matrix.os }}
-
+  build-windows:
+    runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,9 +30,38 @@ jobs:
         working-directory: virtual-studio-agent
         run: npm install
 
-      - name: Build for ${{ matrix.platform }}
+      - name: Build for Windows
         working-directory: virtual-studio-agent
-        run: npm run build:${{ matrix.platform }}
+        run: npm run build:win
+
+      - name: List build output
+        working-directory: virtual-studio-agent/dist
+        run: dir
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtual-studio-agent-win
+          path: virtual-studio-agent/dist/*.exe
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: virtual-studio-agent
+        run: npm install
+
+      - name: Build for macOS
+        working-directory: virtual-studio-agent
+        run: npm run build:mac
 
       - name: List build output
         working-directory: virtual-studio-agent/dist
@@ -55,11 +70,45 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: virtual-studio-agent-${{ matrix.platform }}
-          path: virtual-studio-agent/dist/${{ matrix.artifact_pattern }}
+          name: virtual-studio-agent-mac
+          path: virtual-studio-agent/dist/*.dmg
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxtst-dev libpng-dev
+
+      - name: Install dependencies
+        working-directory: virtual-studio-agent
+        run: npm install
+
+      - name: Build for Linux
+        working-directory: virtual-studio-agent
+        run: npm run build:linux
+
+      - name: List build output
+        working-directory: virtual-studio-agent/dist
+        run: ls -la
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtual-studio-agent-linux
+          path: virtual-studio-agent/dist/*.AppImage
 
   release:
-    needs: build
+    needs: [build-windows, build-mac, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
