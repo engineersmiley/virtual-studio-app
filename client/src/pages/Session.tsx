@@ -543,13 +543,13 @@ function SessionContent() {
                   onClick={() => setControlMode(!controlMode)}
                   disabled={!hasRemoteStream}
                   data-testid="button-toggle-control"
-                  className={`px-4 py-3 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                     controlMode 
-                      ? 'bg-primary text-primary-foreground' 
-                      : 'bg-white/5 border border-white/10 hover:bg-white/10'
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30' 
+                      : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:brightness-110'
                   }`}
                 >
-                  <MousePointer2 size={18} />
+                  <MousePointer2 size={20} />
                   {controlMode ? 'Control On' : 'Control'}
                 </button>
 
