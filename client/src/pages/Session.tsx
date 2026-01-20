@@ -538,12 +538,13 @@ function SessionContent() {
             ) : canRecord ? (
               // Engineer controls - can record and control
               <div className="flex gap-3 items-center flex-wrap">
-                {/* Control Mode Toggle */}
+                {/* Control Mode Toggle - Always visible for engineer */}
                 <button
                   onClick={() => setControlMode(!controlMode)}
-                  disabled={!hasRemoteStream}
                   data-testid="button-toggle-control"
-                  className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
+                    !hasRemoteStream ? 'opacity-60 cursor-not-allowed' : ''
+                  } ${
                     controlMode 
                       ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30' 
                       : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:brightness-110'
@@ -551,6 +552,7 @@ function SessionContent() {
                 >
                   <MousePointer2 size={20} />
                   {controlMode ? 'Control On' : 'Control'}
+                  {!hasRemoteStream && <span className="text-xs ml-1">(waiting)</span>}
                 </button>
 
                 {!recordedBlob ? (
