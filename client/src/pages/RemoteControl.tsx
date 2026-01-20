@@ -97,6 +97,36 @@ export default function RemoteControl() {
           </CardContent>
         </Card>
 
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Laptop className="w-5 h-5" />
+              Older Mac? Use AnyDesk
+            </CardTitle>
+            <CardDescription>
+              For macOS 10.9 - 10.11 (Mavericks, Yosemite, El Capitan), use AnyDesk instead.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4 items-center">
+              <Button 
+                asChild 
+                size="lg" 
+                variant="outline"
+                data-testid="button-download-anydesk"
+              >
+                <a href="https://anydesk.en.uptodown.com/mac/versions" target="_blank" rel="noopener noreferrer">
+                  <Download className="w-5 h-5 mr-2" />
+                  Download AnyDesk (Older Versions)
+                </a>
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Download version <strong>6.5.0 or earlier</strong> for older macOS support. Free for personal use.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid gap-4 md:grid-cols-2 mb-6">
           <Card>
             <CardHeader>
