@@ -89,3 +89,29 @@ This allows type-safe API calls between frontend and backend.
 - `@tanstack/react-query`: Data fetching and caching
 - `framer-motion`: UI animations
 - `date-fns`: Date formatting
+
+## Virtual Studio Agent (Desktop App)
+
+### Location
+`virtual-studio-agent/` - Electron desktop application for remote control
+
+### Building Installers
+The agent requires native compilation on each target platform. Use GitHub Actions:
+1. Push code to GitHub repository
+2. Create a version tag: `git tag v1.0.0 && git push --tags`
+3. GitHub Actions builds Windows (.exe), macOS (.dmg), and Linux (.AppImage)
+
+### GitHub Repository Setup
+- **Repository Name:** `virtual-studio-app`
+- **GitHub Username:** `engineersmiley`
+- **Environment Variable:** `VITE_GITHUB_REPO=engineersmiley/virtual-studio-app`
+
+### Next Steps for GitHub Integration
+1. Connect GitHub account in Replit Git panel (inside project, not account settings)
+2. Sign in with `engineersmiley` account
+3. Connect to `virtual-studio-app` repository
+4. Push code to trigger GitHub Actions builds
+
+### Download Page
+- Route: `/remote-control`
+- Links to GitHub releases for Windows, macOS, and Linux downloads
