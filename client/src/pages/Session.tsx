@@ -538,8 +538,8 @@ function SessionContent() {
               }
             }}
           >
-            {role === 'artist' ? (
-              // Artist sees their own screen share preview
+            {(role === 'artist' || (role === 'producer' && isSharing && localStream?.getVideoTracks().length)) ? (
+              // Artist or Producer (broadcasting) sees their own screen share preview
               isSharing ? (
                 <>
                   <video
@@ -846,16 +846,25 @@ function SessionContent() {
                 )}
               </div>
             ) : role === 'producer' ? (
-              // Producer - can share audio
-              <div className="flex items-center gap-3">
+              // Producer - can share screen for beat-making or audio only
+              <div className="flex items-center gap-3 flex-wrap">
                 {!isSharing ? (
-                  <button
-                    onClick={() => handleStartSharing(true)}
-                    data-testid="button-producer-share-audio"
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-purple-700 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
-                  >
-                    <Volume2 size={20} /> Share Audio
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleStartSharing(false)}
+                      data-testid="button-producer-share-screen"
+                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all shadow-lg shadow-purple-500/30"
+                    >
+                      <Monitor size={20} /> Share Screen
+                    </button>
+                    <button
+                      onClick={() => handleStartSharing(true)}
+                      data-testid="button-producer-share-audio"
+                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-purple-700 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                    >
+                      <Volume2 size={20} /> Audio Only
+                    </button>
+                  </>
                 ) : (
                   <button
                     onClick={handleStopSharing}
