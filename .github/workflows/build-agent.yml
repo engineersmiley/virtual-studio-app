@@ -90,10 +90,11 @@ jobs:
           cp package-legacy.json package.json
           npm install
 
-      - name: Rename legacy DMG
-        run: |
-          cd virtual-studio-agent/dist-legacy
-          for f in *.dmg; do mv "$f" "${f%.dmg}-legacy.dmg"; done
+      - name: Upload legacy macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-legacy-installer
+          path: virtual-studio-agent/dist-legacy/*
 
       - name: List build output
         working-directory: virtual-studio-agent/dist-legacy
