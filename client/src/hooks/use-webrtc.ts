@@ -252,9 +252,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         case 'room-state': {
           setParticipants(message.participants || []);
           
-          // If we're the artist with a stream and viewers are already in the room
-          if (role === 'artist' && localStreamRef.current) {
-            const viewers = (message.participants || []).filter((p: Participant) => p.role !== 'artist');
+          // If we're broadcasting (artist, engineer, or producer) with a stream, send to all viewers
+          const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
+          if (canBroadcast && localStreamRef.current) {
+            const viewers = (message.participants || []).filter((p: Participant) => p.userId !== userId);
             for (const viewer of viewers) {
               await sendOfferToViewer(viewer.userId);
             }
@@ -268,8 +269,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
             return [...prev, { userId: message.userId, role: message.role }];
           });
           
-          // If we're the artist and a viewer joined, create offer
-          if (role === 'artist' && message.role !== 'artist' && localStreamRef.current) {
+          // If we're broadcasting (artist, engineer, or producer) and someone joined, send them our stream
+          const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
+          if (canBroadcast && message.userId !== userId && localStreamRef.current) {
             await sendOfferToViewer(message.userId);
           }
           break;
@@ -325,7 +327,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         }
 
         case 'answer': {
-          // Artist receives answer from engineer
+          // Broadcaster receives answer from viewer
           const pc = peerConnectionsRef.current.get(message.userId);
           if (pc) {
             await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
@@ -410,13 +412,13 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     };
   }, [roomId, userId, role, createPeerConnection, closePeerConnection, closeAllPeerConnections]);
 
-  // Check if role can broadcast (artist or producer)
-  const canBroadcast = role === 'artist' || role === 'producer';
+  // Check if role can broadcast (artist, engineer, or producer)
+  const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
 
   const startSharing = useCallback(async (audioOnly: boolean = false) => {
-    // Only artist and producer can share
+    // Only artist, engineer, and producer can share
     if (!canBroadcast) {
-      setError('Only artists and producers can share');
+      setError('Only artists, engineers, and producers can share');
       return;
     }
 

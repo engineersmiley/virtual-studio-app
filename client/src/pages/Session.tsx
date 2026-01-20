@@ -538,8 +538,8 @@ function SessionContent() {
               }
             }}
           >
-            {(role === 'artist' || (role === 'producer' && isSharing && localStream?.getVideoTracks().length)) ? (
-              // Artist or Producer (broadcasting) sees their own screen share preview
+            {((role === 'artist' || role === 'engineer' || role === 'producer') && isSharing && localStream?.getVideoTracks().length) ? (
+              // Artist, Engineer, or Producer (broadcasting) sees their own screen share preview
               isSharing ? (
                 <>
                   <video
@@ -619,7 +619,7 @@ function SessionContent() {
                 </div>
               )
             ) : (
-              // Viewers (Engineer, Producer, Other) see remote stream
+              // Non-broadcasting participants see remote stream or their own placeholder
               <>
                 <video
                   ref={remoteVideoRef}
@@ -627,18 +627,24 @@ function SessionContent() {
                   playsInline
                   className="w-full h-full object-contain"
                 />
-                {!hasRemoteStream && (
+                {!hasRemoteStream && !isSharing && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
                     <Radio size={64} className="opacity-30 animate-pulse" />
-                    {participants.filter(p => p.role === 'artist').length === 0 ? (
+                    {participants.filter(p => p.role === 'artist' || p.role === 'producer' || p.role === 'engineer').length === 0 ? (
                       <>
-                        <p className="font-tech">Waiting for artist to connect...</p>
-                        <p className="text-sm opacity-50">Share this room code with the artist: <span className="text-primary font-mono">{roomId}</span></p>
+                        <p className="font-tech">Waiting for someone to share their screen...</p>
+                        <p className="text-sm opacity-50">Room code: <span className="text-primary font-mono">{roomId}</span></p>
+                        {(role === 'engineer' || role === 'producer') && (
+                          <p className="text-sm text-primary mt-2">Or click "Share Screen" above to broadcast yourself!</p>
+                        )}
                       </>
                     ) : (
                       <>
-                        <p className="font-tech">Artist connected! Waiting for screen share...</p>
-                        <p className="text-sm opacity-50">The artist needs to click "Start Sharing"</p>
+                        <p className="font-tech">Participants connected! Waiting for screen share...</p>
+                        <p className="text-sm opacity-50">Someone needs to click "Share Screen" to start broadcasting</p>
+                        {(role === 'engineer' || role === 'producer') && (
+                          <p className="text-sm text-primary mt-2">Or click "Share Screen" above to broadcast yourself!</p>
+                        )}
                       </>
                     )}
                   </div>
@@ -734,7 +740,7 @@ function SessionContent() {
               <div className="flex gap-3">
                 {!isSharing ? (
                   <button
-                    onClick={handleStartSharing}
+                    onClick={() => handleStartSharing(false)}
                     data-testid="button-start-sharing"
                     className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-background font-bold flex items-center gap-2 hover:brightness-110 transition-all"
                   >
@@ -751,8 +757,27 @@ function SessionContent() {
                 )}
               </div>
             ) : canRecord ? (
-              // Engineer controls - can record and control
+              // Engineer controls - can share screen, record, and control
               <div className="flex gap-3 items-center flex-wrap">
+                {/* Share Screen for teaching */}
+                {!isSharing ? (
+                  <button
+                    onClick={() => handleStartSharing(false)}
+                    data-testid="button-engineer-share-screen"
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-background font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                  >
+                    <Video size={20} /> Share Screen
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStopSharing}
+                    data-testid="button-engineer-stop-sharing"
+                    className="px-6 py-3 rounded-xl bg-destructive text-white font-bold flex items-center gap-2 hover:bg-destructive/90 transition-all"
+                  >
+                    <VideoOff size={20} /> Stop Sharing
+                  </button>
+                )}
+                
                 {/* Control Mode Toggle - Pointer overlay */}
                 <button
                   onClick={() => setControlMode(!controlMode)}
