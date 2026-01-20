@@ -157,6 +157,13 @@ export async function sendWelcomeEmail(toEmail: string, paymentDetails?: Payment
         </ul>
       </div>
       
+      <div class="features" style="margin-top: 20px; background: rgba(255,0,255,0.1);">
+        <p><strong>Enable Remote Control (Optional):</strong></p>
+        <p>Want your engineer to control your screen remotely during sessions? Download and install RustDesk - a free, secure remote control tool:</p>
+        <a href="https://rustdesk.com/download" style="display: inline-block; background: linear-gradient(90deg, #ff00ff, #00f0ff); color: #000; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 10px 0;">Download RustDesk (Free)</a>
+        <p style="font-size: 12px; color: #888; margin-top: 10px;">After installing, share your RustDesk ID with your engineer so they can control your DAW remotely.</p>
+      </div>
+      
       <p style="margin-top: 30px;">Need to manage your subscription? <a href="https://virtualstudio.sale" style="color: #00f0ff;">Visit Virtual Studio</a> and click "Manage Subscription" in your account.</p>
       
       <p>If you have any questions, just reply to this email.</p>
