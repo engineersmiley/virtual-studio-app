@@ -31,46 +31,48 @@ export default function RemoteControl() {
             <CardTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
               Virtual Studio Agent
-              <Badge className="ml-2">Download Now</Badge>
+              <Badge variant="secondary" className="ml-2">Coming Soon</Badge>
             </CardTitle>
             <CardDescription>
               Control your artist's computer directly from Virtual Studio with audio streaming included - all in one integrated experience.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 sm:grid-cols-3 mb-6">
+            <div className="p-4 bg-muted/50 rounded-lg mb-4">
+              <p className="text-sm text-muted-foreground mb-3">
+                The Virtual Studio Agent desktop app is being prepared for download. In the meantime, you can still use Virtual Studio's built-in pointer overlay feature to guide your artist during sessions.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <strong>For developers:</strong> The agent source code is available in the <code className="bg-muted px-1 rounded">virtual-studio-agent</code> folder. Run <code className="bg-muted px-1 rounded">npm install && npm run build:win</code> (or <code className="bg-muted px-1 rounded">build:mac</code>/<code className="bg-muted px-1 rounded">build:linux</code>) to build locally.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
               <Button 
-                asChild 
+                disabled
                 size="lg" 
                 className="w-full flex-col gap-1"
                 data-testid="button-download-agent-windows"
               >
-                <a href="/downloads/virtual-studio-agent-win.exe" download>
-                  <Laptop className="w-6 h-6" />
-                  <span>Windows</span>
-                </a>
+                <Laptop className="w-6 h-6" />
+                <span>Windows</span>
               </Button>
               <Button 
-                asChild 
+                disabled
                 size="lg" 
                 className="w-full flex-col gap-1"
                 data-testid="button-download-agent-mac"
               >
-                <a href="/downloads/virtual-studio-agent-mac.dmg" download>
-                  <Laptop className="w-6 h-6" />
-                  <span>macOS</span>
-                </a>
+                <Laptop className="w-6 h-6" />
+                <span>macOS</span>
               </Button>
               <Button 
-                asChild 
+                disabled
                 size="lg" 
                 className="w-full flex-col gap-1"
                 data-testid="button-download-agent-linux"
               >
-                <a href="/downloads/virtual-studio-agent-linux.AppImage" download>
-                  <Laptop className="w-6 h-6" />
-                  <span>Linux</span>
-                </a>
+                <Laptop className="w-6 h-6" />
+                <span>Linux</span>
               </Button>
             </div>
           </CardContent>
