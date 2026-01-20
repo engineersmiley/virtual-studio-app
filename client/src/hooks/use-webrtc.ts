@@ -20,21 +20,30 @@ interface AgentStatus {
   controlPending: boolean;
 }
 
+interface RemoteStreamInfo {
+  stream: MediaStream;
+  fromUserId: string;
+  fromRole: SessionRole;
+  hasVideo: boolean;
+}
+
 interface UseWebRTCOptions {
   roomId: string;
   userId: string;
   role: SessionRole;
   onRemoteStream?: (stream: MediaStream) => void;
+  onRemoteStreamWithInfo?: (info: RemoteStreamInfo) => void;
   onRemoteControl?: (event: RemoteControlEvent) => void;
   onAgentStatus?: (status: AgentStatus) => void;
 }
 
-export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteControl, onAgentStatus }: UseWebRTCOptions) {
+export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStreamWithInfo, onRemoteControl, onAgentStatus }: UseWebRTCOptions) {
   const [connected, setConnected] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, RemoteStreamInfo>>(new Map());
   const [agentConnected, setAgentConnected] = useState(false);
   const [controlAllowed, setControlAllowed] = useState(false);
   const [controlPending, setControlPending] = useState(false);
@@ -47,6 +56,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const onRemoteControlRef = useRef(onRemoteControl);
+  const onRemoteStreamWithInfoRef = useRef(onRemoteStreamWithInfo);
   const participantsRef = useRef<Participant[]>([]);
   
   const onAgentStatusRef = useRef(onAgentStatus);
@@ -55,6 +65,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
   useEffect(() => {
     onRemoteControlRef.current = onRemoteControl;
   }, [onRemoteControl]);
+  
+  useEffect(() => {
+    onRemoteStreamWithInfoRef.current = onRemoteStreamWithInfo;
+  }, [onRemoteStreamWithInfo]);
   
   useEffect(() => {
     onAgentStatusRef.current = onAgentStatus;
@@ -104,14 +118,51 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
     };
 
     pc.ontrack = (event) => {
-      if (onRemoteStream && event.streams[0]) {
-        setHasRemoteStream(true);
-        onRemoteStream(event.streams[0]);
+      if (event.streams[0]) {
+        const stream = event.streams[0];
+        const hasVideo = stream.getVideoTracks().length > 0;
         
-        // Listen for track ending to reset hasRemoteStream
-        event.streams[0].getTracks().forEach(track => {
+        // Find the sender's role from participants
+        const senderParticipant = participantsRef.current.find(p => p.userId === targetUserId);
+        const senderRole = senderParticipant?.role || 'other';
+        
+        // Create stream info
+        const streamInfo: RemoteStreamInfo = {
+          stream,
+          fromUserId: targetUserId,
+          fromRole: senderRole,
+          hasVideo,
+        };
+        
+        // Add to remote streams map
+        setRemoteStreams(prev => {
+          const next = new Map(prev);
+          next.set(targetUserId, streamInfo);
+          return next;
+        });
+        setHasRemoteStream(true);
+        
+        // Call legacy callback for backwards compatibility (artist stream)
+        if (onRemoteStream && senderRole === 'artist') {
+          onRemoteStream(stream);
+        }
+        
+        // Call new callback with full info
+        if (onRemoteStreamWithInfoRef.current) {
+          onRemoteStreamWithInfoRef.current(streamInfo);
+        }
+        
+        // Listen for track ending to remove from map
+        stream.getTracks().forEach(track => {
           track.onended = () => {
-            setHasRemoteStream(false);
+            setRemoteStreams(prev => {
+              const next = new Map(prev);
+              next.delete(targetUserId);
+              if (next.size === 0) {
+                setHasRemoteStream(false);
+              }
+              return next;
+            });
           };
         });
       }
@@ -227,24 +278,32 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
         case 'user-left': {
           setParticipants(prev => prev.filter(p => p.userId !== message.userId));
           closePeerConnection(message.userId);
-          // If the artist left, reset hasRemoteStream for viewers
-          if (message.role === 'artist' && role !== 'artist') {
-            setHasRemoteStream(false);
-          }
+          // Remove their stream from our map
+          setRemoteStreams(prev => {
+            const next = new Map(prev);
+            next.delete(message.userId);
+            if (next.size === 0) {
+              setHasRemoteStream(false);
+            }
+            return next;
+          });
           break;
         }
 
         case 'offer': {
-          // All viewers (engineer, producer, other) receive offer from artist
-          if (role !== 'artist') {
+          // All participants can receive offers from broadcasters (artist or producer)
+          // Don't accept our own offers
+          if (message.userId !== userId) {
             const pc = createPeerConnection(message.userId);
             
-            // Create data channel for sending control events to artist
-            const dataChannel = pc.createDataChannel('control', { ordered: true });
-            dataChannel.onopen = () => {
-              console.log('Control data channel opened');
-            };
-            dataChannelsRef.current.set(message.userId, dataChannel);
+            // Create data channel for sending control events (only relevant for artist receiving from engineer)
+            if (role === 'engineer' || role === 'producer' || role === 'other') {
+              const dataChannel = pc.createDataChannel('control', { ordered: true });
+              dataChannel.onopen = () => {
+                console.log('Control data channel opened');
+              };
+              dataChannelsRef.current.set(message.userId, dataChannel);
+            }
             
             await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
             
@@ -351,17 +410,44 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
     };
   }, [roomId, userId, role, createPeerConnection, closePeerConnection, closeAllPeerConnections]);
 
-  const startSharing = useCallback(async () => {
+  // Check if role can broadcast (artist or producer)
+  const canBroadcast = role === 'artist' || role === 'producer';
+
+  const startSharing = useCallback(async (audioOnly: boolean = false) => {
+    // Only artist and producer can share
+    if (!canBroadcast) {
+      setError('Only artists and producers can share');
+      return;
+    }
+
     try {
-      // Get screen with system audio
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { width: 1920, height: 1080, frameRate: 30 },
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        }
-      });
+      let displayStream: MediaStream | null = null;
+      let videoTrack: MediaStreamTrack | null = null;
+
+      // Get screen with system audio (skip video for audio-only)
+      if (!audioOnly) {
+        displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { width: 1920, height: 1080, frameRate: 30 },
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          }
+        });
+        videoTrack = displayStream.getVideoTracks()[0];
+      } else {
+        // For audio-only, just get system audio
+        displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true, // Required to get audio, we'll discard the video
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          }
+        });
+        // Stop video track immediately for audio-only
+        displayStream.getVideoTracks().forEach(t => t.stop());
+      }
 
       // Get microphone
       const micStream = await navigator.mediaDevices.getUserMedia({
@@ -377,7 +463,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
       const dest = audioContext.createMediaStreamDestination();
 
       // Add system audio if available
-      if (displayStream.getAudioTracks().length > 0) {
+      if (displayStream && displayStream.getAudioTracks().length > 0) {
         const sysSource = audioContext.createMediaStreamSource(displayStream);
         sysSource.connect(dest);
       }
@@ -388,18 +474,24 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
         micSource.connect(dest);
       }
 
-      // Create combined stream with video + mixed audio
-      const videoTrack = displayStream.getVideoTracks()[0];
+      // Create combined stream
       const audioTrack = dest.stream.getAudioTracks()[0];
-      const combinedStream = new MediaStream([videoTrack, audioTrack]);
+      let combinedStream: MediaStream;
+      
+      if (videoTrack && !audioOnly) {
+        combinedStream = new MediaStream([videoTrack, audioTrack]);
+      } else {
+        // Audio-only stream
+        combinedStream = new MediaStream([audioTrack]);
+      }
 
       localStreamRef.current = combinedStream;
       setLocalStream(combinedStream);
 
-      // Send offer to all current viewers (engineer, producer, other)
-      const viewers = participants.filter(p => p.role !== 'artist');
-      for (const viewer of viewers) {
-        const pc = createPeerConnection(viewer.userId);
+      // Send offer to all other participants (not ourselves)
+      const others = participants.filter(p => p.userId !== userId);
+      for (const other of others) {
+        const pc = createPeerConnection(other.userId);
         combinedStream.getTracks().forEach(track => {
           pc.addTrack(track, combinedStream);
         });
@@ -414,25 +506,27 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
           role,
           payload: { 
             sdp: offer,
-            targetUserId: viewer.userId 
+            targetUserId: other.userId 
           }
         }));
       }
 
       // Handle stop sharing when screen share ends
-      videoTrack.onended = () => {
-        stopSharing();
-      };
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          stopSharing();
+        };
+      }
 
       // Store streams for cleanup
-      (combinedStream as any)._originalStreams = [displayStream, micStream];
+      (combinedStream as any)._originalStreams = [displayStream, micStream].filter(Boolean);
 
       return combinedStream;
     } catch (err: any) {
       setError(err.message || 'Failed to start sharing');
       throw err;
     }
-  }, [roomId, userId, role, participants, createPeerConnection]);
+  }, [roomId, userId, role, participants, createPeerConnection, canBroadcast]);
 
   const stopSharing = useCallback(() => {
     // Stop all tracks on local stream
@@ -607,6 +701,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
     error,
     localStream,
     hasRemoteStream,
+    remoteStreams,
     agentConnected,
     controlAllowed,
     controlPending,
@@ -621,4 +716,4 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteContro
   };
 }
 
-export type { RemoteControlEvent, AgentStatus };
+export type { RemoteControlEvent, AgentStatus, RemoteStreamInfo };

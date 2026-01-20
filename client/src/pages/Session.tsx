@@ -1,19 +1,74 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRoute, Link } from 'wouter';
-import { useWebRTC, type RemoteControlEvent } from '@/hooks/use-webrtc';
+import { useWebRTC, type RemoteControlEvent, type RemoteStreamInfo } from '@/hooks/use-webrtc';
 import { useUploadRecording } from '@/hooks/use-recordings';
 import { Visualizer } from '@/components/Visualizer';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
   Users, Radio, ArrowLeft, CheckCircle, AlertTriangle,
-  Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move, Maximize, Minimize
+  Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move, Maximize, Minimize,
+  Volume2, VolumeX, Music
 } from 'lucide-react';
 import type { SessionRole } from '@shared/schema';
 
 function generateUserId() {
   return 'user_' + Math.random().toString(36).substr(2, 9);
+}
+
+function ProducerAudio({ 
+  stream, 
+  userId, 
+  onPlayBlocked,
+  onPlaySuccess,
+  registerRef
+}: { 
+  stream: MediaStream; 
+  userId: string;
+  onPlayBlocked: (userId: string) => void;
+  onPlaySuccess: (userId: string) => void;
+  registerRef: (userId: string, ref: HTMLAudioElement | null) => void;
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const streamIdRef = useRef<string | null>(null);
+  
+  // Register ref for external access
+  useEffect(() => {
+    registerRef(userId, audioRef.current);
+    return () => registerRef(userId, null);
+  }, [userId, registerRef]);
+  
+  // Handle new stream - mark as blocked initially, then try autoplay
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !stream) return;
+    
+    // Track stream by its id to detect changes
+    const newStreamId = stream.id;
+    if (streamIdRef.current === newStreamId) return;
+    streamIdRef.current = newStreamId;
+    
+    audio.srcObject = stream;
+    // Mark as blocked until autoplay succeeds
+    onPlayBlocked(userId);
+    
+    // Try autoplay
+    audio.play()
+      .then(() => onPlaySuccess(userId))
+      .catch(() => onPlayBlocked(userId));
+  }, [stream, userId, onPlayBlocked, onPlaySuccess]);
+  
+  return (
+    <audio
+      ref={audioRef}
+      playsInline
+      data-testid={`audio-producer-${userId}`}
+      style={{ display: 'none' }}
+    />
+  );
 }
 
 function SessionContent() {
@@ -36,6 +91,47 @@ function SessionContent() {
   const [agentConnected, setAgentConnected] = useState(false);
   const [fullControlActive, setFullControlActive] = useState(false);
   const [controlPending, setControlPending] = useState(false);
+  
+  // Producer audio state - track status per user: pending (not tried), playing, blocked
+  const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
+  const producerAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+  
+  const { toast } = useToast();
+  
+  // Count blocked streams
+  const blockedCount = Array.from(audioStatus.values()).filter(s => s === 'blocked').length;
+  const hasBlockedAudio = blockedCount > 0;
+  
+  // Callbacks for ProducerAudio components
+  const markAudioBlocked = useCallback((userId: string) => {
+    setAudioStatus(prev => {
+      const next = new Map(prev);
+      next.set(userId, 'blocked');
+      return next;
+    });
+  }, []);
+  
+  const markAudioPlaying = useCallback((userId: string) => {
+    setAudioStatus(prev => {
+      const next = new Map(prev);
+      next.set(userId, 'playing');
+      return next;
+    });
+  }, []);
+  
+  const registerAudioRef = useCallback((userId: string, ref: HTMLAudioElement | null) => {
+    if (ref) {
+      producerAudioRefs.current.set(userId, ref);
+    } else {
+      producerAudioRefs.current.delete(userId);
+      // Clean up status when component unmounts
+      setAudioStatus(prev => {
+        const next = new Map(prev);
+        next.delete(userId);
+        return next;
+      });
+    }
+  }, []);
   
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -109,6 +205,7 @@ function SessionContent() {
     error,
     localStream,
     hasRemoteStream,
+    remoteStreams,
     agentConnected: wsAgentConnected,
     controlAllowed: wsControlAllowed,
     controlPending: wsControlPending,
@@ -132,6 +229,11 @@ function SessionContent() {
     },
   });
 
+  // Get producer audio streams (audio-only streams from producers)
+  const producerAudioStreams = Array.from(remoteStreams.values()).filter(
+    info => info.fromRole === 'producer' && !info.hasVideo
+  );
+
   useEffect(() => {
     if (roomId) {
       connect();
@@ -147,9 +249,9 @@ function SessionContent() {
     }
   }, [localStream]);
 
-  const handleStartSharing = async () => {
+  const handleStartSharing = async (audioOnly: boolean = false) => {
     try {
-      await startSharing();
+      await startSharing(audioOnly);
       setIsSharing(true);
     } catch (e) {
       console.error('Failed to start sharing:', e);
@@ -565,6 +667,64 @@ function SessionContent() {
             
             {/* Scanline overlay */}
             <div className="absolute inset-0 pointer-events-none opacity-10 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-10" style={{backgroundSize: "100% 2px, 3px 100%"}} />
+            
+            {/* Producer audio elements - hidden, just for playback */}
+            {producerAudioStreams.map((info) => (
+              <ProducerAudio 
+                key={info.fromUserId} 
+                stream={info.stream} 
+                userId={info.fromUserId}
+                onPlayBlocked={markAudioBlocked}
+                onPlaySuccess={markAudioPlaying}
+                registerRef={registerAudioRef}
+              />
+            ))}
+            
+            {/* Enable audio button - appears when any producer audio is blocked */}
+            {hasBlockedAudio && producerAudioStreams.length > 0 && (
+              <Button
+                onClick={async () => {
+                  // Get all currently blocked users from the status map
+                  const blockedUsers = Array.from(audioStatus.entries())
+                    .filter(([, status]) => status === 'blocked')
+                    .map(([userId]) => userId);
+                  
+                  // Directly play all blocked audio elements in this user gesture
+                  const results = await Promise.allSettled(
+                    blockedUsers.map(async (userId) => {
+                      const audio = producerAudioRefs.current.get(userId);
+                      if (audio) {
+                        await audio.play();
+                        markAudioPlaying(userId);
+                        return 'success';
+                      }
+                      throw new Error('No audio element');
+                    })
+                  );
+                  
+                  const successCount = results.filter(r => r.status === 'fulfilled').length;
+                  const failCount = results.filter(r => r.status === 'rejected').length;
+                  
+                  if (failCount === 0 && successCount > 0) {
+                    toast({
+                      title: "Producer Audio Enabled",
+                      description: "You can now hear beats from producers",
+                    });
+                  } else if (failCount > 0) {
+                    toast({
+                      title: "Audio Issue",
+                      description: `${failCount} stream${failCount > 1 ? 's' : ''} still blocked. Try again.`,
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                data-testid="button-enable-audio"
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20"
+              >
+                <Volume2 size={16} />
+                Enable Producer Audio ({blockedCount} stream{blockedCount > 1 ? 's' : ''})
+              </Button>
+            )}
           </div>
 
           {/* Controls */}
@@ -685,13 +845,36 @@ function SessionContent() {
                   </div>
                 )}
               </div>
+            ) : role === 'producer' ? (
+              // Producer - can share audio
+              <div className="flex items-center gap-3">
+                {!isSharing ? (
+                  <button
+                    onClick={() => handleStartSharing(true)}
+                    data-testid="button-producer-share-audio"
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-purple-700 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                  >
+                    <Volume2 size={20} /> Share Audio
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStopSharing}
+                    data-testid="button-producer-stop-sharing"
+                    className="px-6 py-3 rounded-xl bg-destructive text-white font-bold flex items-center gap-2 hover:bg-destructive/90 transition-all"
+                  >
+                    <VolumeX size={20} /> Stop Sharing
+                  </button>
+                )}
+                <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/50">
+                  <Music size={18} className="text-purple-400" />
+                  <span className="text-sm text-purple-300 font-tech">Producer</span>
+                </div>
+              </div>
             ) : (
-              // Producer/Other - view only, no controls
+              // Other - view only, no controls
               <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10">
                 <Eye size={18} className="text-muted-foreground" />
-                <span className="text-sm text-muted-foreground font-tech">
-                  {role === 'producer' ? 'Viewing as Producer' : 'Viewing as Guest'}
-                </span>
+                <span className="text-sm text-muted-foreground font-tech">Viewing as Guest</span>
               </div>
             )}
           </div>
@@ -710,25 +893,34 @@ function SessionContent() {
                 <span className="font-tech text-sm flex items-center gap-2">
                   {getRoleIcon(role)} You ({role})
                 </span>
-                {role === 'artist' && isSharing && (
+                {(role === 'artist' || role === 'producer') && isSharing && (
                   <span className="ml-auto text-xs text-green-400 flex items-center gap-1">
-                    <Radio size={12} /> Live
+                    <Radio size={12} /> {role === 'producer' ? 'Audio' : 'Live'}
                   </span>
                 )}
               </div>
               
               {/* Others */}
-              {participants.map(p => (
-                <div 
-                  key={p.userId}
-                  className={`flex items-center gap-3 p-3 rounded-lg border ${getRoleBgColor(p.role as SessionRole)}`}
-                >
-                  <div className={`w-3 h-3 rounded-full ${getRoleDotColor(p.role as SessionRole)}`} />
-                  <span className="font-tech text-sm flex items-center gap-2">
-                    {getRoleIcon(p.role as SessionRole)} {p.role}
-                  </span>
-                </div>
-              ))}
+              {participants.map(p => {
+                const isBroadcasting = remoteStreams.has(p.userId);
+                const streamInfo = remoteStreams.get(p.userId);
+                return (
+                  <div 
+                    key={p.userId}
+                    className={`flex items-center gap-3 p-3 rounded-lg border ${getRoleBgColor(p.role as SessionRole)}`}
+                  >
+                    <div className={`w-3 h-3 rounded-full ${getRoleDotColor(p.role as SessionRole)}`} />
+                    <span className="font-tech text-sm flex items-center gap-2">
+                      {getRoleIcon(p.role as SessionRole)} {p.role}
+                    </span>
+                    {isBroadcasting && (
+                      <span className="ml-auto text-xs text-green-400 flex items-center gap-1">
+                        <Radio size={12} /> {streamInfo?.hasVideo ? 'Live' : 'Audio'}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -782,8 +974,18 @@ function SessionContent() {
             )}
             {role === 'producer' && (
               <>
-                <p><strong>Producer View:</strong></p>
-                <p className="text-xs">You can watch and listen to the session. The engineer handles recording.</p>
+                <p><strong>Producer Controls:</strong></p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>Click "Share Audio" to broadcast your beats</li>
+                  <li>Check "Share System Audio" when prompted</li>
+                  <li>Everyone in the session will hear your audio</li>
+                  <li>Click "Stop Sharing" when done</li>
+                </ol>
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  <p className="text-xs text-muted-foreground">
+                    <strong>Tip:</strong> Your audio plays alongside the artist's stream so everyone can hear both.
+                  </p>
+                </div>
               </>
             )}
             {role === 'other' && (

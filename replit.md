@@ -45,6 +45,7 @@ Preferred communication style: Simple, everyday language.
 8. **Remote Control**: 
    - **Pointer Overlay**: Engineers can show click position on artist's screen via WebRTC data channels
    - **Virtual Studio Agent**: Electron desktop app for full mouse/keyboard control with consent flow (download at /remote-control)
+9. **Producer Audio Sharing**: Producers can share their computer audio so all participants can hear beats/music being made live. Audio streams are auto-mixed with artist's stream via hidden audio elements.
 
 ### Remote Control Security Model
 The Virtual Studio Agent uses a multi-layered security approach:
