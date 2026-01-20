@@ -480,9 +480,12 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="p-6 flex flex-col items-center gap-4 text-muted-foreground">
-        <div className="flex justify-center gap-8">
+        <div className="flex flex-wrap justify-center gap-8">
           <Link href="/library" className="flex items-center gap-2 hover:text-primary transition-colors">
             <ListMusic size={20} /> Recording Library
+          </Link>
+          <Link href="/remote-control" className="flex items-center gap-2 hover:text-primary transition-colors" data-testid="link-remote-control">
+            <Monitor size={20} /> Remote Control
           </Link>
           {isInstallable && !isInstalled && !isIOSDevice && (
             <button

@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Library from "@/pages/Library";
 import Session from "@/pages/Session";
+import RemoteControl from "@/pages/RemoteControl";
 
 function Router() {
   return (
@@ -14,6 +15,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/library" component={Library} />
       <Route path="/session/:id/:role" component={Session} />
+      <Route path="/remote-control" component={RemoteControl} />
       <Route component={NotFound} />
     </Switch>
   );
