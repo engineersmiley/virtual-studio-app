@@ -1,8 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AlertTriangle } from "lucide-react";
+import { Monitor, Download, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AlertTriangle, Apple, Terminal } from "lucide-react";
+import { SiWindows, SiApple, SiLinux } from "react-icons/si";
 import { Link } from "wouter";
+
+const GITHUB_RELEASES_URL = "https://github.com/YOUR_USERNAME/virtual-studio/releases/latest";
+const AGENT_VERSION = "1.0.0";
 
 export default function RemoteControl() {
   return (
@@ -31,7 +35,7 @@ export default function RemoteControl() {
             <CardTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
               Virtual Studio Agent
-              <Badge variant="secondary" className="ml-2">Coming Soon</Badge>
+              <Badge variant="outline" className="ml-2">v{AGENT_VERSION}</Badge>
             </CardTitle>
             <CardDescription>
               Control your artist's computer directly from Virtual Studio with audio streaming included - all in one integrated experience.
@@ -39,42 +43,65 @@ export default function RemoteControl() {
           </CardHeader>
           <CardContent>
             <div className="p-4 bg-muted/50 rounded-lg mb-4">
-              <p className="text-sm text-muted-foreground mb-3">
-                The Virtual Studio Agent desktop app is being prepared for download. In the meantime, you can still use Virtual Studio's built-in pointer overlay feature to guide your artist during sessions.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                <strong>For developers:</strong> The agent source code is available in the <code className="bg-muted px-1 rounded">virtual-studio-agent</code> folder. Run <code className="bg-muted px-1 rounded">npm install && npm run build:win</code> (or <code className="bg-muted px-1 rounded">build:mac</code>/<code className="bg-muted px-1 rounded">build:linux</code>) to build locally.
+              <p className="text-sm text-muted-foreground">
+                Download the Virtual Studio Agent for your operating system. After installation, enter your session code to connect with your collaborators.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Button 
-                disabled
-                size="lg" 
-                className="w-full flex-col gap-1"
-                data-testid="button-download-agent-windows"
+              <a 
+                href={`${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual-Studio-Agent-Setup-${AGENT_VERSION}.exe`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full"
               >
-                <Laptop className="w-6 h-6" />
-                <span>Windows</span>
-              </Button>
-              <Button 
-                disabled
-                size="lg" 
-                className="w-full flex-col gap-1"
-                data-testid="button-download-agent-mac"
+                <Button 
+                  size="lg" 
+                  className="w-full h-auto py-4 flex-col gap-2"
+                  data-testid="button-download-agent-windows"
+                >
+                  <SiWindows className="w-8 h-8" />
+                  <span className="font-semibold">Windows</span>
+                  <span className="text-xs opacity-70">.exe installer</span>
+                </Button>
+              </a>
+              <a 
+                href={`${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual-Studio-Agent-${AGENT_VERSION}.dmg`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full"
               >
-                <Laptop className="w-6 h-6" />
-                <span>macOS</span>
-              </Button>
-              <Button 
-                disabled
-                size="lg" 
-                className="w-full flex-col gap-1"
-                data-testid="button-download-agent-linux"
+                <Button 
+                  size="lg" 
+                  className="w-full h-auto py-4 flex-col gap-2"
+                  data-testid="button-download-agent-mac"
+                >
+                  <SiApple className="w-8 h-8" />
+                  <span className="font-semibold">macOS</span>
+                  <span className="text-xs opacity-70">.dmg installer</span>
+                </Button>
+              </a>
+              <a 
+                href={`${GITHUB_RELEASES_URL}/download/v${AGENT_VERSION}/Virtual-Studio-Agent-${AGENT_VERSION}.AppImage`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full"
               >
-                <Laptop className="w-6 h-6" />
-                <span>Linux</span>
-              </Button>
+                <Button 
+                  size="lg" 
+                  className="w-full h-auto py-4 flex-col gap-2"
+                  data-testid="button-download-agent-linux"
+                >
+                  <SiLinux className="w-8 h-8" />
+                  <span className="font-semibold">Linux</span>
+                  <span className="text-xs opacity-70">.AppImage file</span>
+                </Button>
+              </a>
             </div>
+            <p className="text-xs text-muted-foreground mt-4 text-center">
+              <a href={GITHUB_RELEASES_URL} target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">
+                View all releases on GitHub
+              </a>
+            </p>
           </CardContent>
         </Card>
 

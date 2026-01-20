@@ -32,11 +32,11 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.png"
     },
     "mac": {
       "target": "dmg",
-      "icon": "assets/icon.icns",
+      "icon": "assets/icon.png",
       "category": "public.app-category.utilities",
       "entitlements": "entitlements.mac.plist",
       "extendInfo": {
@@ -46,7 +46,8 @@
     },
     "linux": {
       "target": "AppImage",
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "category": "Utility"
     },
     "nsis": {
       "oneClick": true,
