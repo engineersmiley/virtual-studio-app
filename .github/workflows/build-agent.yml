@@ -73,6 +73,42 @@ jobs:
           name: virtual-studio-agent-mac
           path: virtual-studio-agent/dist/*.dmg
 
+  build-mac-legacy:
+    runs-on: macos-13
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup legacy build
+        working-directory: virtual-studio-agent
+        run: |
+          cp package-legacy.json package.json
+          npm install
+
+      - name: Build legacy macOS
+        working-directory: virtual-studio-agent
+        run: npm run build:mac
+
+      - name: Rename legacy DMG
+        working-directory: virtual-studio-agent/dist-legacy
+        run: |
+          for f in *.dmg; do mv "$f" "${f%.dmg}-legacy.dmg"; done
+
+      - name: List build output
+        working-directory: virtual-studio-agent/dist-legacy
+        run: ls -la
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtual-studio-agent-mac-legacy
+          path: virtual-studio-agent/dist-legacy/*.dmg
+
   build-linux:
     runs-on: ubuntu-latest
     steps:
@@ -108,7 +144,7 @@ jobs:
           path: virtual-studio-agent/dist/*.AppImage
 
   release:
-    needs: [build-windows, build-mac, build-linux]
+    needs: [build-windows, build-mac, build-mac-legacy, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -125,6 +161,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: virtual-studio-agent-mac
+          path: ./dist
+
+      - name: Download macOS legacy artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: virtual-studio-agent-mac-legacy
           path: ./dist
 
       - name: Download Linux artifact
@@ -145,7 +187,8 @@ jobs:
             
             Download the installer for your operating system:
             - **Windows**: Virtual Studio Agent Setup.exe
-            - **macOS**: Virtual Studio Agent.dmg
+            - **macOS**: Virtual Studio Agent.dmg (macOS 11+ recommended)
+            - **macOS Legacy**: Virtual Studio Agent (Legacy)-legacy.dmg (macOS 10.10-10.14)
             - **Linux**: Virtual Studio Agent.AppImage
             
             ### Installation
@@ -156,8 +199,13 @@ jobs:
             
             ### Requirements
             - **Windows**: Windows 10 or later
-            - **macOS**: macOS 10.15 (Catalina) or later
+            - **macOS**: macOS 11 (Big Sur) or later (recommended)
+            - **macOS Legacy**: macOS 10.10 (Yosemite) to 10.14 (Mojave) - see security note below
             - **Linux**: Any modern distribution with AppImage support
+            
+            ### Security Note for Legacy macOS
+            The legacy macOS build uses an older version of Electron that no longer receives security updates. 
+            Use this only if you cannot upgrade your macOS version. We recommend updating to macOS 11 or later for the best security.
           files: |
             dist/*.exe
             dist/*.dmg

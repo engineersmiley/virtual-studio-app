@@ -99,7 +99,14 @@ This allows type-safe API calls between frontend and backend.
 The agent requires native compilation on each target platform. Use GitHub Actions:
 1. Push code to GitHub repository
 2. Create a version tag: `git tag v1.0.0 && git push --tags`
-3. GitHub Actions builds Windows (.exe), macOS (.dmg), and Linux (.AppImage)
+3. GitHub Actions builds Windows (.exe), macOS (.dmg), macOS Legacy (.dmg for 10.10+), and Linux (.AppImage)
+
+### Legacy macOS Build
+For older Macs (macOS 10.10-10.14), a legacy build is available using Electron 19.x:
+- **Config file**: `virtual-studio-agent/package-legacy.json`
+- **Minimum macOS**: 10.10 (Yosemite)
+- **Security note**: Uses EOL Electron version without security updates - use only when necessary
+- **Download URL placeholder**: Update `DOWNLOAD_URLS.macLegacy` in RemoteControl.tsx after uploading to Google Drive
 
 ### GitHub Repository Setup
 - **Repository Name:** `virtual-studio-app`

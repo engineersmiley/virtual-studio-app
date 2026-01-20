@@ -11,6 +11,7 @@ const AGENT_VERSION = "1.0.0";
 const DOWNLOAD_URLS = {
   windows: "https://drive.google.com/uc?export=download&id=1NkHstI37uzDUA81kShLlegdZbSHUIHsC",
   mac: "https://drive.google.com/uc?export=download&id=1xAE4a0BqKh8IdmMFxeNrHfSaooqrb369",
+  macLegacy: "", // Will be populated after legacy build is created
   linux: "https://drive.google.com/uc?export=download&id=1g8UoPaABGbtPnV_uOLAqvGApXUbjNdHS",
 };
 
@@ -71,22 +72,41 @@ export default function RemoteControl() {
                   <span className="text-xs opacity-70">.exe installer</span>
                 </Button>
               </a>
-              <a 
-                href={DOWNLOAD_URLS.mac}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full"
-              >
-                <Button 
-                  size="lg" 
-                  className="w-full h-auto py-4 flex-col gap-2"
-                  data-testid="button-download-agent-mac"
+              <div className="flex flex-col gap-2">
+                <a 
+                  href={DOWNLOAD_URLS.mac}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full"
                 >
-                  <Apple className="w-8 h-8" />
-                  <span className="font-semibold">macOS</span>
-                  <span className="text-xs opacity-70">.dmg installer</span>
-                </Button>
-              </a>
+                  <Button 
+                    size="lg" 
+                    className="w-full h-auto py-4 flex-col gap-2"
+                    data-testid="button-download-agent-mac"
+                  >
+                    <Apple className="w-8 h-8" />
+                    <span className="font-semibold">macOS 11+</span>
+                    <span className="text-xs opacity-70">.dmg installer</span>
+                  </Button>
+                </a>
+                {DOWNLOAD_URLS.macLegacy && (
+                  <a 
+                    href={DOWNLOAD_URLS.macLegacy}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full"
+                  >
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="w-full text-xs"
+                      data-testid="button-download-agent-mac-legacy"
+                    >
+                      <span>macOS 10.10-10.14 (Legacy)</span>
+                    </Button>
+                  </a>
+                )}
+              </div>
               <a 
                 href={DOWNLOAD_URLS.linux}
                 target="_blank"
@@ -107,6 +127,14 @@ export default function RemoteControl() {
             <p className="text-xs text-muted-foreground mt-4 text-center">
               Version {AGENT_VERSION} - Download the installer for your operating system above
             </p>
+            {DOWNLOAD_URLS.macLegacy && (
+              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                <p className="text-xs text-yellow-200/80 text-center">
+                  <strong>Legacy Mac Note:</strong> The legacy macOS version uses older software that no longer receives security updates. 
+                  We recommend upgrading to macOS 11 or later for best security.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
