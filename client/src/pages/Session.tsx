@@ -512,6 +512,11 @@ function SessionContent() {
             <div className="absolute inset-0 pointer-events-none opacity-10 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-10" style={{backgroundSize: "100% 2px, 3px 100%"}} />
           </div>
 
+          {/* Debug info - remove after testing */}
+          <div className="text-xs text-yellow-400 bg-yellow-900/30 p-2 rounded mb-2">
+            DEBUG: role="{role}" | canRecord={canRecord ? 'true' : 'false'} | hasRemoteStream={hasRemoteStream ? 'true' : 'false'}
+          </div>
+          
           {/* Controls */}
           <div className="flex flex-wrap gap-4 items-center justify-between">
             {role === 'artist' ? (
