@@ -181,18 +181,14 @@ jobs:
       - name: Rename files for consistent download URLs
         run: |
           cd dist
-          # Windows
           for f in *.exe; do mv "$f" "Virtual.Studio.Agent.Setup.exe" 2>/dev/null || true; done
-          # macOS (non-legacy)
           for f in *-arm64.dmg; do mv "$f" "Virtual.Studio.Agent.dmg" 2>/dev/null || true; done
           for f in *.dmg; do 
             if [[ "$f" != *"legacy"* ]] && [[ "$f" != "Virtual.Studio.Agent.dmg" ]]; then 
               mv "$f" "Virtual.Studio.Agent.dmg" 2>/dev/null || true
             fi
           done
-          # macOS Legacy
           for f in *legacy*.dmg; do mv "$f" "Virtual.Studio.Agent-legacy.dmg" 2>/dev/null || true; done
-          # Linux
           for f in *.AppImage; do mv "$f" "Virtual.Studio.Agent.AppImage" 2>/dev/null || true; done
           ls -la
 
@@ -213,13 +209,7 @@ jobs:
             1. Download the installer for your OS
             2. Run the installer
             3. Open Virtual Studio Agent
-            4. Enter your session code and connect
-            
-            ### Requirements
-            - **Windows**: Windows 10 or later
-            - **macOS**: macOS 11 (Big Sur) or later (recommended)
-            - **macOS Legacy**: macOS 10.10 (Yosemite) to 10.14 (Mojave)
-            - **Linux**: Any modern distribution with AppImage support
+            4. Enter your room code and connect
           files: |
             dist/Virtual.Studio.Agent.Setup.exe
             dist/Virtual.Studio.Agent.dmg
