@@ -49,6 +49,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const [controlPending, setControlPending] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const retryCountRef = useRef(0);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const maxRetries = 5;
   // Map of peer connections: userId -> RTCPeerConnection
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   // Map of data channels: userId -> RTCDataChannel
@@ -232,11 +235,22 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }, []);
 
   const connect = useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    console.log('[WebSocket] Connecting to:', wsUrl);
+    
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      console.log('[WebSocket] Connected successfully');
+      retryCountRef.current = 0;
+      setError(null);
       ws.send(JSON.stringify({
         type: 'join',
         roomId: roomId.toUpperCase(),
@@ -401,13 +415,42 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }));
     }
 
-    ws.onerror = () => setError('WebSocket connection failed');
-    ws.onclose = () => {
+    ws.onerror = (event) => {
+      console.error('[WebSocket] Connection error:', event);
+      if (retryCountRef.current < maxRetries) {
+        retryCountRef.current++;
+        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 10000);
+        console.log(`[WebSocket] Retrying in ${delay}ms (attempt ${retryCountRef.current}/${maxRetries})`);
+        setError(`Connecting... (attempt ${retryCountRef.current}/${maxRetries})`);
+        retryTimeoutRef.current = setTimeout(() => {
+          connect();
+        }, delay);
+      } else {
+        console.error('[WebSocket] Max retries reached');
+        setError('Connection failed. Please refresh the page.');
+      }
+    };
+    
+    ws.onclose = (event) => {
+      console.log('[WebSocket] Connection closed:', event.code, event.reason);
       closeAllPeerConnections();
       setConnected(false);
+      
+      if (event.code !== 1000 && retryCountRef.current < maxRetries) {
+        retryCountRef.current++;
+        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 10000);
+        console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${retryCountRef.current}/${maxRetries})`);
+        retryTimeoutRef.current = setTimeout(() => {
+          connect();
+        }, delay);
+      }
     };
 
     return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
       ws.close();
     };
   }, [roomId, userId, role, createPeerConnection, closePeerConnection, closeAllPeerConnections]);
