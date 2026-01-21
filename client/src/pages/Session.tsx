@@ -99,16 +99,6 @@ function SessionContent() {
   const [remoteControlAllowed, setRemoteControlAllowed] = useState(false);
   const [togglingRemoteControl, setTogglingRemoteControl] = useState(false);
   
-  // Detect mobile device for phone control UI
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 768 || 'ontouchstart' in window);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
   
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
@@ -570,9 +560,9 @@ function SessionContent() {
       )}
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 flex-1 overflow-auto">
         {/* Video/Stream Area */}
-        <div className="lg:col-span-2 glass-panel rounded-2xl p-6 flex flex-col gap-4 min-h-[500px]">
+        <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4 min-h-[250px] lg:min-h-[500px]">
           <div 
             ref={videoContainerRef}
             className={`flex-1 rounded-xl overflow-hidden bg-black/50 relative ${controlMode && role === 'engineer' ? 'cursor-crosshair' : ''}`}
@@ -1024,20 +1014,18 @@ function SessionContent() {
                 )}
               </div>
               
-              {/* Phone Control for mobile engineers */}
-              {isMobile && (
-                <div className="w-full mt-4">
-                  <PhoneControl
-                    sessionCode={roomId}
-                    isConnected={connected}
-                    agentConnected={agentConnected}
-                    controlEnabled={fullControlActive}
-                    onSendControl={sendFullControlCommand}
-                    onRequestControl={() => requestFullControl('Engineer')}
-                    onEndControl={endFullControl}
-                  />
-                </div>
-              )}
+              {/* Phone/Touch Control for engineers - available on all devices */}
+              <div className="w-full mt-4">
+                <PhoneControl
+                  sessionCode={roomId}
+                  isConnected={connected}
+                  agentConnected={agentConnected}
+                  controlEnabled={fullControlActive}
+                  onSendControl={sendFullControlCommand}
+                  onRequestControl={() => requestFullControl('Engineer')}
+                  onEndControl={endFullControl}
+                />
+              </div>
             </> 
             ) : role === 'producer' ? (
               // Producer - can share screen for beat-making or audio only

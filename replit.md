@@ -53,6 +53,7 @@ The app uses WebSocket for real-time signaling with automatic HTTP polling fallb
 8. **Remote Control**: 
    - **Pointer Overlay**: Engineers can show click position on artist's screen via WebRTC data channels
    - **Virtual Studio Agent**: Electron desktop app for full mouse/keyboard control with consent flow (download at /remote-control)
+   - **Phone Control**: Mobile-friendly touch controls for engineers on any device, featuring touchpad for mouse movement, tap/swipe gestures, virtual keyboard with modifier keys, and quick shortcuts
 9. **Producer Audio Sharing**: Producers can share their computer audio so all participants can hear beats/music being made live. Audio streams are auto-mixed with artist's stream via hidden audio elements.
 
 ### Remote Control Security Model

@@ -155,20 +155,8 @@ export function PhoneControl({
     );
   }
 
-  if (!agentConnected) {
-    return (
-      <Card className="border-muted">
-        <CardContent className="p-6 text-center text-muted-foreground">
-          <Smartphone className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>Waiting for artist to connect Virtual Studio Agent...</p>
-          <p className="text-xs mt-2">The artist needs to install and run the desktop app</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
-    <Card className="border-primary/30">
+    <Card className={`${agentConnected ? 'border-primary/30' : 'border-muted'}`}>
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center justify-between text-lg">
           <div className="flex items-center gap-2">
@@ -188,6 +176,11 @@ export function PhoneControl({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!agentConnected && (
+          <div className="text-center py-2 px-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm mb-2">
+            Desktop agent not connected - Artist needs to run Virtual Studio Agent for full control
+          </div>
+        )}
         {!controlEnabled ? (
           <div className="text-center py-8 text-muted-foreground">
             <MousePointer className="w-12 h-12 mx-auto mb-4 opacity-50" />
