@@ -72,6 +72,15 @@ function ProducerAudio({
   );
 }
 
+function isMobileDevice() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 0 && window.innerWidth < 1024);
+}
+
+function canShareScreen() {
+  return typeof navigator.mediaDevices?.getDisplayMedia === 'function';
+}
+
 function SessionContent() {
   const [, params] = useRoute('/session/:id/:role');
   const roomId = params?.id || '';
@@ -79,6 +88,8 @@ function SessionContent() {
   
   const [userId] = useState(() => generateUserId());
   const [isSharing, setIsSharing] = useState(false);
+  const [isMobile] = useState(() => isMobileDevice());
+  const [screenShareSupported] = useState(() => canShareScreen());
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
@@ -840,7 +851,12 @@ function SessionContent() {
             {role === 'artist' ? (
               // Artist controls - share screen and generate token for engineer
               <div className="flex gap-3 items-center flex-wrap">
-                {!isSharing ? (
+                {isMobile || !screenShareSupported ? (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm">
+                    <p className="font-bold mb-1">Screen sharing requires a computer</p>
+                    <p className="text-xs">Open this session on your computer to share your screen. Your engineer can still watch from their phone.</p>
+                  </div>
+                ) : !isSharing ? (
                   <button
                     onClick={() => handleStartSharing(false)}
                     data-testid="button-start-sharing"
