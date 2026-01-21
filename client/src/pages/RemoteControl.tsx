@@ -5,7 +5,7 @@ import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, 
 import { Link } from "wouter";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 
-const AGENT_VERSION = "1.0.7";
+const AGENT_VERSION = "1.0.8";
 
 // Download URLs - GitHub releases (always gets latest)
 const GITHUB_REPO = "engineersmiley/virtual-studio-app";
