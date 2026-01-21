@@ -198,7 +198,6 @@ async function handleControlMessage(message) {
   try {
     switch (message.type) {
       case 'control-request':
-        // Always process control requests regardless of current state
         const result = await dialog.showMessageBox(mainWindow, {
           type: 'question',
           title: 'Remote Control Request',
@@ -208,16 +207,28 @@ async function handleControlMessage(message) {
         });
         
         controlEnabled = result.response === 0;
-        ws.send(JSON.stringify({ 
-          type: 'control-response', 
-          allowed: controlEnabled,
-          sessionCode: currentSession 
-        }));
+        
+        if (usePolling) {
+          await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: currentToken,
+              sessionCode: currentSession,
+              message: { type: 'control-response', allowed: controlEnabled }
+            })
+          });
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ 
+            type: 'control-response', 
+            allowed: controlEnabled,
+            sessionCode: currentSession 
+          }));
+        }
         mainWindow.webContents.send('control-status', { enabled: controlEnabled });
         break;
       
       case 'control-end':
-        // Always process control end requests
         controlEnabled = false;
         mainWindow.webContents.send('control-status', { enabled: false });
         break;
@@ -287,63 +298,26 @@ function mapKeyToRobotJs(key) {
     'Alt': 'alt',
     'Shift': 'shift',
     'Meta': 'command',
-    'F1': 'f1',
-    'F2': 'f2',
-    'F3': 'f3',
-    'F4': 'f4',
-    'F5': 'f5',
-    'F6': 'f6',
-    'F7': 'f7',
-    'F8': 'f8',
-    'F9': 'f9',
-    'F10': 'f10',
-    'F11': 'f11',
-    'F12': 'f12',
+    'F1': 'f1', 'F2': 'f2', 'F3': 'f3', 'F4': 'f4',
+    'F5': 'f5', 'F6': 'f6', 'F7': 'f7', 'F8': 'f8',
+    'F9': 'f9', 'F10': 'f10', 'F11': 'f11', 'F12': 'f12',
   };
   
-  if (keyMap[key]) {
-    return keyMap[key];
-  }
-  
-  // For single character keys, return lowercase
-  if (key.length === 1) {
-    return key.toLowerCase();
-  }
-  
+  if (keyMap[key]) return keyMap[key];
+  if (key.length === 1) return key.toLowerCase();
   return null;
 }
 
 function updateTrayMenu() {
   if (tray) {
     const contextMenu = Menu.buildFromTemplate([
-      { 
-        label: 'Open Virtual Studio Agent', 
-        click: () => mainWindow.show() 
-      },
+      { label: 'Open Virtual Studio Agent', click: () => mainWindow.show() },
       { type: 'separator' },
-      { 
-        label: isConnected ? `Connected to ${currentSession}` : 'Not Connected',
-        enabled: false
-      },
-      { 
-        label: controlEnabled ? 'Control: Active' : 'Control: Inactive',
-        enabled: false
-      },
+      { label: isConnected ? `Connected to ${currentSession}` : 'Not Connected', enabled: false },
+      { label: controlEnabled ? 'Control: Active' : 'Control: Inactive', enabled: false },
       { type: 'separator' },
-      { 
-        label: 'Disconnect',
-        enabled: isConnected,
-        click: () => {
-          if (ws) ws.close();
-        }
-      },
-      { 
-        label: 'Quit', 
-        click: () => {
-          app.isQuitting = true;
-          app.quit();
-        }
-      }
+      { label: 'Disconnect', enabled: isConnected, click: () => { if (ws) ws.close(); } },
+      { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } }
     ]);
     tray.setContextMenu(contextMenu);
   }
@@ -356,52 +330,51 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  } else {
-    mainWindow.show();
-  }
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  else mainWindow.show();
 });
 
 ipcMain.handle('connect', async (event, { sessionCode, sessionToken }) => {
   const hasPermissions = await checkAccessibilityPermissions();
-  if (!hasPermissions) {
-    return { success: false, error: 'Accessibility permissions required' };
-  }
-  
+  if (!hasPermissions) return { success: false, error: 'Accessibility permissions required' };
   connectToServer(sessionCode, sessionToken);
   return { success: true };
 });
 
-ipcMain.handle('disconnect', () => {
-  if (ws) {
-    ws.close();
+ipcMain.handle('disconnect', async () => {
+  if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+  if (usePolling && currentSession && currentToken) {
+    try {
+      await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: currentToken, sessionCode: currentSession })
+      });
+    } catch (err) { console.error('Disconnect error:', err); }
   }
+  if (ws) ws.close();
+  isConnected = false;
+  controlEnabled = false;
+  currentSession = null;
+  currentToken = null;
+  usePolling = false;
+  updateTrayMenu();
   return { success: true };
 });
 
 ipcMain.handle('stop-control', () => {
   controlEnabled = false;
   if (ws && isConnected) {
-    ws.send(JSON.stringify({ 
-      type: 'control-stopped', 
-      sessionCode: currentSession 
-    }));
+    ws.send(JSON.stringify({ type: 'control-stopped', sessionCode: currentSession }));
   }
   mainWindow.webContents.send('control-status', { enabled: false });
   return { success: true };
 });
 
 ipcMain.handle('get-status', () => {
-  return {
-    connected: isConnected,
-    controlEnabled,
-    session: currentSession
-  };
+  return { connected: isConnected, controlEnabled, session: currentSession };
 });
