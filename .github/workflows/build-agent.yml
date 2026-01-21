@@ -74,7 +74,7 @@ jobs:
           path: virtual-studio-agent/dist/*.dmg
 
   build-mac-legacy:
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -89,17 +89,25 @@ jobs:
         run: |
           cp package-legacy.json package.json
           npm install
-          npm run build:mac
 
-      - name: Upload legacy macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-legacy-installer
-          path: virtual-studio-agent/dist-legacy/*
+      - name: Build legacy macOS
+        working-directory: virtual-studio-agent
+        run: npm run build:mac
+
+      - name: Rename legacy DMG
+        working-directory: virtual-studio-agent/dist-legacy
+        run: |
+          for f in *.dmg; do mv "$f" "${f%.dmg}-legacy.dmg"; done
 
       - name: List build output
         working-directory: virtual-studio-agent/dist-legacy
         run: ls -la
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtual-studio-agent-mac-legacy
+          path: virtual-studio-agent/dist-legacy/*.dmg
 
   build-linux:
     runs-on: ubuntu-latest
@@ -158,7 +166,7 @@ jobs:
       - name: Download macOS legacy artifact
         uses: actions/download-artifact@v4
         with:
-          name: mac-legacy-installer
+          name: virtual-studio-agent-mac-legacy
           path: ./dist
 
       - name: Download Linux artifact
@@ -170,6 +178,24 @@ jobs:
       - name: List all artifacts
         run: ls -la dist/
 
+      - name: Rename files for consistent download URLs
+        run: |
+          cd dist
+          # Windows
+          for f in *.exe; do mv "$f" "Virtual.Studio.Agent.Setup.exe" 2>/dev/null || true; done
+          # macOS (non-legacy)
+          for f in *-arm64.dmg; do mv "$f" "Virtual.Studio.Agent.dmg" 2>/dev/null || true; done
+          for f in *.dmg; do 
+            if [[ "$f" != *"legacy"* ]] && [[ "$f" != "Virtual.Studio.Agent.dmg" ]]; then 
+              mv "$f" "Virtual.Studio.Agent.dmg" 2>/dev/null || true
+            fi
+          done
+          # macOS Legacy
+          for f in *legacy*.dmg; do mv "$f" "Virtual.Studio.Agent-legacy.dmg" 2>/dev/null || true; done
+          # Linux
+          for f in *.AppImage; do mv "$f" "Virtual.Studio.Agent.AppImage" 2>/dev/null || true; done
+          ls -la
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -178,10 +204,10 @@ jobs:
             ## Virtual Studio Agent ${{ github.ref_name }}
             
             Download the installer for your operating system:
-            - **Windows**: Virtual Studio Agent Setup.exe
-            - **macOS**: Virtual Studio Agent.dmg (macOS 11+ recommended)
-            - **macOS Legacy**: Virtual Studio Agent (Legacy)-legacy.dmg (macOS 10.10-10.14)
-            - **Linux**: Virtual Studio Agent.AppImage
+            - **Windows**: Virtual.Studio.Agent.Setup.exe
+            - **macOS**: Virtual.Studio.Agent.dmg (macOS 11+)
+            - **macOS Legacy**: Virtual.Studio.Agent-legacy.dmg (macOS 10.11-10.14)
+            - **Linux**: Virtual.Studio.Agent.AppImage
             
             ### Installation
             1. Download the installer for your OS
@@ -192,16 +218,13 @@ jobs:
             ### Requirements
             - **Windows**: Windows 10 or later
             - **macOS**: macOS 11 (Big Sur) or later (recommended)
-            - **macOS Legacy**: macOS 10.11 (Yosemite) to 10.14 (Mojave) - see security note below
+            - **macOS Legacy**: macOS 10.10 (Yosemite) to 10.14 (Mojave)
             - **Linux**: Any modern distribution with AppImage support
-            
-            ### Security Note for Legacy macOS
-            The legacy macOS build uses an older version of Electron that no longer receives security updates. 
-            Use this only if you cannot upgrade your macOS version. We recommend updating to macOS 11 or later for the best security.
           files: |
-            dist/*.exe
-            dist/*.dmg
-            dist/*.AppImage
+            dist/Virtual.Studio.Agent.Setup.exe
+            dist/Virtual.Studio.Agent.dmg
+            dist/Virtual.Studio.Agent-legacy.dmg
+            dist/Virtual.Studio.Agent.AppImage
           draft: false
           prerelease: false
         env:
