@@ -362,7 +362,8 @@ function SessionContent() {
   };
 
   const getAgentToken = async () => {
-    if (role !== 'engineer') return;
+    // Both artists and engineers can get tokens
+    if (role !== 'engineer' && role !== 'artist') return;
     
     setTokenLoading(true);
     try {
@@ -387,7 +388,9 @@ function SessionContent() {
       await navigator.clipboard.writeText(data.token);
       toast({
         title: 'Token Copied!',
-        description: 'Agent token copied to clipboard. Paste it in the Virtual Studio Agent app.',
+        description: role === 'artist' 
+          ? 'Share this token with your engineer. They\'ll paste it in the Virtual Studio Agent app.'
+          : 'Agent token copied to clipboard. Paste it in the Virtual Studio Agent app.',
       });
     } catch (err) {
       toast({
@@ -776,8 +779,8 @@ function SessionContent() {
           {/* Controls */}
           <div className="flex flex-wrap gap-4 items-center justify-between">
             {role === 'artist' ? (
-              // Artist controls - share screen
-              <div className="flex gap-3">
+              // Artist controls - share screen and generate token for engineer
+              <div className="flex gap-3 items-center flex-wrap">
                 {!isSharing ? (
                   <button
                     onClick={() => handleStartSharing(false)}
@@ -795,6 +798,17 @@ function SessionContent() {
                     <VideoOff size={20} /> Stop Sharing
                   </button>
                 )}
+                
+                {/* Generate Token for Engineer - Artist can share this with their engineer */}
+                <button
+                  onClick={getAgentToken}
+                  disabled={tokenLoading}
+                  data-testid="button-artist-generate-token"
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  <Copy size={20} />
+                  {tokenLoading ? 'Generating...' : 'Get Engineer Token'}
+                </button>
               </div>
             ) : canRecord ? (
               // Engineer controls - can share screen, record, and control
