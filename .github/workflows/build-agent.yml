@@ -178,6 +178,24 @@ jobs:
       - name: List all artifacts
         run: ls -la dist/
 
+      - name: Rename files for consistent download URLs
+        run: |
+          cd dist
+          # Windows
+          for f in *.exe; do mv "$f" "Virtual.Studio.Agent.Setup.exe" 2>/dev/null || true; done
+          # macOS (non-legacy)
+          for f in *-arm64.dmg; do mv "$f" "Virtual.Studio.Agent.dmg" 2>/dev/null || true; done
+          for f in *.dmg; do 
+            if [[ "$f" != *"legacy"* ]] && [[ "$f" != "Virtual.Studio.Agent.dmg" ]]; then 
+              mv "$f" "Virtual.Studio.Agent.dmg" 2>/dev/null || true
+            fi
+          done
+          # macOS Legacy
+          for f in *legacy*.dmg; do mv "$f" "Virtual.Studio.Agent-legacy.dmg" 2>/dev/null || true; done
+          # Linux
+          for f in *.AppImage; do mv "$f" "Virtual.Studio.Agent.AppImage" 2>/dev/null || true; done
+          ls -la
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -207,9 +225,10 @@ jobs:
             The legacy macOS build uses an older version of Electron that no longer receives security updates. 
             Use this only if you cannot upgrade your macOS version. We recommend updating to macOS 11 or later for the best security.
           files: |
-            dist/*.exe
-            dist/*.dmg
-            dist/*.AppImage
+            dist/Virtual.Studio.Agent.Setup.exe
+            dist/Virtual.Studio.Agent.dmg
+            dist/Virtual.Studio.Agent-legacy.dmg
+            dist/Virtual.Studio.Agent.AppImage
           draft: false
           prerelease: false
         env:
