@@ -781,15 +781,32 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     type: 'mouse-move' | 'mouse-click' | 'mouse-double-click' | 'mouse-scroll' | 'key-press' | 'key-type';
     [key: string]: any;
   }) => {
-    if (role !== 'engineer' || !controlAllowed || !isTransportOpen(wsRef.current)) {
+    // Log why command might be blocked
+    if (role !== 'engineer') {
+      console.log('[Control] Command blocked: not engineer role');
+      return;
+    }
+    if (!controlAllowed) {
+      console.log('[Control] Command blocked: control not allowed (need to request control first)');
+      return;
+    }
+    if (!isTransportOpen(wsRef.current)) {
+      console.log('[Control] Command blocked: transport not connected');
       return;
     }
     
-    wsRef.current!.send(JSON.stringify({
+    const payload = {
       ...command,
       sessionCode: roomId,
       userId,
-    }));
+    };
+    
+    // Log mouse-click and key commands (skip mouse-move to avoid spam)
+    if (command.type !== 'mouse-move') {
+      console.log('[Control] Sending command:', command.type, payload);
+    }
+    
+    wsRef.current!.send(JSON.stringify(payload));
   }, [roomId, userId, role, controlAllowed]);
 
   return {

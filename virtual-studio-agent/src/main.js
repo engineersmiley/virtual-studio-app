@@ -199,6 +199,11 @@ function connectToServer(sessionCode, sessionToken) {
 }
 
 async function handleControlMessage(message) {
+  // Log received control commands (skip mouse-move to avoid spam)
+  if (message.type !== 'mouse-move') {
+    console.log('[Agent] Received control command:', message.type, JSON.stringify(message));
+  }
+  
   let robot;
   try {
     robot = require('@jitsi/robotjs');

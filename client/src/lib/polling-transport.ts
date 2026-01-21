@@ -117,10 +117,19 @@ export class PollingTransport implements PollingTransportEvents {
     }
   }
   
+  // Control message types that need special handling
+  private static controlMessageTypes = new Set([
+    'control-request', 'mouse-move', 'mouse-click', 'mouse-double-click',
+    'mouse-scroll', 'key-press', 'key-type', 'control-end'
+  ]);
+  
   private async sendSignal(message: any): Promise<void> {
     if (!this.roomId || !this.userId) return;
     
     try {
+      // For control messages, send the entire message as payload so server can extract all fields
+      const isControlMessage = PollingTransport.controlMessageTypes.has(message.type);
+      
       await fetch('/api/signal/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -129,9 +138,13 @@ export class PollingTransport implements PollingTransportEvents {
           userId: this.userId,
           role: this.role,
           type: message.type,
-          payload: message.payload
+          payload: isControlMessage ? message : message.payload
         })
       });
+      
+      if (isControlMessage && message.type !== 'mouse-move') {
+        console.log('[Polling] Sent control command:', message.type);
+      }
     } catch (err) {
       console.error('[Polling] Send signal error:', err);
     }

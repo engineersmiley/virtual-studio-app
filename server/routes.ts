@@ -705,6 +705,12 @@ export async function registerRoutes(
     }
   });
   
+  // Control message types to forward to agent via polling
+  const pollingControlMessageTypes = new Set([
+    'control-request', 'mouse-move', 'mouse-click', 'mouse-double-click',
+    'mouse-scroll', 'key-press', 'key-type', 'control-end'
+  ]);
+  
   // Send signaling message via polling
   app.post('/api/signal/send', (req, res) => {
     try {
@@ -724,6 +730,42 @@ export async function registerRoutes(
       const sender = room.get(userId);
       if (sender) {
         sender.lastPoll = Date.now();
+      }
+      
+      // Handle control commands - forward to agent
+      if (pollingControlMessageTypes.has(type)) {
+        // Check if user is an engineer
+        if (role !== 'engineer') {
+          console.log('[Control Polling] Blocked: not engineer');
+          return res.json({ success: false, reason: 'not engineer' });
+        }
+        
+        // Find the agent for this session
+        const agent = agentConnections.get(normalizedRoom);
+        if (!agent) {
+          console.log('[Control Polling] Blocked: no agent for session', normalizedRoom);
+          return res.json({ success: false, reason: 'no agent' });
+        }
+        
+        if (agent.ws.readyState !== WebSocket.OPEN) {
+          console.log('[Control Polling] Blocked: agent WS not open');
+          return res.json({ success: false, reason: 'agent not connected' });
+        }
+        
+        // For control requests and ends, always forward. For other commands, check permission
+        if (type !== 'control-request' && type !== 'control-end' && !controlPermissions.get(normalizedRoom)) {
+          console.log('[Control Polling] Blocked: control not permitted');
+          return res.json({ success: false, reason: 'control not permitted' });
+        }
+        
+        // Forward to agent
+        const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
+        if (type !== 'mouse-move') {
+          console.log('[Control Polling] Forwarding to agent:', type);
+        }
+        agent.ws.send(JSON.stringify(controlMessage));
+        
+        return res.json({ success: true });
       }
       
       const message = { type, userId, role, payload };
@@ -1186,12 +1228,13 @@ export async function registerRoutes(
         switch (message.type) {
           case 'control-response': {
             // Artist responded to control request
-            const room = rooms.get(agentSession!);
-            if (room) {
+            const wsRoom = rooms.get(agentSession!);
+            if (wsRoom) {
               controlPermissions.set(agentSession!, message.allowed);
+              console.log('[Control] Control response received, allowed:', message.allowed, 'session:', agentSession);
               
-              // Notify engineers in the room
-              room.forEach((participant) => {
+              // Notify engineers in the WebSocket room
+              wsRoom.forEach((participant) => {
                 if (participant.role === 'engineer' && participant.ws.readyState === WebSocket.OPEN) {
                   participant.ws.send(JSON.stringify({
                     type: 'control-response',
@@ -1201,26 +1244,53 @@ export async function registerRoutes(
                 }
               });
             }
+            
+            // Also notify engineers using HTTP polling
+            const pollingRoom = pollingRooms.get(agentSession!);
+            if (pollingRoom) {
+              pollingRoom.forEach((participant) => {
+                if (participant.role === 'engineer') {
+                  participant.messages.push({
+                    type: 'control-response',
+                    allowed: message.allowed,
+                    sessionCode: agentSession,
+                  });
+                }
+              });
+            }
             break;
           }
 
           case 'control-stopped': {
             // Artist stopped control
             controlPermissions.set(agentSession!, false);
-            const agent = agentConnections.get(agentSession!);
-            if (agent) {
-              agent.controlEnabled = false;
+            const agentConn = agentConnections.get(agentSession!);
+            if (agentConn) {
+              agentConn.controlEnabled = false;
             }
 
-            // Notify engineers
-            const room = rooms.get(agentSession!);
-            if (room) {
-              room.forEach((participant) => {
+            // Notify engineers via WebSocket
+            const wsStopRoom = rooms.get(agentSession!);
+            if (wsStopRoom) {
+              wsStopRoom.forEach((participant) => {
                 if (participant.role === 'engineer' && participant.ws.readyState === WebSocket.OPEN) {
                   participant.ws.send(JSON.stringify({
                     type: 'control-stopped',
                     sessionCode: agentSession,
                   }));
+                }
+              });
+            }
+            
+            // Also notify engineers using HTTP polling
+            const pollingStopRoom = pollingRooms.get(agentSession!);
+            if (pollingStopRoom) {
+              pollingStopRoom.forEach((participant) => {
+                if (participant.role === 'engineer') {
+                  participant.messages.push({
+                    type: 'control-stopped',
+                    sessionCode: agentSession,
+                  });
                 }
               });
             }
@@ -1279,35 +1349,52 @@ export async function registerRoutes(
         if (controlMessageTypes.has(message.type)) {
           // Use stored connection data for authorization (not trusting message payload)
           const connData = wsConnectionData.get(ws);
-          if (!connData) return;
+          if (!connData) {
+            console.log('[Control] Blocked: no connection data');
+            return;
+          }
           
           const sessionCode = connData.roomId;
           
           // Double-check: verify against live room membership (not just WeakMap)
           const room = rooms.get(sessionCode);
-          if (!room) return;
+          if (!room) {
+            console.log('[Control] Blocked: room not found for', sessionCode);
+            return;
+          }
           
           const liveParticipant = room.get(connData.userId);
           if (!liveParticipant || liveParticipant.role !== 'engineer') {
-            // User not in room or not an engineer
+            console.log('[Control] Blocked: not engineer or not in room');
             return;
           }
           
           const agent = agentConnections.get(sessionCode);
-          if (agent && agent.ws.readyState === WebSocket.OPEN) {
-            // For control requests, check if control is already allowed
-            if (message.type !== 'control-request' && message.type !== 'control-end' && !controlPermissions.get(sessionCode)) {
-              // Control not allowed, ignore
-              return;
-            }
-            
-            // Forward message with verified session code
-            agent.ws.send(JSON.stringify({
-              ...message,
-              sessionCode,
-              verifiedUserId: connData.userId,
-            }));
+          if (!agent) {
+            console.log('[Control] Blocked: no agent connected for session', sessionCode);
+            return;
           }
+          
+          if (agent.ws.readyState !== WebSocket.OPEN) {
+            console.log('[Control] Blocked: agent websocket not open');
+            return;
+          }
+          
+          // For control requests, check if control is already allowed
+          if (message.type !== 'control-request' && message.type !== 'control-end' && !controlPermissions.get(sessionCode)) {
+            console.log('[Control] Blocked: control not permitted for session', sessionCode);
+            return;
+          }
+          
+          // Forward message with verified session code
+          if (message.type !== 'mouse-move') {
+            console.log('[Control] Forwarding to agent:', message.type, 'session:', sessionCode);
+          }
+          agent.ws.send(JSON.stringify({
+            ...message,
+            sessionCode,
+            verifiedUserId: connData.userId,
+          }));
         }
       } catch (err) {
         // Ignore parse errors - they'll be handled by the main handler
