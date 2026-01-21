@@ -367,7 +367,7 @@ function SessionContent() {
     
     setTokenLoading(true);
     try {
-      const email = localStorage.getItem('userEmail') || '';
+      const email = localStorage.getItem('studiolink_subscriber_email') || '';
       const response = await fetch('/api/agent/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
