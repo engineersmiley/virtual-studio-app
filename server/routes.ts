@@ -681,6 +681,203 @@ export async function registerRoutes(
     }
   });
 
+  // ============ HTTP POLLING FOR AGENT (when WebSocket blocked) ============
+  
+  interface PollingAgentConnection {
+    sessionCode: string;
+    userId: string;
+    controlEnabled: boolean;
+    lastPoll: number;
+    messages: any[];
+  }
+  
+  const pollingAgents = new Map<string, PollingAgentConnection>();
+  const AGENT_POLL_TIMEOUT = 30000;
+  
+  // Cleanup stale polling agents
+  setInterval(() => {
+    const now = Date.now();
+    pollingAgents.forEach((agent, sessionCode) => {
+      if (now - agent.lastPoll > AGENT_POLL_TIMEOUT) {
+        pollingAgents.delete(sessionCode);
+        // Notify room that agent disconnected
+        const room = rooms.get(sessionCode);
+        if (room) {
+          room.forEach((participant) => {
+            if (participant.ws.readyState === WebSocket.OPEN) {
+              participant.ws.send(JSON.stringify({ type: 'agent-disconnected', sessionCode }));
+            }
+          });
+        }
+        const pollingRoom = pollingRooms.get(sessionCode);
+        if (pollingRoom) {
+          pollingRoom.forEach(p => {
+            p.messages.push({ type: 'agent-disconnected', sessionCode });
+          });
+        }
+      }
+    });
+  }, 10000);
+  
+  // Agent connect via HTTP
+  app.post('/api/agent/connect', (req, res) => {
+    try {
+      const { token, sessionCode } = req.body;
+      const normalizedCode = sessionCode?.toUpperCase();
+      
+      if (!token || !normalizedCode) {
+        return res.status(400).json({ error: 'Token and session code required' });
+      }
+      
+      // Verify token
+      const tokenData = agentTokens.get(token);
+      if (!tokenData || tokenData.sessionCode !== normalizedCode || tokenData.expiresAt < Date.now()) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+      
+      // Check if agent already connected (WebSocket or polling)
+      if (agentConnections.has(normalizedCode) || pollingAgents.has(normalizedCode)) {
+        return res.status(409).json({ error: 'Agent already connected to this session' });
+      }
+      
+      // Register polling agent
+      pollingAgents.set(normalizedCode, {
+        sessionCode: normalizedCode,
+        userId: tokenData.userId,
+        controlEnabled: false,
+        lastPoll: Date.now(),
+        messages: []
+      });
+      
+      console.log(`Agent connected via polling to session ${normalizedCode}`);
+      
+      // Notify room participants
+      const room = rooms.get(normalizedCode);
+      if (room) {
+        room.forEach((participant) => {
+          if (participant.ws.readyState === WebSocket.OPEN) {
+            participant.ws.send(JSON.stringify({ type: 'agent-connected', sessionCode: normalizedCode }));
+          }
+        });
+      }
+      const pollingRoom = pollingRooms.get(normalizedCode);
+      if (pollingRoom) {
+        pollingRoom.forEach(p => {
+          p.messages.push({ type: 'agent-connected', sessionCode: normalizedCode });
+        });
+      }
+      
+      res.json({ success: true, sessionCode: normalizedCode });
+    } catch (err: any) {
+      console.error('Agent connect error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Agent poll for messages
+  app.post('/api/agent/poll', (req, res) => {
+    try {
+      const { token, sessionCode } = req.body;
+      const normalizedCode = sessionCode?.toUpperCase();
+      
+      const agent = pollingAgents.get(normalizedCode);
+      if (!agent) {
+        return res.status(404).json({ error: 'Agent not connected' });
+      }
+      
+      // Verify token still valid
+      const tokenData = agentTokens.get(token);
+      if (!tokenData || tokenData.sessionCode !== normalizedCode) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+      
+      agent.lastPoll = Date.now();
+      const messages = [...agent.messages];
+      agent.messages = [];
+      
+      res.json({ messages, controlEnabled: agent.controlEnabled });
+    } catch (err: any) {
+      console.error('Agent poll error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Agent send message
+  app.post('/api/agent/send', (req, res) => {
+    try {
+      const { token, sessionCode, message } = req.body;
+      const normalizedCode = sessionCode?.toUpperCase();
+      
+      const agent = pollingAgents.get(normalizedCode);
+      if (!agent) {
+        return res.status(404).json({ error: 'Agent not connected' });
+      }
+      
+      // Handle message type
+      if (message.type === 'control-response') {
+        // Forward to room participants
+        const room = rooms.get(normalizedCode);
+        if (room) {
+          room.forEach((participant) => {
+            if (participant.ws.readyState === WebSocket.OPEN) {
+              participant.ws.send(JSON.stringify({
+                type: 'control-response',
+                allowed: message.allowed,
+                fromAgent: true
+              }));
+            }
+          });
+        }
+        const pollingRoom = pollingRooms.get(normalizedCode);
+        if (pollingRoom) {
+          pollingRoom.forEach(p => {
+            p.messages.push({ type: 'control-response', allowed: message.allowed, fromAgent: true });
+          });
+        }
+        
+        if (message.allowed) {
+          agent.controlEnabled = true;
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Agent send error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Agent disconnect
+  app.post('/api/agent/disconnect', (req, res) => {
+    try {
+      const { token, sessionCode } = req.body;
+      const normalizedCode = sessionCode?.toUpperCase();
+      
+      pollingAgents.delete(normalizedCode);
+      
+      // Notify room
+      const room = rooms.get(normalizedCode);
+      if (room) {
+        room.forEach((participant) => {
+          if (participant.ws.readyState === WebSocket.OPEN) {
+            participant.ws.send(JSON.stringify({ type: 'agent-disconnected', sessionCode: normalizedCode }));
+          }
+        });
+      }
+      const pollingRoom = pollingRooms.get(normalizedCode);
+      if (pollingRoom) {
+        pollingRoom.forEach(p => {
+          p.messages.push({ type: 'agent-disconnected', sessionCode: normalizedCode });
+        });
+      }
+      
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Agent disconnect error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ============ WEBSOCKET SIGNALING SERVER ============
   
   // Map to track WebSocket connection metadata (for authorization)

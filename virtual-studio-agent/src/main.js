@@ -8,8 +8,12 @@ let ws = null;
 let isConnected = false;
 let controlEnabled = false;
 let currentSession = null;
+let currentToken = null;
+let pollingInterval = null;
+let usePolling = false;
 
 const VIRTUAL_STUDIO_URL = 'wss://virtualstudio.sale';
+const VIRTUAL_STUDIO_HTTP = 'https://virtualstudio.sale';
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -87,10 +91,63 @@ async function checkAccessibilityPermissions() {
   return true;
 }
 
+async function connectViaPolling(sessionCode, sessionToken) {
+  try {
+    const response = await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: sessionToken, sessionCode })
+    });
+    
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to connect');
+    }
+    
+    usePolling = true;
+    isConnected = true;
+    currentSession = sessionCode;
+    currentToken = sessionToken;
+    mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
+    updateTrayMenu();
+    
+    // Start polling for messages
+    pollingInterval = setInterval(async () => {
+      try {
+        const pollResponse = await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: currentToken, sessionCode: currentSession })
+        });
+        
+        if (pollResponse.ok) {
+          const data = await pollResponse.json();
+          for (const message of data.messages) {
+            await handleControlMessage(message);
+          }
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 500);
+    
+  } catch (error) {
+    console.error('HTTP connection error:', error);
+    mainWindow.webContents.send('error', error.message);
+  }
+}
+
 function connectToServer(sessionCode, sessionToken) {
   if (ws) {
     ws.close();
   }
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+  
+  currentToken = sessionToken;
+  usePolling = false;
 
   const wsUrl = `${VIRTUAL_STUDIO_URL}/agent?session=${sessionCode}&token=${sessionToken}`;
   
@@ -99,7 +156,7 @@ function connectToServer(sessionCode, sessionToken) {
   ws.on('open', () => {
     isConnected = true;
     currentSession = sessionCode;
-    mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode });
+    mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'websocket' });
     updateTrayMenu();
   });
   
@@ -113,16 +170,21 @@ function connectToServer(sessionCode, sessionToken) {
   });
   
   ws.on('close', () => {
-    isConnected = false;
-    controlEnabled = false;
-    currentSession = null;
-    mainWindow.webContents.send('connection-status', { connected: false });
-    updateTrayMenu();
+    if (!usePolling) {
+      isConnected = false;
+      controlEnabled = false;
+      currentSession = null;
+      mainWindow.webContents.send('connection-status', { connected: false });
+      updateTrayMenu();
+    }
   });
   
   ws.on('error', (error) => {
     console.error('WebSocket error:', error);
-    mainWindow.webContents.send('error', error.message);
+    // Fallback to HTTP polling
+    console.log('Falling back to HTTP polling...');
+    mainWindow.webContents.send('status-message', 'WebSocket blocked, using HTTP polling...');
+    connectViaPolling(sessionCode, sessionToken);
   });
 }
 
@@ -148,11 +210,25 @@ async function handleControlMessage(message) {
         });
         
         controlEnabled = result.response === 0;
-        ws.send(JSON.stringify({ 
-          type: 'control-response', 
-          allowed: controlEnabled,
-          sessionCode: currentSession 
-        }));
+        
+        // Send response via appropriate channel
+        if (usePolling) {
+          await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: currentToken,
+              sessionCode: currentSession,
+              message: { type: 'control-response', allowed: controlEnabled }
+            })
+          });
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ 
+            type: 'control-response', 
+            allowed: controlEnabled,
+            sessionCode: currentSession 
+          }));
+        }
         mainWindow.webContents.send('control-status', { enabled: controlEnabled });
         break;
       
@@ -319,10 +395,35 @@ ipcMain.handle('connect', async (event, { sessionCode, sessionToken }) => {
   return { success: true };
 });
 
-ipcMain.handle('disconnect', () => {
+ipcMain.handle('disconnect', async () => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+  
+  if (usePolling && currentSession && currentToken) {
+    try {
+      await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: currentToken, sessionCode: currentSession })
+      });
+    } catch (err) {
+      console.error('Disconnect error:', err);
+    }
+  }
+  
   if (ws) {
     ws.close();
   }
+  
+  isConnected = false;
+  controlEnabled = false;
+  currentSession = null;
+  currentToken = null;
+  usePolling = false;
+  updateTrayMenu();
+  
   return { success: true };
 });
 
