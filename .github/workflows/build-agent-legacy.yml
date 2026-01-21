@@ -1,0 +1,47 @@
+name: Build Legacy macOS Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.16)'
+        required: true
+        default: 'v1.0.16'
+
+jobs:
+  build-mac-legacy:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup legacy build
+        working-directory: virtual-studio-agent
+        run: |
+          cp package-legacy.json package.json
+          npm install
+
+      - name: Build for macOS Legacy
+        working-directory: virtual-studio-agent
+        run: npm run build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Rename legacy artifact
+        run: |
+          cd virtual-studio-agent/dist
+          for f in *.dmg; do mv "$f" "Virtual.Studio.Agent-legacy.dmg"; done
+          ls -la
+
+      - name: Upload to existing release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: virtual-studio-agent/dist/Virtual.Studio.Agent-legacy.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
