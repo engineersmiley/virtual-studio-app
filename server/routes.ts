@@ -53,6 +53,9 @@ const agentConnections = new Map<string, AgentConnection>(); // sessionCode -> a
 const agentTokens = new Map<string, AgentToken>(); // token -> AgentToken data
 const controlPermissions = new Map<string, boolean>(); // sessionCode -> control allowed
 
+// Simple remote control enabled sessions (no token needed)
+const remoteControlEnabled = new Map<string, { artistUserId: string; enabledAt: number }>(); // sessionCode -> data
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -493,6 +496,102 @@ export async function registerRoutes(
     }
   });
 
+  // ============ SIMPLE REMOTE CONTROL TOGGLE (NO TOKEN) ============
+  
+  // Artist enables remote control for their session
+  app.post('/api/session/:code/enable-remote-control', (req, res) => {
+    try {
+      const { code } = req.params;
+      const { userId } = req.body;
+      
+      if (!code || !userId) {
+        return res.status(400).json({ error: 'Session code and userId required' });
+      }
+      
+      const normalizedCode = code.toUpperCase();
+      
+      // Enable remote control for this session
+      remoteControlEnabled.set(normalizedCode, {
+        artistUserId: userId,
+        enabledAt: Date.now()
+      });
+      
+      console.log(`Remote control enabled for session ${normalizedCode} by ${userId}`);
+      res.json({ enabled: true, sessionCode: normalizedCode });
+    } catch (err: any) {
+      console.error('Enable remote control error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Artist disables remote control
+  app.post('/api/session/:code/disable-remote-control', (req, res) => {
+    try {
+      const { code } = req.params;
+      const normalizedCode = code.toUpperCase();
+      
+      // Disconnect any connected agent
+      const agent = agentConnections.get(normalizedCode);
+      if (agent && agent.ws.readyState === WebSocket.OPEN) {
+        agent.ws.close();
+      }
+      agentConnections.delete(normalizedCode);
+      
+      // Disable remote control
+      remoteControlEnabled.delete(normalizedCode);
+      
+      console.log(`Remote control disabled for session ${normalizedCode}`);
+      res.json({ enabled: false, sessionCode: normalizedCode });
+    } catch (err: any) {
+      console.error('Disable remote control error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Check if remote control is enabled for a session (for agent to check)
+  app.get('/api/session/:code/remote-control-status', (req, res) => {
+    const { code } = req.params;
+    const normalizedCode = code.toUpperCase();
+    const data = remoteControlEnabled.get(normalizedCode);
+    res.json({ 
+      enabled: !!data,
+      sessionCode: normalizedCode
+    });
+  });
+  
+  // Agent connects using just session code (no token)
+  app.post('/api/agent/simple-connect', (req, res) => {
+    try {
+      const { sessionCode } = req.body;
+      
+      if (!sessionCode) {
+        return res.status(400).json({ error: 'Session code required' });
+      }
+      
+      const normalizedCode = sessionCode.toUpperCase();
+      const rcData = remoteControlEnabled.get(normalizedCode);
+      
+      if (!rcData) {
+        return res.status(403).json({ error: 'Remote control not enabled for this session. Ask artist to click "Allow Control".' });
+      }
+      
+      // Check if agent already connected
+      if (agentConnections.has(normalizedCode)) {
+        return res.status(409).json({ error: 'Agent already connected to this session' });
+      }
+      
+      console.log(`Agent simple-connected to session ${normalizedCode}`);
+      res.json({ 
+        connected: true, 
+        sessionCode: normalizedCode,
+        artistUserId: rcData.artistUserId
+      });
+    } catch (err: any) {
+      console.error('Agent simple connect error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ============ HTTP POLLING FALLBACK FOR SIGNALING ============
   // Used when WebSocket connections fail (e.g., on custom domains)
   
@@ -719,20 +818,32 @@ export async function registerRoutes(
     });
   }, 10000);
   
-  // Agent connect via HTTP
+  // Agent connect via HTTP (supports both token and simple mode)
   app.post('/api/agent/connect', (req, res) => {
     try {
       const { token, sessionCode } = req.body;
       const normalizedCode = sessionCode?.toUpperCase();
       
-      if (!token || !normalizedCode) {
-        return res.status(400).json({ error: 'Token and session code required' });
+      if (!normalizedCode) {
+        return res.status(400).json({ error: 'Session code required' });
       }
       
-      // Verify token
-      const tokenData = agentTokens.get(token);
-      if (!tokenData || tokenData.sessionCode !== normalizedCode || tokenData.expiresAt < Date.now()) {
-        return res.status(401).json({ error: 'Invalid or expired token' });
+      let userId: string;
+      
+      // Try token-based auth first
+      if (token) {
+        const tokenData = agentTokens.get(token);
+        if (!tokenData || tokenData.sessionCode !== normalizedCode || tokenData.expiresAt < Date.now()) {
+          return res.status(401).json({ error: 'Invalid or expired token' });
+        }
+        userId = tokenData.userId;
+      } else {
+        // Simple mode - check if remote control is enabled
+        const rcData = remoteControlEnabled.get(normalizedCode);
+        if (!rcData) {
+          return res.status(403).json({ error: 'Remote control not enabled. Ask artist to click "Allow Control".' });
+        }
+        userId = rcData.artistUserId;
       }
       
       // Check if agent already connected (WebSocket or polling)
@@ -743,7 +854,7 @@ export async function registerRoutes(
       // Register polling agent
       pollingAgents.set(normalizedCode, {
         sessionCode: normalizedCode,
-        userId: tokenData.userId,
+        userId: userId,
         controlEnabled: false,
         lastPoll: Date.now(),
         messages: []
