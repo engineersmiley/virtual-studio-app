@@ -4,6 +4,11 @@ import { PollingTransport } from '@/lib/polling-transport';
 
 type SignalingTransport = WebSocket | PollingTransport;
 
+function isTransportOpen(transport: SignalingTransport | null): boolean {
+  if (!transport) return false;
+  return transport.readyState === WebSocket.OPEN || transport.readyState === PollingTransport.OPEN;
+}
+
 interface Participant {
   userId: string;
   role: SessionRole;
@@ -110,8 +115,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     const pc = new RTCPeerConnection({ iceServers });
 
     pc.onicecandidate = (event) => {
-      if (event.candidate && wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
+      if (event.candidate && isTransportOpen(wsRef.current)) {
+        wsRef.current!.send(JSON.stringify({
           type: 'ice-candidate',
           roomId,
           userId,
@@ -653,8 +658,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     stopSharing();
     
     // Send leave message
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
+    if (isTransportOpen(wsRef.current)) {
+      wsRef.current!.send(JSON.stringify({
         type: 'leave',
         roomId,
         userId,
@@ -739,13 +744,13 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
   // Request full control from agent
   const requestFullControl = useCallback((name: string = 'Engineer') => {
-    if (role !== 'engineer' || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    if (role !== 'engineer' || !isTransportOpen(wsRef.current)) {
       console.log('[Control] Cannot request control - not engineer or not connected');
       return;
     }
     
     setControlPending(true);
-    wsRef.current.send(JSON.stringify({
+    wsRef.current!.send(JSON.stringify({
       type: 'control-request',
       sessionCode: roomId,
       userId,
@@ -758,11 +763,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   
   // End full control
   const endFullControl = useCallback(() => {
-    if (role !== 'engineer' || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    if (role !== 'engineer' || !isTransportOpen(wsRef.current)) {
       return;
     }
     
-    wsRef.current.send(JSON.stringify({
+    wsRef.current!.send(JSON.stringify({
       type: 'control-end',
       sessionCode: roomId,
       userId,
@@ -776,11 +781,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     type: 'mouse-move' | 'mouse-click' | 'mouse-double-click' | 'mouse-scroll' | 'key-press' | 'key-type';
     [key: string]: any;
   }) => {
-    if (role !== 'engineer' || !controlAllowed || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    if (role !== 'engineer' || !controlAllowed || !isTransportOpen(wsRef.current)) {
       return;
     }
     
-    wsRef.current.send(JSON.stringify({
+    wsRef.current!.send(JSON.stringify({
       ...command,
       sessionCode: roomId,
       userId,
