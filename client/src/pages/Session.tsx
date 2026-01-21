@@ -4,6 +4,7 @@ import { useWebRTC, type RemoteControlEvent, type RemoteStreamInfo } from '@/hoo
 import { useUploadRecording } from '@/hooks/use-recordings';
 import { Visualizer } from '@/components/Visualizer';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
+import { PhoneControl } from '@/components/PhoneControl';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -97,6 +98,17 @@ function SessionContent() {
   // Simple remote control toggle (for artists)
   const [remoteControlAllowed, setRemoteControlAllowed] = useState(false);
   const [togglingRemoteControl, setTogglingRemoteControl] = useState(false);
+  
+  // Detect mobile device for phone control UI
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768 || 'ontouchstart' in window);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
@@ -879,6 +891,7 @@ function SessionContent() {
               </div>
             ) : canRecord ? (
               // Engineer controls - can share screen, record, and control
+              <>
               <div className="flex gap-3 items-center flex-wrap">
                 {/* Share Screen for teaching */}
                 {!isSharing ? (
@@ -1010,6 +1023,22 @@ function SessionContent() {
                   </div>
                 )}
               </div>
+              
+              {/* Phone Control for mobile engineers */}
+              {isMobile && (
+                <div className="w-full mt-4">
+                  <PhoneControl
+                    sessionCode={roomId}
+                    isConnected={connected}
+                    agentConnected={agentConnected}
+                    controlEnabled={fullControlActive}
+                    onSendControl={sendFullControlCommand}
+                    onRequestControl={() => requestFullControl('Engineer')}
+                    onEndControl={endFullControl}
+                  />
+                </div>
+              )}
+            </> 
             ) : role === 'producer' ? (
               // Producer - can share screen for beat-making or audio only
               <div className="flex items-center gap-3 flex-wrap">
