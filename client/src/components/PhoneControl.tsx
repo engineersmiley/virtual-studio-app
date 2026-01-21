@@ -169,7 +169,12 @@ export function PhoneControl({
               End Control
             </Button>
           ) : (
-            <Button size="sm" onClick={onRequestControl} data-testid="button-request-control">
+            <Button 
+              size="sm" 
+              onClick={onRequestControl} 
+              data-testid="button-request-control"
+              className="bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 text-white border-0"
+            >
               Request Control
             </Button>
           )}
