@@ -486,6 +486,194 @@ export async function registerRoutes(
     }
   });
 
+  // ============ HTTP POLLING FALLBACK FOR SIGNALING ============
+  // Used when WebSocket connections fail (e.g., on custom domains)
+  
+  interface PollingParticipant {
+    userId: string;
+    role: SessionRole;
+    lastPoll: number;
+    messages: any[];
+  }
+  
+  const pollingRooms = new Map<string, Map<string, PollingParticipant>>();
+  const POLL_TIMEOUT = 30000; // 30 seconds before participant is considered disconnected
+  
+  // Cleanup stale polling participants periodically
+  setInterval(() => {
+    const now = Date.now();
+    pollingRooms.forEach((room, roomId) => {
+      room.forEach((participant, odId) => {
+        if (now - participant.lastPoll > POLL_TIMEOUT) {
+          room.delete(participant.userId);
+          // Notify other participants
+          room.forEach(p => {
+            p.messages.push({ type: 'user-left', userId: participant.userId, roomId });
+          });
+          if (room.size === 0) {
+            pollingRooms.delete(roomId);
+          }
+        }
+      });
+    });
+  }, 10000);
+  
+  // Join room via polling
+  app.post('/api/signal/join', (req, res) => {
+    try {
+      const { roomId, userId, role } = req.body;
+      if (!roomId || !userId || !role) {
+        return res.status(400).json({ error: 'roomId, userId, and role required' });
+      }
+      
+      const normalizedRoom = (roomId as string).toUpperCase();
+      
+      if (!pollingRooms.has(normalizedRoom)) {
+        pollingRooms.set(normalizedRoom, new Map());
+      }
+      
+      const room = pollingRooms.get(normalizedRoom)!;
+      
+      // Get existing participants before adding new one
+      const existingParticipants = Array.from(room.entries())
+        .filter(([pId]) => pId !== userId)
+        .map(([pId, p]) => ({ userId: pId, role: p.role }));
+      
+      // Add or update participant
+      room.set(userId, {
+        userId,
+        role,
+        lastPoll: Date.now(),
+        messages: []
+      });
+      
+      // Notify others that user joined
+      room.forEach((p, pId) => {
+        if (pId !== userId) {
+          p.messages.push({ type: 'user-joined', userId, role, roomId: normalizedRoom });
+        }
+      });
+      
+      res.json({ 
+        success: true, 
+        roomId: normalizedRoom,
+        participants: existingParticipants
+      });
+    } catch (err: any) {
+      console.error('Polling join error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Poll for messages
+  app.post('/api/signal/poll', (req, res) => {
+    try {
+      const { roomId, userId } = req.body;
+      if (!roomId || !userId) {
+        return res.status(400).json({ error: 'roomId and userId required' });
+      }
+      
+      const normalizedRoom = (roomId as string).toUpperCase();
+      const room = pollingRooms.get(normalizedRoom);
+      
+      if (!room || !room.has(userId)) {
+        return res.status(404).json({ error: 'Not in room' });
+      }
+      
+      const participant = room.get(userId)!;
+      participant.lastPoll = Date.now();
+      
+      // Return and clear pending messages
+      const messages = [...participant.messages];
+      participant.messages = [];
+      
+      // Get current participants
+      const participants = Array.from(room.entries())
+        .filter(([pId]) => pId !== userId)
+        .map(([pId, p]) => ({ userId: pId, role: p.role }));
+      
+      res.json({ messages, participants });
+    } catch (err: any) {
+      console.error('Polling poll error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Send signaling message via polling
+  app.post('/api/signal/send', (req, res) => {
+    try {
+      const { roomId, userId, role, type, payload } = req.body;
+      if (!roomId || !userId || !type) {
+        return res.status(400).json({ error: 'roomId, userId, and type required' });
+      }
+      
+      const normalizedRoom = (roomId as string).toUpperCase();
+      const room = pollingRooms.get(normalizedRoom);
+      
+      if (!room) {
+        return res.status(404).json({ error: 'Room not found' });
+      }
+      
+      // Update sender's last poll time
+      const sender = room.get(userId);
+      if (sender) {
+        sender.lastPoll = Date.now();
+      }
+      
+      const message = { type, userId, role, payload };
+      
+      // Forward to target user or broadcast
+      const targetId = payload?.targetUserId;
+      if (targetId && room.has(targetId)) {
+        const target = room.get(targetId)!;
+        target.messages.push(message);
+      } else {
+        // Broadcast to all others
+        room.forEach((p, pId) => {
+          if (pId !== userId) {
+            p.messages.push(message);
+          }
+        });
+      }
+      
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Polling send error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Leave room via polling
+  app.post('/api/signal/leave', (req, res) => {
+    try {
+      const { roomId, userId } = req.body;
+      if (!roomId || !userId) {
+        return res.status(400).json({ error: 'roomId and userId required' });
+      }
+      
+      const normalizedRoom = (roomId as string).toUpperCase();
+      const room = pollingRooms.get(normalizedRoom);
+      
+      if (room) {
+        room.delete(userId);
+        
+        // Notify others
+        room.forEach(p => {
+          p.messages.push({ type: 'user-left', userId, roomId: normalizedRoom });
+        });
+        
+        if (room.size === 0) {
+          pollingRooms.delete(normalizedRoom);
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Polling leave error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ============ WEBSOCKET SIGNALING SERVER ============
   
   // Map to track WebSocket connection metadata (for authorization)
