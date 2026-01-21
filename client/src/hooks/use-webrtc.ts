@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { SessionRole } from '@shared/schema';
+import { PollingTransport } from '@/lib/polling-transport';
+
+type SignalingTransport = WebSocket | PollingTransport;
 
 interface Participant {
   userId: string;
@@ -48,10 +51,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const [controlAllowed, setControlAllowed] = useState(false);
   const [controlPending, setControlPending] = useState(false);
 
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<SignalingTransport | null>(null);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const maxRetries = 5;
+  const maxRetries = 3; // Reduced retries before fallback
+  const usingPollingRef = useRef(false);
   // Map of peer connections: userId -> RTCPeerConnection
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   // Map of data channels: userId -> RTCDataChannel
@@ -234,10 +238,202 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     setHasRemoteStream(false);
   }, []);
 
+  const sendOfferToViewer = useCallback(async (viewerUserId: string) => {
+    if (!localStreamRef.current || !wsRef.current) return;
+    
+    const pc = createPeerConnection(viewerUserId);
+    localStreamRef.current.getTracks().forEach(track => {
+      pc.addTrack(track, localStreamRef.current!);
+    });
+    
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    
+    wsRef.current.send(JSON.stringify({
+      type: 'offer',
+      roomId,
+      userId,
+      role,
+      payload: { 
+        sdp: offer,
+        targetUserId: viewerUserId 
+      }
+    }));
+  }, [roomId, userId, role, createPeerConnection]);
+
+  const handleSignalingMessage = useCallback(async (data: string) => {
+    const message = JSON.parse(data);
+
+    switch (message.type) {
+      case 'room-state': {
+        setParticipants(message.participants || []);
+        
+        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
+        if (canBroadcast && localStreamRef.current) {
+          const viewers = (message.participants || []).filter((p: Participant) => p.userId !== userId);
+          for (const viewer of viewers) {
+            await sendOfferToViewer(viewer.userId);
+          }
+        }
+        break;
+      }
+
+      case 'user-joined': {
+        setParticipants(prev => {
+          if (prev.some(p => p.userId === message.userId)) return prev;
+          return [...prev, { userId: message.userId, role: message.role }];
+        });
+        
+        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
+        if (canBroadcast && message.userId !== userId && localStreamRef.current) {
+          await sendOfferToViewer(message.userId);
+        }
+        break;
+      }
+
+      case 'user-left': {
+        setParticipants(prev => prev.filter(p => p.userId !== message.userId));
+        closePeerConnection(message.userId);
+        setRemoteStreams(prev => {
+          const next = new Map(prev);
+          next.delete(message.userId);
+          if (next.size === 0) {
+            setHasRemoteStream(false);
+          }
+          return next;
+        });
+        break;
+      }
+
+      case 'offer': {
+        if (message.userId !== userId) {
+          const pc = createPeerConnection(message.userId);
+          
+          if (role === 'engineer' || role === 'producer' || role === 'other') {
+            const dataChannel = pc.createDataChannel('control', { ordered: true });
+            dataChannel.onopen = () => {
+              console.log('Control data channel opened');
+            };
+            dataChannelsRef.current.set(message.userId, dataChannel);
+          }
+          
+          await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
+          
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          
+          wsRef.current?.send(JSON.stringify({
+            type: 'answer',
+            roomId,
+            userId,
+            role,
+            payload: { 
+              sdp: answer,
+              targetUserId: message.userId 
+            }
+          }));
+        }
+        break;
+      }
+
+      case 'answer': {
+        const pc = peerConnectionsRef.current.get(message.userId);
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
+        }
+        break;
+      }
+
+      case 'ice-candidate': {
+        const pc = peerConnectionsRef.current.get(message.userId);
+        if (pc && message.payload.candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(message.payload.candidate));
+          } catch (e) {
+            console.error('Error adding ICE candidate:', e);
+          }
+        }
+        break;
+      }
+
+      case 'error': {
+        setError(message.payload?.message || 'Connection error');
+        break;
+      }
+      
+      case 'agent-connected': {
+        setAgentConnected(true);
+        break;
+      }
+      
+      case 'agent-disconnected': {
+        setAgentConnected(false);
+        setControlAllowed(false);
+        setControlPending(false);
+        break;
+      }
+      
+      case 'control-response': {
+        setControlPending(false);
+        setControlAllowed(message.allowed === true);
+        break;
+      }
+      
+      case 'control-stopped': {
+        setControlAllowed(false);
+        break;
+      }
+    }
+  }, [roomId, userId, role, createPeerConnection, closePeerConnection, sendOfferToViewer]);
+
+  const connectWithPolling = useCallback(() => {
+    console.log('[Polling] Switching to HTTP polling fallback');
+    usingPollingRef.current = true;
+    setError('Using backup connection...');
+    
+    const transport = new PollingTransport();
+    wsRef.current = transport;
+    
+    transport.onopen = () => {
+      console.log('[Polling] Connected successfully');
+      retryCountRef.current = 0;
+      setError(null);
+      transport.send(JSON.stringify({
+        type: 'join',
+        roomId: roomId.toUpperCase(),
+        userId,
+        role
+      }));
+    };
+    
+    transport.onmessage = async (event) => {
+      handleSignalingMessage(event.data);
+    };
+    
+    transport.onerror = () => {
+      console.error('[Polling] Error');
+      setError('Connection error. Please refresh.');
+    };
+    
+    transport.onclose = () => {
+      console.log('[Polling] Closed');
+      closeAllPeerConnections();
+      setConnected(false);
+    };
+    
+    transport.connect();
+  }, [roomId, userId, role, closeAllPeerConnections, handleSignalingMessage]);
+
   const connect = useCallback(() => {
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
+    }
+    
+    // If already using polling, continue with it
+    if (usingPollingRef.current) {
+      connectWithPolling();
+      return;
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -260,174 +456,22 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     };
 
     ws.onmessage = async (event) => {
-      const message = JSON.parse(event.data);
-
-      switch (message.type) {
-        case 'room-state': {
-          setParticipants(message.participants || []);
-          
-          // If we're broadcasting (artist, engineer, or producer) with a stream, send to all viewers
-          const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
-          if (canBroadcast && localStreamRef.current) {
-            const viewers = (message.participants || []).filter((p: Participant) => p.userId !== userId);
-            for (const viewer of viewers) {
-              await sendOfferToViewer(viewer.userId);
-            }
-          }
-          break;
-        }
-
-        case 'user-joined': {
-          setParticipants(prev => {
-            if (prev.some(p => p.userId === message.userId)) return prev;
-            return [...prev, { userId: message.userId, role: message.role }];
-          });
-          
-          // If we're broadcasting (artist, engineer, or producer) and someone joined, send them our stream
-          const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
-          if (canBroadcast && message.userId !== userId && localStreamRef.current) {
-            await sendOfferToViewer(message.userId);
-          }
-          break;
-        }
-
-        case 'user-left': {
-          setParticipants(prev => prev.filter(p => p.userId !== message.userId));
-          closePeerConnection(message.userId);
-          // Remove their stream from our map
-          setRemoteStreams(prev => {
-            const next = new Map(prev);
-            next.delete(message.userId);
-            if (next.size === 0) {
-              setHasRemoteStream(false);
-            }
-            return next;
-          });
-          break;
-        }
-
-        case 'offer': {
-          // All participants can receive offers from broadcasters (artist or producer)
-          // Don't accept our own offers
-          if (message.userId !== userId) {
-            const pc = createPeerConnection(message.userId);
-            
-            // Create data channel for sending control events (only relevant for artist receiving from engineer)
-            if (role === 'engineer' || role === 'producer' || role === 'other') {
-              const dataChannel = pc.createDataChannel('control', { ordered: true });
-              dataChannel.onopen = () => {
-                console.log('Control data channel opened');
-              };
-              dataChannelsRef.current.set(message.userId, dataChannel);
-            }
-            
-            await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
-            
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            
-            ws.send(JSON.stringify({
-              type: 'answer',
-              roomId,
-              userId,
-              role,
-              payload: { 
-                sdp: answer,
-                targetUserId: message.userId 
-              }
-            }));
-          }
-          break;
-        }
-
-        case 'answer': {
-          // Broadcaster receives answer from viewer
-          const pc = peerConnectionsRef.current.get(message.userId);
-          if (pc) {
-            await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
-          }
-          break;
-        }
-
-        case 'ice-candidate': {
-          const pc = peerConnectionsRef.current.get(message.userId);
-          if (pc && message.payload.candidate) {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(message.payload.candidate));
-            } catch (e) {
-              console.error('Error adding ICE candidate:', e);
-            }
-          }
-          break;
-        }
-
-        case 'error': {
-          setError(message.payload?.message || 'Connection error');
-          break;
-        }
-        
-        // Agent status messages
-        case 'agent-connected': {
-          setAgentConnected(true);
-          break;
-        }
-        
-        case 'agent-disconnected': {
-          setAgentConnected(false);
-          setControlAllowed(false);
-          setControlPending(false);
-          break;
-        }
-        
-        case 'control-response': {
-          setControlPending(false);
-          setControlAllowed(message.allowed === true);
-          break;
-        }
-        
-        case 'control-stopped': {
-          setControlAllowed(false);
-          break;
-        }
-      }
+      handleSignalingMessage(event.data);
     };
-
-    async function sendOfferToViewer(viewerUserId: string) {
-      if (!localStreamRef.current || !wsRef.current) return;
-      
-      const pc = createPeerConnection(viewerUserId);
-      localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!);
-      });
-      
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      
-      wsRef.current.send(JSON.stringify({
-        type: 'offer',
-        roomId,
-        userId,
-        role,
-        payload: { 
-          sdp: offer,
-          targetUserId: viewerUserId 
-        }
-      }));
-    }
 
     ws.onerror = (event) => {
       console.error('[WebSocket] Connection error:', event);
       if (retryCountRef.current < maxRetries) {
         retryCountRef.current++;
-        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 10000);
+        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 5000);
         console.log(`[WebSocket] Retrying in ${delay}ms (attempt ${retryCountRef.current}/${maxRetries})`);
         setError(`Connecting... (attempt ${retryCountRef.current}/${maxRetries})`);
         retryTimeoutRef.current = setTimeout(() => {
           connect();
         }, delay);
       } else {
-        console.error('[WebSocket] Max retries reached');
-        setError('Connection failed. Please refresh the page.');
+        console.log('[WebSocket] Max retries reached, switching to HTTP polling fallback');
+        connectWithPolling();
       }
     };
     
@@ -438,11 +482,14 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       
       if (event.code !== 1000 && retryCountRef.current < maxRetries) {
         retryCountRef.current++;
-        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 10000);
+        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 5000);
         console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${retryCountRef.current}/${maxRetries})`);
         retryTimeoutRef.current = setTimeout(() => {
           connect();
         }, delay);
+      } else if (event.code !== 1000) {
+        console.log('[WebSocket] Connection lost, switching to HTTP polling fallback');
+        connectWithPolling();
       }
     };
 
@@ -453,7 +500,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
       ws.close();
     };
-  }, [roomId, userId, role, createPeerConnection, closePeerConnection, closeAllPeerConnections]);
+  }, [roomId, userId, role, createPeerConnection, closePeerConnection, closeAllPeerConnections, connectWithPolling, handleSignalingMessage]);
 
   // Check if role can broadcast (artist, engineer, or producer)
   const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
