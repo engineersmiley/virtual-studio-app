@@ -466,7 +466,8 @@ export async function registerRoutes(
       }
       
       // Generate token - bind to the existing artist's userId for attribution
-      const token = crypto.randomBytes(32).toString('hex');
+      // Generate a short, easy-to-share token (8 characters)
+      const token = crypto.randomBytes(4).toString('hex').toUpperCase();
       const expiresAt = Date.now() + 4 * 60 * 60 * 1000; // 4 hours
       
       const tokenData: AgentToken = {
