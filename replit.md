@@ -25,8 +25,16 @@ Preferred communication style: Simple, everyday language.
 - **Runtime**: Node.js with Express
 - **Language**: TypeScript (ESM modules)
 - **API Pattern**: RESTful endpoints defined in shared route contracts
-- **Real-time**: WebSocket server for WebRTC signaling (room-based peer connections)
+- **Real-time**: WebSocket server for WebRTC signaling with HTTP polling fallback
 - **File Handling**: Multer for recording uploads (stored in /uploads directory)
+
+### Signaling Transport
+The app uses WebSocket for real-time signaling with automatic HTTP polling fallback:
+- **WebSocket Primary**: Attempts connection with 3 retries and exponential backoff (max 5s)
+- **HTTP Polling Fallback**: If WebSocket fails, switches to HTTP polling (500ms interval)
+- **Polling Endpoints**: `/api/signal/join`, `/api/signal/poll`, `/api/signal/send`, `/api/signal/leave`
+- **Transport Helper**: `isTransportOpen()` function handles both WebSocket and PollingTransport states
+- **Use Case**: Custom domains that return 502 for WebSocket still work via HTTP polling
 
 ### Data Layer
 - **Database**: PostgreSQL
