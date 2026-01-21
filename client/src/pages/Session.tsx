@@ -91,6 +91,7 @@ function SessionContent() {
   const [agentConnected, setAgentConnected] = useState(false);
   const [fullControlActive, setFullControlActive] = useState(false);
   const [controlPending, setControlPending] = useState(false);
+  const [tokenLoading, setTokenLoading] = useState(false);
   
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
@@ -358,6 +359,45 @@ function SessionContent() {
     navigator.clipboard.writeText(roomId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const getAgentToken = async () => {
+    if (role !== 'engineer') return;
+    
+    setTokenLoading(true);
+    try {
+      const email = localStorage.getItem('userEmail') || '';
+      const response = await fetch('/api/agent/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionCode: roomId, email })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        toast({
+          title: 'Token Error',
+          description: data.error || 'Failed to get agent token',
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      await navigator.clipboard.writeText(data.token);
+      toast({
+        title: 'Token Copied!',
+        description: 'Agent token copied to clipboard. Paste it in the Virtual Studio Agent app.',
+      });
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: 'Failed to get agent token',
+        variant: 'destructive'
+      });
+    } finally {
+      setTokenLoading(false);
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -794,6 +834,19 @@ function SessionContent() {
                   {controlMode ? 'Pointer On' : 'Pointer'}
                   {!hasRemoteStream && <span className="text-xs ml-1">(waiting)</span>}
                 </button>
+                
+                {/* Get Agent Token - When agent is not connected */}
+                {!agentConnected && (
+                  <button
+                    onClick={getAgentToken}
+                    disabled={tokenLoading}
+                    data-testid="button-get-agent-token"
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
+                  >
+                    <Copy size={20} />
+                    {tokenLoading ? 'Getting...' : 'Get Token'}
+                  </button>
+                )}
                 
                 {/* Full Control - When agent is connected */}
                 {agentConnected && (
