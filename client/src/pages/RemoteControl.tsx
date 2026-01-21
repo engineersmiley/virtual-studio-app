@@ -5,14 +5,15 @@ import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, 
 import { Link } from "wouter";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 
-const AGENT_VERSION = "1.0.1";
+const AGENT_VERSION = "1.0.7";
 
-// Download URLs - Google Drive direct download links
+// Download URLs - GitHub releases (always gets latest)
+const GITHUB_REPO = "engineersmiley/virtual-studio-app";
 const DOWNLOAD_URLS = {
-  windows: "https://drive.google.com/uc?export=download&id=1BS44hXBeBDed88xvp-9TDFJ9tiD5YbF7",
-  mac: "https://drive.google.com/uc?export=download&id=1j4Wo5zKn5rZmGHndralZgQ8t_0GMYu3n",
-  macLegacy: "https://drive.google.com/uc?export=download&id=1vpDFOQhDJloGhaAkZxAKmA0vgYJYapiJ",
-  linux: "https://drive.google.com/uc?export=download&id=1hbiFS_Ism8HR87H1FI66UNHrfeNH5zsW",
+  windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
+  mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
+  macLegacy: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent-legacy.dmg`,
+  linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
 };
 
 export default function RemoteControl() {
