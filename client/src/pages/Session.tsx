@@ -922,37 +922,17 @@ function SessionContent() {
                   </div>
                 </div>
                 
-                {/* Get Agent Token - When agent is not connected */}
+                {/* Download Agent - When agent is not connected */}
                 {!agentConnected && (
-                  <>
-                    <button
-                      onClick={getAgentToken}
-                      disabled={tokenLoading}
-                      data-testid="button-get-agent-token"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
-                    >
-                      <Copy size={20} />
-                      {tokenLoading ? 'Getting...' : 'Get Token'}
-                    </button>
-                    
-                    {/* Show generated token */}
-                    {generatedToken && (
-                      <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/50">
-                        <span className="text-amber-400 text-sm">Token:</span>
-                        <span className="font-mono font-bold text-white text-lg tracking-wider">{generatedToken}</span>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(generatedToken);
-                            toast({ title: 'Copied!' });
-                          }}
-                          className="p-1 hover:bg-white/10 rounded"
-                          data-testid="button-engineer-copy-token"
-                        >
-                          <Copy size={16} className="text-amber-400" />
-                        </button>
-                      </div>
-                    )}
-                  </>
+                  <a
+                    href="/remote-control"
+                    target="_blank"
+                    data-testid="link-download-agent"
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                  >
+                    <Monitor size={20} />
+                    Get Desktop Agent
+                  </a>
                 )}
                 
                 {/* Full Control - When agent is connected */}
