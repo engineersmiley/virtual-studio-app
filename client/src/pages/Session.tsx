@@ -94,6 +94,10 @@ function SessionContent() {
   const [tokenLoading, setTokenLoading] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   
+  // Simple remote control toggle (for artists)
+  const [remoteControlAllowed, setRemoteControlAllowed] = useState(false);
+  const [togglingRemoteControl, setTogglingRemoteControl] = useState(false);
+  
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
   const producerAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -402,6 +406,51 @@ function SessionContent() {
       });
     } finally {
       setTokenLoading(false);
+    }
+  };
+
+  // Toggle remote control (for artists - simple on/off, no token needed)
+  const toggleRemoteControl = async () => {
+    if (role !== 'artist') return;
+    
+    setTogglingRemoteControl(true);
+    try {
+      const endpoint = remoteControlAllowed 
+        ? `/api/session/${roomId}/disable-remote-control`
+        : `/api/session/${roomId}/enable-remote-control`;
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to toggle remote control',
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      setRemoteControlAllowed(data.enabled);
+      toast({
+        title: data.enabled ? 'Remote Control Enabled' : 'Remote Control Disabled',
+        description: data.enabled 
+          ? 'Your engineer can now connect the desktop app using just the room code.'
+          : 'Remote control has been disabled.',
+      });
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: 'Failed to toggle remote control',
+        variant: 'destructive'
+      });
+    } finally {
+      setTogglingRemoteControl(false);
     }
   };
 
@@ -806,32 +855,25 @@ function SessionContent() {
                   </button>
                 )}
                 
-                {/* Generate Token for Engineer - Artist can share this with their engineer */}
+                {/* Simple Allow Control Toggle - no token needed */}
                 <button
-                  onClick={getAgentToken}
-                  disabled={tokenLoading}
-                  data-testid="button-artist-generate-token"
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
+                  onClick={toggleRemoteControl}
+                  disabled={togglingRemoteControl}
+                  data-testid="button-allow-control"
+                  className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50 ${
+                    remoteControlAllowed
+                      ? 'bg-green-600 text-white shadow-lg shadow-green-500/30 animate-pulse'
+                      : 'bg-gradient-to-r from-amber-600 to-amber-500 text-white hover:brightness-110'
+                  }`}
                 >
-                  <Copy size={20} />
-                  {tokenLoading ? 'Generating...' : 'Get Engineer Token'}
+                  <MousePointer2 size={20} />
+                  {togglingRemoteControl ? 'Updating...' : remoteControlAllowed ? 'Control Allowed' : 'Allow Control'}
                 </button>
                 
-                {/* Show generated token */}
-                {generatedToken && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/50">
-                    <span className="text-amber-400 text-sm">Token:</span>
-                    <span className="font-mono font-bold text-white text-lg tracking-wider">{generatedToken}</span>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(generatedToken);
-                        toast({ title: 'Copied!' });
-                      }}
-                      className="p-1 hover:bg-white/10 rounded"
-                      data-testid="button-copy-token"
-                    >
-                      <Copy size={16} className="text-amber-400" />
-                    </button>
+                {/* Status message when control is allowed */}
+                {remoteControlAllowed && (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500/20 border border-green-500/50">
+                    <span className="text-green-400 text-sm">Engineer can connect with just the room code: <span className="font-mono font-bold">{roomId}</span></span>
                   </div>
                 )}
               </div>

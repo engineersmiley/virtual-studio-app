@@ -93,10 +93,15 @@ async function checkAccessibilityPermissions() {
 
 async function connectViaPolling(sessionCode, sessionToken) {
   try {
+    // Connect with or without token - server supports simple mode
+    const body = sessionToken 
+      ? { token: sessionToken, sessionCode }
+      : { sessionCode }; // Simple mode - no token needed
+    
     const response = await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/connect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: sessionToken, sessionCode })
+      body: JSON.stringify(body)
     });
     
     if (!response.ok) {
@@ -107,17 +112,22 @@ async function connectViaPolling(sessionCode, sessionToken) {
     usePolling = true;
     isConnected = true;
     currentSession = sessionCode;
-    currentToken = sessionToken;
+    currentToken = sessionToken || null; // May be null in simple mode
     mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
     updateTrayMenu();
     
     // Start polling for messages
     pollingInterval = setInterval(async () => {
       try {
+        // Poll with or without token
+        const pollBody = currentToken 
+          ? { token: currentToken, sessionCode: currentSession }
+          : { sessionCode: currentSession };
+        
         const pollResponse = await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: currentToken, sessionCode: currentSession })
+          body: JSON.stringify(pollBody)
         });
         
         if (pollResponse.ok) {

@@ -885,7 +885,7 @@ export async function registerRoutes(
     }
   });
   
-  // Agent poll for messages
+  // Agent poll for messages (works with or without token)
   app.post('/api/agent/poll', (req, res) => {
     try {
       const { token, sessionCode } = req.body;
@@ -896,10 +896,18 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Agent not connected' });
       }
       
-      // Verify token still valid
-      const tokenData = agentTokens.get(token);
-      if (!tokenData || tokenData.sessionCode !== normalizedCode) {
-        return res.status(401).json({ error: 'Invalid token' });
+      // Verify token if provided, otherwise check simple mode
+      if (token) {
+        const tokenData = agentTokens.get(token);
+        if (!tokenData || tokenData.sessionCode !== normalizedCode) {
+          return res.status(401).json({ error: 'Invalid token' });
+        }
+      } else {
+        // Simple mode - verify remote control is still enabled
+        const rcData = remoteControlEnabled.get(normalizedCode);
+        if (!rcData) {
+          return res.status(403).json({ error: 'Remote control disabled' });
+        }
       }
       
       agent.lastPoll = Date.now();
