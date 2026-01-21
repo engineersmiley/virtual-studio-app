@@ -5,14 +5,14 @@ import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, 
 import { Link } from "wouter";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 
-const AGENT_VERSION = "1.0.16";
+const AGENT_VERSION = "1.0.18";
 
 // Download URLs - GitHub releases (always gets latest)
 const GITHUB_REPO = "engineersmiley/virtual-studio-app";
 const DOWNLOAD_URLS = {
   windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
   mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
-  macLegacy: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent-legacy.dmg`,
+  macLegacy: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent-legacy.zip`,
   linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
 };
 
@@ -102,7 +102,7 @@ export default function RemoteControl() {
                     className="w-full text-xs"
                     data-testid="button-download-agent-mac-legacy"
                   >
-                    <span>macOS 10.11-10.14 (Legacy)</span>
+                    <span>macOS 10.11-10.14 (Legacy .zip)</span>
                   </Button>
                 </a>
               </div>
