@@ -640,11 +640,16 @@ function SessionContent() {
                           }}
                         >
                           <div className="relative">
-                            <MousePointer2 className="w-6 h-6 text-primary drop-shadow-lg" style={{ filter: 'drop-shadow(0 0 4px hsl(var(--primary)))' }} />
-                            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">
-                              Engineer
+                            {/* Large glowing pointer */}
+                            <MousePointer2 className="w-10 h-10 text-cyan-400 drop-shadow-lg" style={{ filter: 'drop-shadow(0 0 8px #00ffff) drop-shadow(0 0 16px #00ffff)' }} />
+                            {/* Label */}
+                            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm font-bold bg-cyan-500 text-black px-3 py-1 rounded-full shadow-lg">
+                              Engineer pointing here
                             </div>
-                            <div className="absolute inset-0 w-8 h-8 -m-1 rounded-full bg-primary/30 animate-ping" />
+                            {/* Ping animation */}
+                            <div className="absolute inset-0 w-12 h-12 -m-1 rounded-full bg-cyan-400/40 animate-ping" />
+                            {/* Static glow ring */}
+                            <div className="absolute inset-0 w-16 h-16 -m-3 rounded-full bg-cyan-400/20 animate-pulse" />
                           </div>
                         </motion.div>
                       );
@@ -853,21 +858,27 @@ function SessionContent() {
                 )}
                 
                 {/* Control Mode Toggle - Pointer overlay */}
-                <button
-                  onClick={() => setControlMode(!controlMode)}
-                  data-testid="button-toggle-control"
-                  className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
-                    !hasRemoteStream ? 'opacity-60 cursor-not-allowed' : ''
-                  } ${
-                    controlMode 
-                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30' 
-                      : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:brightness-110'
-                  }`}
-                >
-                  <MousePointer2 size={20} />
-                  {controlMode ? 'Pointer On' : 'Pointer'}
-                  {!hasRemoteStream && <span className="text-xs ml-1">(waiting)</span>}
-                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => setControlMode(!controlMode)}
+                    data-testid="button-toggle-control"
+                    className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
+                      !hasRemoteStream ? 'opacity-60 cursor-not-allowed' : ''
+                    } ${
+                      controlMode 
+                        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 animate-pulse' 
+                        : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:brightness-110'
+                    }`}
+                  >
+                    <MousePointer2 size={20} />
+                    {controlMode ? 'Pointer ON - Move mouse over video!' : 'Show Pointer'}
+                    {!hasRemoteStream && <span className="text-xs ml-1">(waiting)</span>}
+                  </button>
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-black/90 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+                    Click to show your pointer on artist's screen - no app needed!
+                  </div>
+                </div>
                 
                 {/* Get Agent Token - When agent is not connected */}
                 {!agentConnected && (
