@@ -154,7 +154,6 @@ jobs:
           cd dist
           for f in *.exe; do mv "$f" "Virtual.Studio.Agent.Setup.exe" 2>/dev/null || true; done
           for f in *.AppImage; do mv "$f" "Virtual.Studio.Agent.AppImage" 2>/dev/null || true; done
-          # Handle macOS DMGs - legacy has "Legacy" in the name
           for f in *Legacy*.dmg; do mv "$f" "Virtual.Studio.Agent-legacy.dmg" 2>/dev/null || true; done
           for f in *.dmg; do 
             if [[ "$f" != "Virtual.Studio.Agent-legacy.dmg" ]]; then
