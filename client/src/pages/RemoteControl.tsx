@@ -5,13 +5,14 @@ import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, 
 import { Link } from "wouter";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 
-const AGENT_VERSION = "1.0.15";
+const AGENT_VERSION = "1.0.16";
 
 // Download URLs - GitHub releases (always gets latest)
 const GITHUB_REPO = "engineersmiley/virtual-studio-app";
 const DOWNLOAD_URLS = {
   windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
   mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
+  macLegacy: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent-legacy.dmg`,
   linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
 };
 
@@ -72,22 +73,39 @@ export default function RemoteControl() {
                   <span className="text-xs opacity-70">.exe installer</span>
                 </Button>
               </a>
-              <a 
-                href={DOWNLOAD_URLS.mac}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full"
-              >
-                <Button 
-                  size="lg" 
-                  className="w-full h-auto py-4 flex-col gap-2"
-                  data-testid="button-download-agent-mac"
+              <div className="flex flex-col gap-2">
+                <a 
+                  href={DOWNLOAD_URLS.mac}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full"
                 >
-                  <Apple className="w-8 h-8" />
-                  <span className="font-semibold">macOS</span>
-                  <span className="text-xs opacity-70">.dmg installer</span>
-                </Button>
-              </a>
+                  <Button 
+                    size="lg" 
+                    className="w-full h-auto py-4 flex-col gap-2"
+                    data-testid="button-download-agent-mac"
+                  >
+                    <Apple className="w-8 h-8" />
+                    <span className="font-semibold">macOS 11+</span>
+                    <span className="text-xs opacity-70">.dmg installer</span>
+                  </Button>
+                </a>
+                <a 
+                  href={DOWNLOAD_URLS.macLegacy}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full"
+                >
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="w-full text-xs"
+                    data-testid="button-download-agent-mac-legacy"
+                  >
+                    <span>macOS 10.11-10.14 (Legacy)</span>
+                  </Button>
+                </a>
+              </div>
               <a 
                 href={DOWNLOAD_URLS.linux}
                 target="_blank"
@@ -108,6 +126,12 @@ export default function RemoteControl() {
             <p className="text-xs text-muted-foreground mt-4 text-center">
               Version {AGENT_VERSION} - Download the installer for your operating system above
             </p>
+            <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+              <p className="text-xs text-yellow-200/80 text-center">
+                <strong>Legacy Mac Note:</strong> The legacy macOS version uses older software that no longer receives security updates. 
+                We recommend upgrading to macOS 11 or later for best security.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
