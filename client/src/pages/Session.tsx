@@ -1041,8 +1041,8 @@ function SessionContent() {
                 </div>
                 {!agentConnected && (
                   <div className="mt-3 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs text-yellow-400">
-                    Artist needs to download and run the Desktop Agent for full control.
-                    <a href="/remote-control" target="_blank" className="text-primary underline ml-1">Get Desktop Agent</a>
+                    <strong>Waiting for Artist:</strong> The artist needs to download and run the Desktop Agent on their computer.
+                    <a href="/remote-control" target="_blank" className="text-primary underline ml-1">Share this link with artist</a>
                   </div>
                 )}
                 {agentConnected && !fullControlActive && (

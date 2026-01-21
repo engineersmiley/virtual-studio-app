@@ -177,15 +177,31 @@ export function PhoneControl({
       </CardHeader>
       <CardContent className="space-y-4">
         {!agentConnected && (
-          <div className="text-center py-2 px-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm mb-2">
-            Desktop agent not connected - Artist needs to run Virtual Studio Agent for full control
+          <div className="py-3 px-4 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm mb-2">
+            <p className="font-bold mb-2">Setup Required:</p>
+            <ol className="list-decimal list-inside space-y-1 text-xs">
+              <li>Artist opens <a href="/remote-control" target="_blank" className="text-primary underline">this link</a> on their COMPUTER</li>
+              <li>Artist downloads and runs the Desktop Agent app</li>
+              <li>Artist enters room code: <span className="font-mono text-primary">{sessionCode}</span></li>
+              <li>Then you can request control from here!</li>
+            </ol>
+            <p className="text-xs mt-2 text-muted-foreground">You control from your phone. Artist runs app on their computer.</p>
           </div>
         )}
         {!controlEnabled ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <MousePointer className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>Request control to start</p>
-            <p className="text-xs mt-2">The artist will be asked to allow control</p>
+          <div className="text-center py-6 text-muted-foreground">
+            <MousePointer className="w-10 h-10 mx-auto mb-3 opacity-50" />
+            {agentConnected ? (
+              <>
+                <p className="font-semibold text-primary">Agent Connected!</p>
+                <p className="text-xs mt-1">Click "Request Control" above - artist will see a popup to allow you</p>
+              </>
+            ) : (
+              <>
+                <p>Waiting for artist to connect Desktop Agent</p>
+                <p className="text-xs mt-1">See setup steps above</p>
+              </>
+            )}
           </div>
         ) : (
           <>
