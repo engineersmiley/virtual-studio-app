@@ -246,14 +246,13 @@
     
     <div id="connectForm">
       <div class="input-group">
-        <label>Session Code</label>
+        <label>Session Code (Room Code)</label>
         <input type="text" id="sessionCode" placeholder="Enter 6-character code" maxlength="6">
       </div>
       
-      <div class="input-group">
-        <label>Session Token (from Virtual Studio)</label>
-        <input type="text" id="sessionToken" placeholder="Paste token here">
-      </div>
+      <p style="font-size: 12px; color: #888; margin-bottom: 15px; text-align: center;">
+        Just enter the room code! Artist must click "Allow Control" first.
+      </p>
       
       <button class="btn btn-primary" id="connectBtn">Connect to Session</button>
       
@@ -278,18 +277,16 @@
     <div class="instructions">
       <h3>How it works:</h3>
       <ol>
-        <li>Open Virtual Studio in your browser</li>
-        <li>Join or create a session as an Artist</li>
-        <li>Copy the session code and token</li>
-        <li>Paste them here and click Connect</li>
-        <li>When your engineer requests control, approve it</li>
+        <li>Artist joins Virtual Studio session</li>
+        <li>Artist clicks "Allow Control" button</li>
+        <li>Enter the room code here and click Connect</li>
+        <li>When engineer requests control, approve it</li>
       </ol>
     </div>
   </div>
   
   <script>
     const sessionCodeInput = document.getElementById('sessionCode');
-    const sessionTokenInput = document.getElementById('sessionToken');
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const stopControlBtn = document.getElementById('stopControlBtn');
@@ -304,15 +301,9 @@
     
     connectBtn.addEventListener('click', async () => {
       const sessionCode = sessionCodeInput.value.trim().toUpperCase();
-      const sessionToken = sessionTokenInput.value.trim();
       
       if (!sessionCode || sessionCode.length !== 6) {
         showError('Please enter a valid 6-character session code');
-        return;
-      }
-      
-      if (!sessionToken) {
-        showError('Please enter the session token');
         return;
       }
       
@@ -321,9 +312,10 @@
       connectBtn.textContent = 'Connecting...';
       
       try {
-        const result = await window.agent.connect(sessionCode, sessionToken);
+        // Connect with just session code - no token needed!
+        const result = await window.agent.connect(sessionCode, '');
         if (!result.success) {
-          showError(result.error || 'Connection failed');
+          showError(result.error || 'Connection failed. Make sure artist clicked "Allow Control".');
           connectBtn.disabled = false;
           connectBtn.textContent = 'Connect to Session';
         }
