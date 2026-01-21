@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.0.17)'
+        description: 'Version tag (e.g., v1.0.18)'
         required: true
-        default: 'v1.0.17'
+        default: 'v1.0.18'
 
 jobs:
   build-mac-legacy:
@@ -37,13 +37,13 @@ jobs:
       - name: Rename legacy artifact
         run: |
           cd virtual-studio-agent/dist
-          for f in *.dmg; do mv "$f" "Virtual.Studio.Agent-legacy.dmg"; done
+          for f in *.zip; do mv "$f" "Virtual.Studio.Agent-legacy.zip"; done
           ls -la
 
       - name: Upload to existing release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.inputs.version }}
-          files: virtual-studio-agent/dist/Virtual.Studio.Agent-legacy.dmg
+          files: virtual-studio-agent/dist/Virtual.Studio.Agent-legacy.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
