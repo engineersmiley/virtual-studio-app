@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal } from "lucide-react";
+import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand } from "lucide-react";
 import { Link } from "wouter";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 
@@ -132,6 +132,71 @@ export default function RemoteControl() {
                 We recommend upgrading to macOS 11 or later for best security.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6 border-cyan-500/30 bg-cyan-500/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Smartphone className="w-5 h-5 text-cyan-400" />
+              Phone Control
+              <Badge variant="outline" className="ml-2 border-cyan-500/50 text-cyan-400">No Download Needed</Badge>
+            </CardTitle>
+            <CardDescription>
+              Control your artist's computer directly from your phone - no app download required!
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Hand className="w-4 h-4 text-cyan-400" />
+                  Touch Controls
+                </h3>
+                <ul className="text-sm text-muted-foreground space-y-2">
+                  <li className="flex items-center gap-2">
+                    <MousePointer className="w-4 h-4" />
+                    <span>Swipe on touchpad to move mouse</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-4 h-4 flex items-center justify-center text-xs">1x</span>
+                    <span>Tap once to left-click</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-4 h-4 flex items-center justify-center text-xs">2x</span>
+                    <span>Double-tap to double-click</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-4 h-4 flex items-center justify-center text-xs font-bold">H</span>
+                    <span>Long press for right-click</span>
+                  </li>
+                </ul>
+              </div>
+              <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Keyboard className="w-4 h-4 text-cyan-400" />
+                  Virtual Keyboard
+                </h3>
+                <ul className="text-sm text-muted-foreground space-y-2">
+                  <li>Full keyboard with all keys</li>
+                  <li>Modifier keys: Ctrl, Alt, Shift, Cmd</li>
+                  <li>Arrow keys for navigation</li>
+                  <li>Quick shortcuts: Copy, Paste, Undo, Save</li>
+                </ul>
+              </div>
+            </div>
+            <div className="mt-4 p-4 bg-primary/10 border border-primary/30 rounded-lg">
+              <h4 className="font-semibold mb-2 text-sm">How to Use Phone Control:</h4>
+              <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
+                <li>Join a session as an Engineer on your phone</li>
+                <li>Scroll down to find the "Phone Control" panel</li>
+                <li>Click "Request Control" to ask the artist for permission</li>
+                <li>Once approved, use the touchpad and keyboard to control their computer</li>
+              </ol>
+            </div>
+            <p className="text-xs text-muted-foreground mt-4 text-center">
+              Works on any phone or tablet - iPhone, Android, iPad, and more!
+            </p>
           </CardContent>
         </Card>
 
