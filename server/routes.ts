@@ -715,7 +715,7 @@ export async function registerRoutes(
   app.post('/api/signal/send', (req, res) => {
     try {
       const { roomId, userId, role, type, payload } = req.body;
-      console.log('[Signal] POST /api/signal/send - type:', type, 'room:', roomId, 'role:', role);
+      console.log('[Signal] POST /api/signal/send - type:', type, 'room:', roomId, 'role:', role, 'payload:', JSON.stringify(payload).slice(0, 200));
       
       if (!roomId || !userId || !type) {
         return res.status(400).json({ error: 'roomId, userId, and type required' });
@@ -755,9 +755,7 @@ export async function registerRoutes(
         // Try WebSocket agent first
         if (wsAgent && wsAgent.ws.readyState === WebSocket.OPEN) {
           const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
-          if (type !== 'mouse-move') {
-            console.log('[Control Polling] Forwarding to WS agent:', type);
-          }
+          console.log('[Control Polling] Forwarding to WS agent:', type, 'session:', normalizedRoom);
           wsAgent.ws.send(JSON.stringify(controlMessage));
           return res.json({ success: true });
         }
@@ -765,14 +763,12 @@ export async function registerRoutes(
         // Fallback to HTTP polling agent
         if (httpAgent) {
           const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
-          if (type !== 'mouse-move') {
-            console.log('[Control Polling] Queueing for HTTP agent:', type);
-          }
+          console.log('[Control Polling] Queueing for HTTP agent:', type, 'session:', normalizedRoom);
           httpAgent.messages.push(controlMessage);
           return res.json({ success: true });
         }
         
-        console.log('[Control Polling] Blocked: no agent for session', normalizedRoom);
+        console.log('[Control Polling] Blocked: no agent for session', normalizedRoom, 'wsAgent:', !!wsAgent, 'httpAgent:', !!httpAgent);
         return res.json({ success: false, reason: 'no agent' });
       }
       
