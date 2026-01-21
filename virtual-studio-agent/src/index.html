@@ -58,7 +58,7 @@
     </div>
     <div id="connectForm">
       <div class="input-group">
-        <label>Session Code (Room Code)</label>
+        <label>Room Code</label>
         <input type="text" id="sessionCode" placeholder="Enter 6-character code" maxlength="6">
       </div>
       <p style="font-size: 12px; color: #888; margin-bottom: 15px; text-align: center;">
@@ -102,83 +102,33 @@
     const controlText = document.getElementById('controlText');
     const controlInfo = document.getElementById('controlInfo');
     const errorMessage = document.getElementById('errorMessage');
-    
     connectBtn.addEventListener('click', async () => {
       const sessionCode = sessionCodeInput.value.trim().toUpperCase();
-      if (!sessionCode || sessionCode.length !== 6) {
-        showError('Please enter a valid 6-character session code');
-        return;
-      }
+      if (!sessionCode || sessionCode.length !== 6) { showError('Please enter a valid 6-character session code'); return; }
       hideError();
       connectBtn.disabled = true;
       connectBtn.textContent = 'Connecting...';
       try {
         const result = await window.agent.connect(sessionCode, '');
-        if (!result.success) {
-          showError(result.error || 'Connection failed. Make sure artist clicked "Allow Control".');
-          connectBtn.disabled = false;
-          connectBtn.textContent = 'Connect to Session';
-        }
-      } catch (error) {
-        showError('Connection error: ' + error.message);
-        connectBtn.disabled = false;
-        connectBtn.textContent = 'Connect to Session';
-      }
+        if (!result.success) { showError(result.error || 'Connection failed. Make sure artist clicked "Allow Control".'); connectBtn.disabled = false; connectBtn.textContent = 'Connect to Session'; }
+      } catch (error) { showError('Connection error: ' + error.message); connectBtn.disabled = false; connectBtn.textContent = 'Connect to Session'; }
     });
-    
     disconnectBtn.addEventListener('click', async () => { await window.agent.disconnect(); });
     stopControlBtn.addEventListener('click', async () => { await window.agent.stopControl(); });
-    
     window.agent.onConnectionStatus((data) => {
-      if (data.connected) {
-        connectionDot.classList.add('connected');
-        connectionText.textContent = `Connected to ${data.session}`;
-        connectForm.classList.add('hidden');
-        connectedView.classList.remove('hidden');
-        connectBtn.disabled = false;
-        connectBtn.textContent = 'Connect to Session';
-      } else {
-        connectionDot.classList.remove('connected');
-        connectionText.textContent = 'Not Connected';
-        connectForm.classList.remove('hidden');
-        connectedView.classList.add('hidden');
-        controlDot.classList.remove('control-active');
-        controlText.textContent = 'Control Inactive';
-        stopControlBtn.style.display = 'none';
-      }
+      if (data.connected) { connectionDot.classList.add('connected'); connectionText.textContent = `Connected to ${data.session}`; connectForm.classList.add('hidden'); connectedView.classList.remove('hidden'); connectBtn.disabled = false; connectBtn.textContent = 'Connect to Session'; }
+      else { connectionDot.classList.remove('connected'); connectionText.textContent = 'Not Connected'; connectForm.classList.remove('hidden'); connectedView.classList.add('hidden'); controlDot.classList.remove('control-active'); controlText.textContent = 'Control Inactive'; stopControlBtn.style.display = 'none'; }
     });
-    
     window.agent.onControlStatus((data) => {
-      if (data.enabled) {
-        controlDot.classList.add('control-active');
-        controlText.textContent = 'Control Active';
-        controlInfo.innerHTML = '<strong>Remote Control Active</strong>Your engineer can now control your computer. Press the Stop button or press Escape to stop.';
-        stopControlBtn.style.display = 'block';
-      } else {
-        controlDot.classList.remove('control-active');
-        controlText.textContent = 'Control Inactive';
-        controlInfo.innerHTML = '<strong>Waiting for Control Request</strong>When the engineer requests control, you\'ll see a prompt to allow or deny it.';
-        stopControlBtn.style.display = 'none';
-      }
+      if (data.enabled) { controlDot.classList.add('control-active'); controlText.textContent = 'Control Active'; controlInfo.innerHTML = '<strong>Remote Control Active</strong>Your engineer can now control your computer. Press the Stop button or press Escape to stop.'; stopControlBtn.style.display = 'block'; }
+      else { controlDot.classList.remove('control-active'); controlText.textContent = 'Control Inactive'; controlInfo.innerHTML = '<strong>Waiting for Control Request</strong>When the engineer requests control, you\'ll see a prompt to allow or deny it.'; stopControlBtn.style.display = 'none'; }
     });
-    
     window.agent.onError((error) => { showError(error); });
     function showError(message) { errorMessage.textContent = message; errorMessage.classList.remove('hidden'); }
     function hideError() { errorMessage.classList.add('hidden'); }
-    
     async function init() {
       const status = await window.agent.getStatus();
-      if (status.connected) {
-        connectionDot.classList.add('connected');
-        connectionText.textContent = `Connected to ${status.session}`;
-        connectForm.classList.add('hidden');
-        connectedView.classList.remove('hidden');
-        if (status.controlEnabled) {
-          controlDot.classList.add('control-active');
-          controlText.textContent = 'Control Active';
-          stopControlBtn.style.display = 'block';
-        }
-      }
+      if (status.connected) { connectionDot.classList.add('connected'); connectionText.textContent = `Connected to ${status.session}`; connectForm.classList.add('hidden'); connectedView.classList.remove('hidden'); if (status.controlEnabled) { controlDot.classList.add('control-active'); controlText.textContent = 'Control Active'; stopControlBtn.style.display = 'block'; } }
     }
     init();
   </script>
