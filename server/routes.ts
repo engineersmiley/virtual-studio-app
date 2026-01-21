@@ -715,6 +715,8 @@ export async function registerRoutes(
   app.post('/api/signal/send', (req, res) => {
     try {
       const { roomId, userId, role, type, payload } = req.body;
+      console.log('[Signal] POST /api/signal/send - type:', type, 'room:', roomId, 'role:', role);
+      
       if (!roomId || !userId || !type) {
         return res.status(400).json({ error: 'roomId, userId, and type required' });
       }

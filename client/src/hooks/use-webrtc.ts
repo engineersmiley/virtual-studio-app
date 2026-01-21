@@ -744,22 +744,33 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
   // Request full control from agent
   const requestFullControl = useCallback((name: string = 'Engineer') => {
-    if (role !== 'engineer' || !isTransportOpen(wsRef.current)) {
-      console.log('[Control] Cannot request control - not engineer or not connected');
+    console.log('[Control] Request control called, role:', role, 'transport open:', isTransportOpen(wsRef.current));
+    
+    if (role !== 'engineer') {
+      console.log('[Control] Cannot request control - not engineer role');
+      return;
+    }
+    
+    if (!isTransportOpen(wsRef.current)) {
+      console.log('[Control] Cannot request control - transport not connected');
+      // Try to reconnect
+      connect();
       return;
     }
     
     setControlPending(true);
-    wsRef.current!.send(JSON.stringify({
+    const message = {
       type: 'control-request',
       sessionCode: roomId,
       userId,
       fromUserId: userId,
       fromName: name,
       fromRole: 'engineer',
-    }));
-    console.log('[Control] Sent control request');
-  }, [roomId, userId, role]);
+    };
+    console.log('[Control] Sending control request:', message);
+    wsRef.current!.send(JSON.stringify(message));
+    console.log('[Control] Sent control request successfully');
+  }, [roomId, userId, role, connect]);
   
   // End full control
   const endFullControl = useCallback(() => {
