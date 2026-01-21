@@ -5,14 +5,14 @@ import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, 
 import { Link } from "wouter";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 
-const AGENT_VERSION = "1.0.0";
+const AGENT_VERSION = "1.0.1";
 
 // Download URLs - Google Drive direct download links
 const DOWNLOAD_URLS = {
-  windows: "https://drive.google.com/uc?export=download&id=1NkHstI37uzDUA81kShLlegdZbSHUIHsC",
-  mac: "https://drive.google.com/uc?export=download&id=1xAE4a0BqKh8IdmMFxeNrHfSaooqrb369",
-  macLegacy: "https://drive.google.com/uc?export=download&id=1e9bxGLyg9bFgvUCod8KaOazhJUE9tmui",
-  linux: "https://drive.google.com/uc?export=download&id=1g8UoPaABGbtPnV_uOLAqvGApXUbjNdHS",
+  windows: "https://drive.google.com/uc?export=download&id=1BS44hXBeBDed88xvp-9TDFJ9tiD5YbF7",
+  mac: "https://drive.google.com/uc?export=download&id=1j4Wo5zKn5rZmGHndralZgQ8t_0GMYu3n",
+  macLegacy: "https://drive.google.com/uc?export=download&id=1vpDFOQhDJloGhaAkZxAKmA0vgYJYapiJ",
+  linux: "https://drive.google.com/uc?export=download&id=1hbiFS_Ism8HR87H1FI66UNHrfeNH5zsW",
 };
 
 export default function RemoteControl() {
