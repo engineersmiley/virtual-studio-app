@@ -11,11 +11,11 @@ on:
 jobs:
   build-mac-legacy:
     runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.version }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
