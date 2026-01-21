@@ -508,7 +508,7 @@ function SessionContent() {
   const isViewer = role !== 'artist';
 
   return (
-    <div className="min-h-screen p-4 md:p-8 flex flex-col gap-6 max-w-7xl mx-auto">
+    <div className="min-h-screen p-4 md:p-8 flex flex-col gap-4 md:gap-6 max-w-7xl mx-auto pb-8">
       {/* Header */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4">
@@ -560,12 +560,12 @@ function SessionContent() {
       )}
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 flex-1 overflow-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Video/Stream Area */}
-        <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4 min-h-[250px] lg:min-h-[500px]">
+        <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4">
           <div 
             ref={videoContainerRef}
-            className={`flex-1 rounded-xl overflow-hidden bg-black/50 relative ${controlMode && role === 'engineer' ? 'cursor-crosshair' : ''}`}
+            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${controlMode && role === 'engineer' ? 'cursor-crosshair' : ''}`}
             onClick={(e) => {
               if (role === 'engineer' && controlMode && hasRemoteStream && remoteVideoRef.current) {
                 // Calculate normalized coordinates accounting for object-contain letterboxing
