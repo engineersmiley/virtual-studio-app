@@ -1236,33 +1236,39 @@ export async function registerRoutes(
         switch (message.type) {
           case 'control-response': {
             // Artist responded to control request
+            console.log('[Control] Control response received, allowed:', message.allowed, 'session:', agentSession);
+            controlPermissions.set(agentSession!, message.allowed);
+            
             const wsRoom = rooms.get(agentSession!);
+            console.log('[Control] WebSocket room found:', !!wsRoom, 'size:', wsRoom?.size || 0);
             if (wsRoom) {
-              controlPermissions.set(agentSession!, message.allowed);
-              console.log('[Control] Control response received, allowed:', message.allowed, 'session:', agentSession);
-              
               // Notify engineers in the WebSocket room
               wsRoom.forEach((participant) => {
+                console.log('[Control] WS participant:', participant.role, 'readyState:', participant.ws.readyState);
                 if (participant.role === 'engineer' && participant.ws.readyState === WebSocket.OPEN) {
                   participant.ws.send(JSON.stringify({
                     type: 'control-response',
                     allowed: message.allowed,
                     sessionCode: agentSession,
                   }));
+                  console.log('[Control] Sent control-response to WS engineer');
                 }
               });
             }
             
             // Also notify engineers using HTTP polling
             const pollingRoom = pollingRooms.get(agentSession!);
+            console.log('[Control] Polling room found:', !!pollingRoom, 'size:', pollingRoom?.size || 0);
             if (pollingRoom) {
               pollingRoom.forEach((participant) => {
+                console.log('[Control] Polling participant:', participant.role);
                 if (participant.role === 'engineer') {
                   participant.messages.push({
                     type: 'control-response',
                     allowed: message.allowed,
                     sessionCode: agentSession,
                   });
+                  console.log('[Control] Queued control-response for polling engineer');
                 }
               });
             }
