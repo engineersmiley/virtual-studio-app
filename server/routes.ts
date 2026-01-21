@@ -740,17 +740,9 @@ export async function registerRoutes(
           return res.json({ success: false, reason: 'not engineer' });
         }
         
-        // Find the agent for this session
-        const agent = agentConnections.get(normalizedRoom);
-        if (!agent) {
-          console.log('[Control Polling] Blocked: no agent for session', normalizedRoom);
-          return res.json({ success: false, reason: 'no agent' });
-        }
-        
-        if (agent.ws.readyState !== WebSocket.OPEN) {
-          console.log('[Control Polling] Blocked: agent WS not open');
-          return res.json({ success: false, reason: 'agent not connected' });
-        }
+        // Find the agent for this session - check both WebSocket and polling agents
+        const wsAgent = agentConnections.get(normalizedRoom);
+        const httpAgent = pollingAgents.get(normalizedRoom);
         
         // For control requests and ends, always forward. For other commands, check permission
         if (type !== 'control-request' && type !== 'control-end' && !controlPermissions.get(normalizedRoom)) {
@@ -758,14 +750,28 @@ export async function registerRoutes(
           return res.json({ success: false, reason: 'control not permitted' });
         }
         
-        // Forward to agent
-        const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
-        if (type !== 'mouse-move') {
-          console.log('[Control Polling] Forwarding to agent:', type);
+        // Try WebSocket agent first
+        if (wsAgent && wsAgent.ws.readyState === WebSocket.OPEN) {
+          const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
+          if (type !== 'mouse-move') {
+            console.log('[Control Polling] Forwarding to WS agent:', type);
+          }
+          wsAgent.ws.send(JSON.stringify(controlMessage));
+          return res.json({ success: true });
         }
-        agent.ws.send(JSON.stringify(controlMessage));
         
-        return res.json({ success: true });
+        // Fallback to HTTP polling agent
+        if (httpAgent) {
+          const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
+          if (type !== 'mouse-move') {
+            console.log('[Control Polling] Queueing for HTTP agent:', type);
+          }
+          httpAgent.messages.push(controlMessage);
+          return res.json({ success: true });
+        }
+        
+        console.log('[Control Polling] Blocked: no agent for session', normalizedRoom);
+        return res.json({ success: false, reason: 'no agent' });
       }
       
       const message = { type, userId, role, payload };
