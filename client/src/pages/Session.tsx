@@ -1014,6 +1014,48 @@ function SessionContent() {
                 )}
               </div>
               
+              {/* Control Status Panel - shows what's happening */}
+              <div className="w-full mt-4 p-4 rounded-xl bg-card border border-white/10">
+                <h3 className="text-sm font-bold mb-3 text-primary flex items-center gap-2">
+                  <Zap size={16} />
+                  Control Status
+                </h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span>Session: {connected ? 'Connected' : 'Disconnected'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${agentConnected ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                    <span>Agent: {agentConnected ? 'Online' : 'Not Connected'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${fullControlActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                    <span>Control: {fullControlActive ? 'ACTIVE' : 'Not Active'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${controlPending ? 'bg-yellow-500 animate-pulse' : 'bg-gray-500'}`} />
+                    <span>Request: {controlPending ? 'Pending...' : 'None'}</span>
+                  </div>
+                </div>
+                {!agentConnected && (
+                  <div className="mt-3 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs text-yellow-400">
+                    Artist needs to download and run the Desktop Agent for full control.
+                    <a href="/remote-control" target="_blank" className="text-primary underline ml-1">Get Desktop Agent</a>
+                  </div>
+                )}
+                {agentConnected && !fullControlActive && (
+                  <div className="mt-3 p-2 bg-primary/10 border border-primary/30 rounded text-xs text-primary">
+                    Click "Request Control" below. The artist will see a popup asking for permission.
+                  </div>
+                )}
+                {fullControlActive && (
+                  <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-400">
+                    Control is ACTIVE! Use the touchpad below or move your mouse over the video.
+                  </div>
+                )}
+              </div>
+
               {/* Phone/Touch Control for engineers - available on all devices */}
               <div className="w-full mt-4">
                 <PhoneControl
