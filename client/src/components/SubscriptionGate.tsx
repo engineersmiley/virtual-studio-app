@@ -18,6 +18,12 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
   const [email, setEmail] = useState("");
   const [checkEmail, setCheckEmail] = useState("");
   const { toast } = useToast();
+  
+  // Dev bypass - skip subscription check on development domains
+  const isDev = window.location.hostname.includes('replit.dev') || window.location.hostname === 'localhost';
+  if (isDev) {
+    return <>{children}</>;
+  }
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
