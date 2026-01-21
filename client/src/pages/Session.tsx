@@ -224,6 +224,7 @@ function SessionContent() {
     sendControlEvent,
     requestFullControl,
     endFullControl,
+    sendFullControlCommand,
   } = useWebRTC({
     roomId,
     userId,
