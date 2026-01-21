@@ -1,6 +1,6 @@
 {
   "name": "virtual-studio-agent",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Virtual Studio Remote Control Agent - allows engineers to control artist's computer during sessions",
   "main": "src/main.js",
   "scripts": {
