@@ -193,47 +193,35 @@ function SessionContent() {
     }, 2000);
   }, []);
 
-  // Fullscreen toggle - try video element first (works on iOS), then container
+  // Fullscreen toggle - always use container to preserve click handlers
   const toggleFullscreen = useCallback(() => {
     const container = videoContainerRef.current;
     if (!container) return;
     
-    // Find the video element inside the container
-    const video = container.querySelector('video');
-    
     if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
-      // Try video element first (better iOS support)
+      // Always use container for fullscreen to preserve click/touch handlers
       const enterFullscreen = (el: any) => {
         if (el.requestFullscreen) {
           return el.requestFullscreen();
         } else if (el.webkitRequestFullscreen) {
           return el.webkitRequestFullscreen();
-        } else if (el.webkitEnterFullscreen) {
-          // iOS Safari video-specific
-          el.webkitEnterFullscreen();
-          return Promise.resolve();
         }
         return Promise.reject(new Error('Fullscreen not supported'));
       };
       
-      // Try video first on mobile, container on desktop
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const targetElement = isMobile && video ? video : container;
-      
-      enterFullscreen(targetElement).then(() => {
+      enterFullscreen(container).then(() => {
         setIsFullscreen(true);
       }).catch((err: any) => {
-        console.log('Fullscreen not available:', err.message);
-        // Fallback: maximize in viewport with CSS
-        if (container) {
-          container.style.position = 'fixed';
-          container.style.top = '0';
-          container.style.left = '0';
-          container.style.width = '100vw';
-          container.style.height = '100vh';
-          container.style.zIndex = '9999';
-          setIsFullscreen(true);
-        }
+        console.log('Fullscreen API not available:', err.message);
+        // Fallback: maximize in viewport with CSS (works on all devices)
+        container.style.position = 'fixed';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '100vw';
+        container.style.height = '100vh';
+        container.style.zIndex = '9999';
+        container.style.backgroundColor = 'black';
+        setIsFullscreen(true);
       });
     } else {
       // Exit fullscreen
@@ -244,15 +232,14 @@ function SessionContent() {
         setIsFullscreen(false);
       } else {
         // Undo CSS fallback
-        if (container) {
-          container.style.position = '';
-          container.style.top = '';
-          container.style.left = '';
-          container.style.width = '';
-          container.style.height = '';
-          container.style.zIndex = '';
-          setIsFullscreen(false);
-        }
+        container.style.position = '';
+        container.style.top = '';
+        container.style.left = '';
+        container.style.width = '';
+        container.style.height = '';
+        container.style.zIndex = '';
+        container.style.backgroundColor = '';
+        setIsFullscreen(false);
       }
     }
   }, []);
