@@ -210,28 +210,14 @@ export function PhoneControl({
           </div>
         ) : (
           <>
-            <div 
-              ref={touchPadRef}
-              className="relative bg-muted/50 rounded-lg border-2 border-dashed border-primary/30 touch-none select-none"
-              style={{ height: '200px' }}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-              data-testid="touchpad-area"
-            >
-              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground pointer-events-none">
-                <div className="text-center">
-                  <MousePointer className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Swipe to move mouse</p>
-                  <p className="text-xs">Tap to click</p>
-                </div>
-              </div>
-              <Badge className="absolute bottom-2 right-2 text-xs" variant="outline">
-                {Math.round(mousePosition.x)}, {Math.round(mousePosition.y)}
-              </Badge>
+            <div className="py-4 px-4 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm text-center">
+              <MousePointer className="w-8 h-8 mx-auto mb-2" />
+              <p className="font-bold">Control Active!</p>
+              <p className="text-xs mt-1">Tap directly on the video above to click</p>
+              <p className="text-xs">Drag on the video to move the mouse</p>
             </div>
 
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Button 
                 size="sm" 
                 variant="outline" 
@@ -256,29 +242,27 @@ export function PhoneControl({
               >
                 Double
               </Button>
-              <div className="flex gap-1">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => handleScroll('up')}
-                  data-testid="button-scroll-up"
-                >
-                  <ChevronUp className="w-4 h-4" />
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => handleScroll('down')}
-                  data-testid="button-scroll-down"
-                >
-                  <ChevronDown className="w-4 h-4" />
-                </Button>
-              </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => handleScroll('up')}
+                data-testid="button-scroll-up"
+              >
+                <ChevronUp className="w-4 h-4 mr-1" />
+                Scroll Up
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => handleScroll('down')}
+                data-testid="button-scroll-down"
+              >
+                <ChevronDown className="w-4 h-4 mr-1" />
+                Scroll Down
+              </Button>
               <Button
                 size="sm"
                 variant={showKeyboard ? "default" : "outline"}

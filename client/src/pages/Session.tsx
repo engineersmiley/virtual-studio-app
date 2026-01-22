@@ -268,6 +268,65 @@ function SessionContent() {
     };
   }, []);
 
+  // Direct screen touch control - touch on video to control computer
+  const lastTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  
+  const handleVideoTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!fullControlActive || !wsControlAllowed) return;
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  }, [fullControlActive, wsControlAllowed]);
+  
+  const handleVideoTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!fullControlActive || !wsControlAllowed || !lastTouchRef.current) return;
+    e.preventDefault();
+    
+    const video = remoteVideoRef.current;
+    if (!video) return;
+    
+    const touch = e.touches[0];
+    const rect = video.getBoundingClientRect();
+    
+    // Calculate position relative to video
+    const x = Math.max(0, Math.min(1920, ((touch.clientX - rect.left) / rect.width) * 1920));
+    const y = Math.max(0, Math.min(1080, ((touch.clientY - rect.top) / rect.height) * 1080));
+    
+    sendFullControlCommand({ type: 'mouse-move', x, y });
+    lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  }, [fullControlActive, wsControlAllowed, sendFullControlCommand]);
+  
+  const handleVideoTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!fullControlActive || !wsControlAllowed || !touchStartRef.current) return;
+    
+    const video = remoteVideoRef.current;
+    if (!video) return;
+    
+    const touch = e.changedTouches[0];
+    const rect = video.getBoundingClientRect();
+    const touchDuration = Date.now() - touchStartRef.current.time;
+    const moveDistance = Math.sqrt(
+      Math.pow(touch.clientX - touchStartRef.current.x, 2) +
+      Math.pow(touch.clientY - touchStartRef.current.y, 2)
+    );
+    
+    // If it was a tap (not much movement), click at that position
+    if (moveDistance < 15 && touchDuration < 400) {
+      const x = ((touch.clientX - rect.left) / rect.width) * 1920;
+      const y = ((touch.clientY - rect.top) / rect.height) * 1080;
+      
+      // Move to position then click
+      sendFullControlCommand({ type: 'mouse-move', x, y });
+      setTimeout(() => {
+        sendFullControlCommand({ type: 'mouse-click', button: 'left' });
+      }, 50);
+    }
+    
+    touchStartRef.current = null;
+    lastTouchRef.current = null;
+  }, [fullControlActive, wsControlAllowed, sendFullControlCommand]);
+
   const {
     connected,
     participants,
@@ -788,7 +847,11 @@ function SessionContent() {
                   ref={remoteVideoRef}
                   autoPlay
                   playsInline
-                  className="w-full h-full object-contain"
+                  className={`w-full h-full object-contain ${(fullControlActive || wsControlAllowed) ? 'touch-none' : ''}`}
+                  onTouchStart={handleVideoTouchStart}
+                  onTouchMove={handleVideoTouchMove}
+                  onTouchEnd={handleVideoTouchEnd}
+                  style={{ cursor: (fullControlActive || wsControlAllowed) ? 'crosshair' : 'default' }}
                 />
                 {!hasRemoteStream && !isSharing && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
