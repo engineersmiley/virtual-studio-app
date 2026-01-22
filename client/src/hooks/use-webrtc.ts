@@ -542,7 +542,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           video: { 
             width: { ideal: 1920 }, 
             height: { ideal: 1080 }, 
-            frameRate: { ideal: 60, min: 30 }
+            frameRate: { ideal: 60 }
           },
           audio: {
             echoCancellation: false,
