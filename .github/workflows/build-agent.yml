@@ -165,7 +165,7 @@ jobs:
           for f in *.exe; do mv "$f" "Virtual.Studio.Agent.Setup.exe" 2>/dev/null || true; done
           for f in *.dmg; do mv "$f" "Virtual.Studio.Agent.dmg" 2>/dev/null || true; done
           for f in *.AppImage; do mv "$f" "Virtual.Studio.Agent.AppImage" 2>/dev/null || true; done
-          for f in *.zip; do mv "$f" "Virtual.Studio.Agent.Legacy.zip" 2>/dev/null || true; done
+          for f in *.zip; do mv "$f" "Virtual.Studio.Agent-legacy.zip" 2>/dev/null || true; done
           ls -la
 
       - name: Create Release
@@ -178,12 +178,12 @@ jobs:
             Download the installer for your operating system:
             - **Windows**: Virtual.Studio.Agent.Setup.exe
             - **macOS**: Virtual.Studio.Agent.dmg
-            - **macOS Legacy (10.11-10.14)**: Virtual.Studio.Agent.Legacy.zip
+            - **macOS Legacy (10.11-10.14)**: Virtual.Studio.Agent-legacy.zip
             - **Linux**: Virtual.Studio.Agent.AppImage
           files: |
             dist/Virtual.Studio.Agent.Setup.exe
             dist/Virtual.Studio.Agent.dmg
-            dist/Virtual.Studio.Agent.Legacy.zip
+            dist/Virtual.Studio.Agent-legacy.zip
             dist/Virtual.Studio.Agent.AppImage
           draft: false
           prerelease: false
