@@ -929,17 +929,6 @@ function SessionContent() {
                   </div>
                 )}
                 
-                {/* Fullscreen button for engineers viewing stream */}
-                {role === 'engineer' && hasRemoteStream && (
-                  <button
-                    onClick={toggleFullscreen}
-                    data-testid="button-fullscreen"
-                    className="absolute top-3 right-3 z-20 p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white transition-colors"
-                    title={isFullscreen ? 'Exit Fullscreen' : 'View Fullscreen'}
-                  >
-                    {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-                  </button>
-                )}
               </>
             )}
             
@@ -1113,6 +1102,19 @@ function SessionContent() {
                       {controlPending ? 'Requesting...' : 'Request Control'}
                     </button>
                   )
+                )}
+
+                {/* Fullscreen button */}
+                {hasRemoteStream && (
+                  <button
+                    onClick={toggleFullscreen}
+                    data-testid="button-fullscreen"
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                    title={isFullscreen ? 'Exit Fullscreen' : 'View Fullscreen'}
+                  >
+                    {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                    {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                  </button>
                 )}
 
                 {!recordedBlob ? (
