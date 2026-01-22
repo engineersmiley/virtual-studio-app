@@ -102,6 +102,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
   ];
 
   const createPeerConnection = useCallback((targetUserId: string) => {
@@ -112,7 +114,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       peerConnectionsRef.current.delete(targetUserId);
     }
 
-    const pc = new RTCPeerConnection({ iceServers });
+    const pc = new RTCPeerConnection({ 
+      iceServers,
+      iceCandidatePoolSize: 10,
+    });
 
     pc.onicecandidate = (event) => {
       if (event.candidate && isTransportOpen(wsRef.current)) {
@@ -531,37 +536,48 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       let displayStream: MediaStream | null = null;
       let videoTrack: MediaStreamTrack | null = null;
 
-      // Get screen with system audio (skip video for audio-only)
+      // Get screen with system audio - maximum quality settings
       if (!audioOnly) {
         displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { width: 1920, height: 1080, frameRate: 30 },
+          video: { 
+            width: { ideal: 1920 }, 
+            height: { ideal: 1080 }, 
+            frameRate: { ideal: 60, min: 30 }
+          },
           audio: {
             echoCancellation: false,
             noiseSuppression: false,
             autoGainControl: false,
-          }
+            sampleRate: 48000,
+            sampleSize: 16,
+            channelCount: 2,
+          } as any
         });
         videoTrack = displayStream.getVideoTracks()[0];
       } else {
-        // For audio-only, just get system audio
         displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true, // Required to get audio, we'll discard the video
+          video: true,
           audio: {
             echoCancellation: false,
             noiseSuppression: false,
             autoGainControl: false,
-          }
+            sampleRate: 48000,
+            sampleSize: 16,
+            channelCount: 2,
+          } as any
         });
-        // Stop video track immediately for audio-only
         displayStream.getVideoTracks().forEach(t => t.stop());
       }
 
-      // Get microphone
+      // Get microphone with high quality
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-        }
+          sampleRate: 48000,
+          sampleSize: 16,
+          channelCount: 1,
+        } as any
       });
 
       // Mix audio using Web Audio API with high quality settings
