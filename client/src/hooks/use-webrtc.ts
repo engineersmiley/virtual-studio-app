@@ -815,17 +815,23 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   
   // End full control
   const endFullControl = useCallback(() => {
-    if (role !== 'engineer' || !isTransportOpen(wsRef.current)) {
+    if (role !== 'engineer') {
       return;
     }
     
-    wsRef.current!.send(JSON.stringify({
-      type: 'control-end',
-      sessionCode: roomId,
-      userId,
-    }));
+    // Always update local state first
     setControlAllowed(false);
+    setControlPending(false);
     console.log('[Control] Ended control');
+    
+    // Also notify server if connection is open
+    if (isTransportOpen(wsRef.current)) {
+      wsRef.current!.send(JSON.stringify({
+        type: 'control-end',
+        sessionCode: roomId,
+        userId,
+      }));
+    }
   }, [roomId, userId, role]);
   
   // Throttle mouse moves to reduce lag (send max every 16ms = ~60fps)
