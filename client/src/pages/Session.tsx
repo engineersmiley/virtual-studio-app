@@ -302,15 +302,17 @@ function SessionContent() {
   });
 
   // Direct screen touch control - touch on video to control computer
+  const controlEnabled = fullControlActive || wsControlAllowed;
+  
   const handleVideoTouchStart = useCallback((e: React.TouchEvent) => {
-    if (!fullControlActive || !wsControlAllowed) return;
+    if (!controlEnabled) return;
     const touch = e.touches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-  }, [fullControlActive, wsControlAllowed]);
+  }, [controlEnabled]);
   
   const handleVideoTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!fullControlActive || !wsControlAllowed || !lastTouchRef.current) return;
+    if (!controlEnabled || !lastTouchRef.current) return;
     e.preventDefault();
     
     const video = remoteVideoRef.current;
@@ -325,10 +327,10 @@ function SessionContent() {
     
     sendFullControlCommand({ type: 'mouse-move', x, y });
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-  }, [fullControlActive, wsControlAllowed, sendFullControlCommand]);
+  }, [controlEnabled, sendFullControlCommand]);
   
   const handleVideoTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (!fullControlActive || !wsControlAllowed || !touchStartRef.current) return;
+    if (!controlEnabled || !touchStartRef.current) return;
     
     const video = remoteVideoRef.current;
     if (!video) return;
@@ -355,7 +357,7 @@ function SessionContent() {
     
     touchStartRef.current = null;
     lastTouchRef.current = null;
-  }, [fullControlActive, wsControlAllowed, sendFullControlCommand]);
+  }, [controlEnabled, sendFullControlCommand]);
 
   // Get producer audio streams (audio-only streams from producers)
   const producerAudioStreams = Array.from(remoteStreams.values()).filter(
@@ -685,7 +687,7 @@ function SessionContent() {
         <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4">
           <div 
             ref={videoContainerRef}
-            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${(controlMode || fullControlActive || wsControlAllowed) && role === 'engineer' ? 'cursor-crosshair' : ''}`}
+            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${(controlMode || controlEnabled) && role === 'engineer' ? 'cursor-crosshair' : ''}`}
             onClick={(e) => {
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
@@ -715,7 +717,7 @@ function SessionContent() {
                 const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
                 
                 // Full control mode - send mouse commands to agent
-                if (fullControlActive || wsControlAllowed) {
+                if (controlEnabled) {
                   const x = normX * 1920;
                   const y = normY * 1080;
                   sendFullControlCommand({ type: 'mouse-move', x, y });
@@ -757,7 +759,7 @@ function SessionContent() {
                 const normY = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
                 
                 // Full control mode - send mouse move to agent
-                if (fullControlActive || wsControlAllowed) {
+                if (controlEnabled) {
                   const x = normX * 1920;
                   const y = normY * 1080;
                   sendFullControlCommand({ type: 'mouse-move', x, y });
@@ -860,11 +862,11 @@ function SessionContent() {
                   ref={remoteVideoRef}
                   autoPlay
                   playsInline
-                  className={`w-full h-full object-contain ${(fullControlActive || wsControlAllowed) ? 'touch-none' : ''}`}
+                  className={`w-full h-full object-contain ${controlEnabled ? 'touch-none' : ''}`}
                   onTouchStart={handleVideoTouchStart}
                   onTouchMove={handleVideoTouchMove}
                   onTouchEnd={handleVideoTouchEnd}
-                  style={{ cursor: (fullControlActive || wsControlAllowed) ? 'crosshair' : 'default' }}
+                  style={{ cursor: controlEnabled ? 'crosshair' : 'default' }}
                 />
                 {!hasRemoteStream && !isSharing && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
