@@ -1070,36 +1070,13 @@ function SessionContent() {
                   </button>
                 )}
                 
-                {/* Control Mode Toggle - Pointer overlay */}
-                <div className="relative group">
-                  <button
-                    onClick={() => setControlMode(!controlMode)}
-                    data-testid="button-toggle-control"
-                    className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
-                      !hasRemoteStream ? 'opacity-60 cursor-not-allowed' : ''
-                    } ${
-                      controlMode 
-                        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 animate-pulse' 
-                        : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:brightness-110'
-                    }`}
-                  >
-                    <MousePointer2 size={20} />
-                    {controlMode ? 'Pointer ON - Move mouse over video!' : 'Show Pointer'}
-                    {!hasRemoteStream && <span className="text-xs ml-1">(waiting)</span>}
-                  </button>
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-black/90 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                    Click to show your pointer on artist's screen - no app needed!
-                  </div>
-                </div>
-                
                 {/* Download Agent - When agent is not connected */}
                 {!agentConnected && (
                   <a
                     href="/remote-control"
                     target="_blank"
                     data-testid="link-download-agent"
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all shadow-lg shadow-cyan-500/30"
                   >
                     <Monitor size={20} />
                     Get Desktop Agent
@@ -1112,7 +1089,7 @@ function SessionContent() {
                     <button
                       onClick={endFullControl}
                       data-testid="button-end-full-control"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all shadow-lg shadow-purple-500/30"
+                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-magenta-600 to-pink-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all shadow-lg shadow-pink-500/30"
                     >
                       <Monitor size={20} />
                       End Control
@@ -1122,10 +1099,10 @@ function SessionContent() {
                       onClick={() => requestFullControl('Engineer')}
                       disabled={controlPending}
                       data-testid="button-request-full-control"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
+                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-primary text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50 shadow-lg shadow-cyan-500/30"
                     >
                       <Monitor size={20} />
-                      {controlPending ? 'Requesting...' : 'Full Control'}
+                      {controlPending ? 'Requesting...' : 'Request Control'}
                     </button>
                   )
                 )}
