@@ -1004,8 +1004,15 @@ export async function registerRoutes(
           });
         }
         
+        // Update both agent.controlEnabled AND controlPermissions
         if (message.allowed) {
           agent.controlEnabled = true;
+          controlPermissions.set(normalizedCode, true);
+          console.log('[Agent Polling] Control granted for session:', normalizedCode);
+        } else {
+          agent.controlEnabled = false;
+          controlPermissions.set(normalizedCode, false);
+          console.log('[Agent Polling] Control denied for session:', normalizedCode);
         }
       }
       
