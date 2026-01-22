@@ -270,6 +270,37 @@ function SessionContent() {
     };
   }, []);
 
+  const {
+    connected,
+    participants,
+    error,
+    localStream,
+    hasRemoteStream,
+    remoteStreams,
+    agentConnected: wsAgentConnected,
+    controlAllowed: wsControlAllowed,
+    controlPending: wsControlPending,
+    connect,
+    disconnect,
+    startSharing,
+    stopSharing,
+    sendControlEvent,
+    requestFullControl,
+    endFullControl,
+    sendFullControlCommand,
+  } = useWebRTC({
+    roomId,
+    userId,
+    role,
+    onRemoteStream: handleRemoteStream,
+    onRemoteControl: handleRemoteControl,
+    onAgentStatus: (status) => {
+      setAgentConnected(status.connected);
+      setFullControlActive(status.controlAllowed);
+      setControlPending(status.controlPending);
+    },
+  });
+
   // Direct screen touch control - touch on video to control computer
   const handleVideoTouchStart = useCallback((e: React.TouchEvent) => {
     if (!fullControlActive || !wsControlAllowed) return;
@@ -325,37 +356,6 @@ function SessionContent() {
     touchStartRef.current = null;
     lastTouchRef.current = null;
   }, [fullControlActive, wsControlAllowed, sendFullControlCommand]);
-
-  const {
-    connected,
-    participants,
-    error,
-    localStream,
-    hasRemoteStream,
-    remoteStreams,
-    agentConnected: wsAgentConnected,
-    controlAllowed: wsControlAllowed,
-    controlPending: wsControlPending,
-    connect,
-    disconnect,
-    startSharing,
-    stopSharing,
-    sendControlEvent,
-    requestFullControl,
-    endFullControl,
-    sendFullControlCommand,
-  } = useWebRTC({
-    roomId,
-    userId,
-    role,
-    onRemoteStream: handleRemoteStream,
-    onRemoteControl: handleRemoteControl,
-    onAgentStatus: (status) => {
-      setAgentConnected(status.connected);
-      setFullControlActive(status.controlAllowed);
-      setControlPending(status.controlPending);
-    },
-  });
 
   // Get producer audio streams (audio-only streams from producers)
   const producerAudioStreams = Array.from(remoteStreams.values()).filter(
