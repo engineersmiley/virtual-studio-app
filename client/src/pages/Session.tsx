@@ -668,13 +668,22 @@ function SessionContent() {
             <AlertTriangle size={20} />
             {error}
           </div>
-          <button 
-            onClick={() => clearError?.()}
-            className="text-destructive/70 hover:text-destructive transition-colors"
-            data-testid="button-dismiss-error"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-3 py-1 text-sm bg-destructive/20 hover:bg-destructive/30 rounded-lg transition-colors"
+              data-testid="button-refresh-page"
+            >
+              Refresh Page
+            </button>
+            <button 
+              onClick={() => clearError?.()}
+              className="text-destructive/70 hover:text-destructive transition-colors p-1"
+              data-testid="button-dismiss-error"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
       )}
 
