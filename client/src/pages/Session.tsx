@@ -758,19 +758,33 @@ function SessionContent() {
             }}
           >
             {((role === 'artist' || role === 'engineer' || role === 'producer') && isSharing && localStream?.getVideoTracks().length) ? (
-              // Artist, Engineer, or Producer (broadcasting) sees their own screen share preview
+              // Artist, Engineer, or Producer (broadcasting) - show status instead of video preview to avoid mirror effect
               isSharing ? (
                 <>
+                  {/* Hidden video element for stream reference (needed for pointer positioning) */}
                   <video
                     ref={localVideoRef}
                     autoPlay
                     muted
                     playsInline
-                    className="w-full h-full object-contain"
+                    className="hidden"
                   />
-                  {/* Remote pointer from engineer - positioned relative to video content accounting for letterboxing */}
+                  {/* Broadcasting indicator instead of video preview to avoid infinite mirror loop */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-cyan-900/20 to-magenta-900/20">
+                    <div className="relative">
+                      <Monitor size={80} className="text-cyan-400" />
+                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full animate-pulse flex items-center justify-center">
+                        <div className="w-3 h-3 bg-white rounded-full" />
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-cyan-400 font-tech">Broadcasting Live</p>
+                      <p className="text-muted-foreground mt-2">Your screen is being shared with participants</p>
+                    </div>
+                  </div>
+                  {/* Remote pointer from engineer - show on overlay */}
                   <AnimatePresence>
-                    {remotePointer.visible && localVideoRef.current && videoContainerRef.current && (() => {
+                    {remotePointer.visible && videoContainerRef.current && (() => {
                       const video = localVideoRef.current;
                       const container = videoContainerRef.current;
                       const containerRect = container.getBoundingClientRect();
