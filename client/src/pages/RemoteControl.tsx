@@ -12,7 +12,7 @@ const GITHUB_REPO = "engineersmiley/virtual-studio-app";
 const DOWNLOAD_URLS = {
   windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
   mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
-  macLegacy: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent-legacy.dmg`,
+  macLegacy: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent-legacy.zip`,
   linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
 };
 
@@ -102,7 +102,7 @@ export default function RemoteControl() {
                     className="w-full text-xs"
                     data-testid="button-download-agent-mac-legacy"
                   >
-                    <span>macOS 10.11-10.14 (Legacy .dmg)</span>
+                    <span>macOS 10.11-10.14 (Legacy .zip)</span>
                   </Button>
                 </a>
               </div>
