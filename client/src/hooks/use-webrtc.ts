@@ -564,8 +564,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         }
       });
 
-      // Mix audio using Web Audio API
-      const audioContext = new AudioContext();
+      // Mix audio using Web Audio API with high quality settings
+      const audioContext = new AudioContext({ sampleRate: 48000 });
       audioContextRef.current = audioContext;
       const dest = audioContext.createMediaStreamDestination();
 
@@ -797,23 +797,47 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     console.log('[Control] Ended control');
   }, [roomId, userId, role]);
   
+  // Throttle mouse moves to reduce lag (send max every 16ms = ~60fps)
+  const lastMouseMoveRef = useRef<number>(0);
+  const pendingMouseMoveRef = useRef<{x: number, y: number} | null>(null);
+  const mouseMoveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Send full control command (mouse/keyboard to agent)
   const sendFullControlCommand = useCallback((command: {
     type: 'mouse-move' | 'mouse-click' | 'mouse-double-click' | 'mouse-scroll' | 'key-press' | 'key-type';
     [key: string]: any;
   }) => {
-    // Log why command might be blocked
-    if (role !== 'engineer') {
-      console.log('[Control] Command blocked: not engineer role');
-      return;
-    }
-    if (!controlAllowed) {
-      console.log('[Control] Command blocked: control not allowed (need to request control first)');
-      return;
-    }
-    if (!isTransportOpen(wsRef.current)) {
-      console.log('[Control] Command blocked: transport not connected');
-      return;
+    if (role !== 'engineer') return;
+    if (!controlAllowed) return;
+    if (!isTransportOpen(wsRef.current)) return;
+    
+    // Throttle mouse-move to prevent flooding
+    if (command.type === 'mouse-move') {
+      const now = Date.now();
+      const elapsed = now - lastMouseMoveRef.current;
+      
+      if (elapsed < 16) {
+        // Queue this move and send after throttle period
+        pendingMouseMoveRef.current = { x: command.x, y: command.y };
+        if (!mouseMoveTimeoutRef.current) {
+          mouseMoveTimeoutRef.current = setTimeout(() => {
+            mouseMoveTimeoutRef.current = null;
+            if (pendingMouseMoveRef.current && isTransportOpen(wsRef.current)) {
+              const payload = {
+                type: 'mouse-move',
+                ...pendingMouseMoveRef.current,
+                sessionCode: roomId,
+                userId,
+              };
+              wsRef.current!.send(JSON.stringify(payload));
+              lastMouseMoveRef.current = Date.now();
+              pendingMouseMoveRef.current = null;
+            }
+          }, 16 - elapsed);
+        }
+        return;
+      }
+      lastMouseMoveRef.current = now;
     }
     
     const payload = {
@@ -822,9 +846,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       userId,
     };
     
-    // Log mouse-click and key commands (skip mouse-move to avoid spam)
     if (command.type !== 'mouse-move') {
-      console.log('[Control] Sending command:', command.type, payload);
+      console.log('[Control] Sending command:', command.type);
     }
     
     wsRef.current!.send(JSON.stringify(payload));
