@@ -834,12 +834,6 @@ function SessionContent() {
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 p-8">
                   <Monitor size={64} className="opacity-30" />
                   <p className="font-tech text-center">Click "Start Sharing" to broadcast your screen</p>
-                  <div className="mt-4 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30 max-w-md text-center">
-                    <AlertTriangle className="w-5 h-5 text-yellow-500 mx-auto mb-2" />
-                    <p className="text-sm text-yellow-200/80">
-                      <strong>Tip:</strong> Share your DAW or a specific application window - not the browser running Virtual Studio, or you'll see a mirror effect.
-                    </p>
-                  </div>
                 </div>
               )
             ) : (
