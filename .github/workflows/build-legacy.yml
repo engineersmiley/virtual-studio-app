@@ -1,83 +1,38 @@
-name: Build Legacy macOS Agent
+name: Build Legacy macOS
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
-concurrency:
-  group: legacy-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  build-mac-legacy:
+  build:
     runs-on: macos-13
-    timeout-minutes: 30
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Check macOS version
-        run: sw_vers
-
-      - name: Use legacy package.json
+      - name: Setup legacy build
         working-directory: virtual-studio-agent
-        run: |
-          cp package-legacy.json package.json
-          echo "=== package.json contents ==="
-          cat package.json
+        run: cp package-legacy.json package.json
 
-      - name: Install dependencies
+      - name: Install
         working-directory: virtual-studio-agent
-        run: |
-          npm install --legacy-peer-deps
-          echo "=== node_modules installed ==="
-          ls -la node_modules/
+        run: npm install --legacy-peer-deps
 
-      - name: Rebuild native modules
-        working-directory: virtual-studio-agent
-        run: npm run postinstall || true
-
-      - name: Build for macOS Legacy
+      - name: Build
         working-directory: virtual-studio-agent
         run: npm run build:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          DEBUG: electron-builder
 
-      - name: List build output
-        working-directory: virtual-studio-agent
-        run: |
-          echo "=== dist folder contents ==="
-          ls -la dist/ || echo "No dist folder"
-          echo "=== all zip files ==="
-          find . -name "*.zip" -type f
-
-      - name: Rename zip file
+      - name: Rename
         working-directory: virtual-studio-agent/dist
-        run: |
-          for f in *.zip; do 
-            echo "Renaming $f to Virtual.Studio.Agent-legacy.zip"
-            mv "$f" "Virtual.Studio.Agent-legacy.zip" 2>/dev/null || true
-          done
-          ls -la
+        run: mv *.zip Virtual.Studio.Agent-legacy.zip
 
-      - name: Upload artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-mac-zip
+          name: legacy-macos-10.10
           path: virtual-studio-agent/dist/Virtual.Studio.Agent-legacy.zip
-
-      - name: Add to Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: virtual-studio-agent/dist/Virtual.Studio.Agent-legacy.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
