@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Crown, CreditCard, Loader2, Check, ArrowLeft } from "lucide-react";
+import { Crown, CreditCard, Loader2, Check, ArrowLeft, Gift } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 
 interface SubscriptionGateProps {
   children: React.ReactNode;
@@ -17,6 +18,8 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
   const [, navigate] = useLocation();
   const [email, setEmail] = useState("");
   const [checkEmail, setCheckEmail] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [showPromo, setShowPromo] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -69,6 +72,35 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
     }
   });
 
+  const promoMutation = useMutation({
+    mutationFn: async ({ email, code }: { email: string; code: string }) => {
+      const res = await fetch('/api/promo/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to redeem promo code');
+      return data;
+    },
+    onSuccess: () => {
+      localStorage.setItem(STORAGE_KEY, email);
+      setCheckEmail(email);
+      queryClient.invalidateQueries({ queryKey: ['/api/subscription-status'] });
+      toast({
+        title: "Success",
+        description: "Promo code applied! You now have access.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Invalid Code",
+        description: err.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const handleSubscribe = () => {
     if (!email.trim() || !pricesData?.prices?.[0]?.id) return;
     checkoutMutation.mutate({ email, priceId: pricesData.prices[0].id });
@@ -85,6 +117,11 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
     localStorage.removeItem(STORAGE_KEY);
     setCheckEmail("");
     setEmail("");
+  };
+
+  const handleRedeemPromo = () => {
+    if (!email.trim() || !promoCode.trim()) return;
+    promoMutation.mutate({ email, code: promoCode });
   };
 
   if (checkingSubscription) {
@@ -212,6 +249,52 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
               )}
               Subscribe - ${priceAmount}/month
             </Button>
+
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">Have a promo code?</span>
+              </div>
+            </div>
+
+            {!showPromo ? (
+              <Button 
+                variant="ghost"
+                onClick={() => setShowPromo(true)}
+                data-testid="button-show-promo"
+                className="w-full text-secondary hover:text-secondary/80"
+              >
+                <Gift className="w-4 h-4 mr-2" />
+                Enter Promo Code
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <Input
+                  type="text"
+                  placeholder="Enter promo code"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === 'Enter' && handleRedeemPromo()}
+                  data-testid="input-promo-code"
+                  className="bg-background/50 uppercase"
+                />
+                <Button 
+                  onClick={handleRedeemPromo}
+                  disabled={!email.trim() || !promoCode.trim() || promoMutation.isPending}
+                  data-testid="button-redeem-promo"
+                  className="w-full bg-gradient-to-r from-secondary to-secondary/80 hover:brightness-110"
+                >
+                  {promoMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Gift className="w-4 h-4 mr-2" />
+                  )}
+                  Redeem Code
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </motion.div>

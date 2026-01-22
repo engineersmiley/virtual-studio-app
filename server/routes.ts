@@ -70,7 +70,11 @@ export async function registerRoutes(
     const email = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader;
     if (!email) return false;
     const user = await storage.getUserByEmail(email);
-    if (!user?.stripeCustomerId) return false;
+    if (!user) return false;
+    // Check promo code first
+    if (user.promoCode) return true;
+    // Then check Stripe subscription
+    if (!user.stripeCustomerId) return false;
     const subscription = await storage.getSubscriptionByCustomerId(user.stripeCustomerId);
     return subscription && (subscription.status === 'active' || subscription.status === 'trialing');
   }
@@ -287,6 +291,16 @@ export async function registerRoutes(
       const user = await storage.getUserByEmail(email);
       
       if (user) {
+        // Check if user has a valid promo code
+        if (user.promoCode) {
+          return res.json({ 
+            hasSubscription: true, 
+            status: 'promo',
+            promoCode: user.promoCode,
+            email 
+          });
+        }
+        
         // Check user's own subscription status (fallback for webhook issues)
         if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
           return res.json({ 
@@ -347,6 +361,103 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error('Subscription status error:', err);
       res.json({ hasSubscription: false });
+    }
+  });
+
+  // ============ PROMO CODE ROUTES ============
+
+  // Redeem a promo code
+  app.post('/api/promo/redeem', async (req, res) => {
+    try {
+      const { email, code } = req.body;
+      if (!email || !code) {
+        return res.status(400).json({ error: 'Email and code required' });
+      }
+
+      const promo = await storage.getPromoCode(code);
+      if (!promo) {
+        return res.status(404).json({ error: 'Invalid promo code' });
+      }
+
+      if (!promo.isActive) {
+        return res.status(400).json({ error: 'This promo code is no longer active' });
+      }
+
+      if (promo.expiresAt && new Date(promo.expiresAt) < new Date()) {
+        return res.status(400).json({ error: 'This promo code has expired' });
+      }
+
+      if (promo.maxUses && promo.currentUses && promo.currentUses >= promo.maxUses) {
+        return res.status(400).json({ error: 'This promo code has reached its usage limit' });
+      }
+
+      // Grant access to user
+      await storage.updateUserPromoCode(email, code.toUpperCase());
+      await storage.incrementPromoCodeUsage(code);
+
+      res.json({ success: true, message: 'Promo code applied successfully' });
+    } catch (err: any) {
+      console.error('Promo redeem error:', err);
+      res.status(500).json({ error: 'Failed to redeem promo code' });
+    }
+  });
+
+  // Create a new promo code (admin)
+  app.post('/api/promo/create', async (req, res) => {
+    try {
+      const { code, description, maxUses, expiresAt } = req.body;
+      if (!code) {
+        return res.status(400).json({ error: 'Code is required' });
+      }
+
+      const existing = await storage.getPromoCode(code);
+      if (existing) {
+        return res.status(400).json({ error: 'Promo code already exists' });
+      }
+
+      const promo = await storage.createPromoCode({
+        code: code.toUpperCase(),
+        description,
+        maxUses: maxUses || null,
+        isActive: true,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+      });
+
+      res.json(promo);
+    } catch (err: any) {
+      console.error('Promo create error:', err);
+      res.status(500).json({ error: 'Failed to create promo code' });
+    }
+  });
+
+  // List all promo codes (admin)
+  app.get('/api/promo/list', async (req, res) => {
+    try {
+      const codes = await storage.getAllPromoCodes();
+      res.json(codes);
+    } catch (err: any) {
+      console.error('Promo list error:', err);
+      res.status(500).json({ error: 'Failed to list promo codes' });
+    }
+  });
+
+  // Deactivate a promo code (admin)
+  app.post('/api/promo/deactivate', async (req, res) => {
+    try {
+      const { code } = req.body;
+      if (!code) {
+        return res.status(400).json({ error: 'Code is required' });
+      }
+
+      const promo = await storage.deactivatePromoCode(code);
+      if (!promo) {
+        return res.status(404).json({ error: 'Promo code not found' });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Promo deactivate error:', err);
+      res.status(500).json({ error: 'Failed to deactivate promo code' });
     }
   });
 

@@ -48,6 +48,11 @@ The app uses WebSocket for real-time signaling with automatic HTTP polling fallb
 3. **WebRTC Streaming**: Peer-to-peer audio/video with STUN servers for NAT traversal, supports multiple simultaneous viewers
 4. **Recording**: Browser-based MediaRecorder with Web Audio API mixing (engineer only)
 5. **Audio Visualization**: Real-time frequency analysis rendered to canvas
+10. **Promo Codes**: Special access codes for free subscriptions without payment
+    - Create codes via API: `POST /api/promo/create` with `{code, description, maxUses, expiresAt}`
+    - Users redeem on subscription page via "Enter Promo Code" button
+    - Codes can have usage limits and expiration dates
+    - Manage codes via: `GET /api/promo/list`, `POST /api/promo/deactivate`
 6. **PWA Support**: Installable as an app on desktop and mobile, with iOS install instructions
 7. **Stripe Subscription**: Monthly Pro subscription at $9.99/month with checkout, customer portal, and webhook handling
 8. **Remote Control**: 

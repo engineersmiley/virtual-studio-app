@@ -9,6 +9,8 @@ export const users = pgTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionStatus: text("subscription_status"),
+  promoCode: text("promo_code"),
+  promoGrantedAt: timestamp("promo_granted_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -18,6 +20,27 @@ export const insertUserSchema = createInsertSchema(users).omit({
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+
+// Promo codes for free access
+export const promoCodes = pgTable("promo_codes", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  description: text("description"),
+  maxUses: integer("max_uses"),
+  currentUses: integer("current_uses").default(0),
+  isActive: boolean("is_active").default(true),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPromoCodeSchema = createInsertSchema(promoCodes).omit({
+  id: true,
+  currentUses: true,
+  createdAt: true,
+});
+
+export type PromoCode = typeof promoCodes.$inferSelect;
+export type InsertPromoCode = z.infer<typeof insertPromoCodeSchema>;
 
 // Sessions for remote collaboration
 export const sessions = pgTable("sessions", {

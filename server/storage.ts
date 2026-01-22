@@ -1,14 +1,18 @@
 import { db } from "./db";
+import crypto from "crypto";
 import {
   recordings,
   sessions,
   users,
+  promoCodes,
   type Recording,
   type InsertRecording,
   type Session,
   type InsertSession,
   type User,
-  type InsertUser
+  type InsertUser,
+  type PromoCode,
+  type InsertPromoCode
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 
@@ -39,6 +43,14 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserStripeInfo(userId: string, stripeInfo: { stripeCustomerId?: string; stripeSubscriptionId?: string; subscriptionStatus?: string }): Promise<User | undefined>;
+  updateUserPromoCode(email: string, promoCode: string): Promise<User | undefined>;
+  
+  // Promo Codes
+  getPromoCode(code: string): Promise<PromoCode | undefined>;
+  createPromoCode(promo: InsertPromoCode): Promise<PromoCode>;
+  getAllPromoCodes(): Promise<PromoCode[]>;
+  incrementPromoCodeUsage(code: string): Promise<PromoCode | undefined>;
+  deactivatePromoCode(code: string): Promise<PromoCode | undefined>;
   
   // Stripe queries
   getSubscription(subscriptionId: string): Promise<any>;
@@ -109,6 +121,56 @@ export class DatabaseStorage implements IStorage {
   async updateUserStripeInfo(userId: string, stripeInfo: { stripeCustomerId?: string; stripeSubscriptionId?: string; subscriptionStatus?: string }): Promise<User | undefined> {
     const [user] = await db.update(users).set(stripeInfo).where(eq(users.id, userId)).returning();
     return user;
+  }
+
+  async updateUserPromoCode(email: string, promoCode: string): Promise<User | undefined> {
+    const existing = await this.getUserByEmail(email);
+    if (existing) {
+      const [user] = await db.update(users)
+        .set({ promoCode, promoGrantedAt: new Date() })
+        .where(eq(users.email, email))
+        .returning();
+      return user;
+    } else {
+      const id = crypto.randomUUID();
+      const [user] = await db.insert(users)
+        .values({ id, email, promoCode, promoGrantedAt: new Date() })
+        .returning();
+      return user;
+    }
+  }
+
+  // Promo Codes
+  async getPromoCode(code: string): Promise<PromoCode | undefined> {
+    const [promo] = await db.select().from(promoCodes).where(eq(promoCodes.code, code.toUpperCase()));
+    return promo;
+  }
+
+  async createPromoCode(promo: InsertPromoCode): Promise<PromoCode> {
+    const [newPromo] = await db.insert(promoCodes)
+      .values({ ...promo, code: promo.code.toUpperCase() })
+      .returning();
+    return newPromo;
+  }
+
+  async getAllPromoCodes(): Promise<PromoCode[]> {
+    return await db.select().from(promoCodes).orderBy(desc(promoCodes.createdAt));
+  }
+
+  async incrementPromoCodeUsage(code: string): Promise<PromoCode | undefined> {
+    const [promo] = await db.update(promoCodes)
+      .set({ currentUses: sql`${promoCodes.currentUses} + 1` })
+      .where(eq(promoCodes.code, code.toUpperCase()))
+      .returning();
+    return promo;
+  }
+
+  async deactivatePromoCode(code: string): Promise<PromoCode | undefined> {
+    const [promo] = await db.update(promoCodes)
+      .set({ isActive: false })
+      .where(eq(promoCodes.code, code.toUpperCase()))
+      .returning();
+    return promo;
   }
 
   // Stripe queries - query from stripe schema (managed by stripe-replit-sync)
