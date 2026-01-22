@@ -2,6 +2,14 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, systemPreferences } = r
 const path = require('path');
 const WebSocket = require('ws');
 
+// Single instance lock - only allow one window
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Another instance is already running, quit this one
+  app.quit();
+}
+
 let mainWindow = null;
 let tray = null;
 let ws = null;
@@ -14,6 +22,15 @@ let usePolling = false;
 
 const VIRTUAL_STUDIO_URL = 'wss://virtualstudio.sale';
 const VIRTUAL_STUDIO_HTTP = 'https://virtualstudio.sale';
+
+// Handle second instance - focus existing window
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({
