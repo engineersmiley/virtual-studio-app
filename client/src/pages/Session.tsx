@@ -159,6 +159,8 @@ function SessionContent() {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const lastTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   
   const uploadMutation = useUploadRecording();
 
@@ -269,9 +271,6 @@ function SessionContent() {
   }, []);
 
   // Direct screen touch control - touch on video to control computer
-  const lastTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  
   const handleVideoTouchStart = useCallback((e: React.TouchEvent) => {
     if (!fullControlActive || !wsControlAllowed) return;
     const touch = e.touches[0];
