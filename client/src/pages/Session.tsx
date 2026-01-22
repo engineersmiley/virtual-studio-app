@@ -685,27 +685,23 @@ function SessionContent() {
         <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4">
           <div 
             ref={videoContainerRef}
-            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${controlMode && role === 'engineer' ? 'cursor-crosshair' : ''}`}
+            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${(controlMode || fullControlActive || wsControlAllowed) && role === 'engineer' ? 'cursor-crosshair' : ''}`}
             onClick={(e) => {
-              if (role === 'engineer' && controlMode && hasRemoteStream && remoteVideoRef.current) {
-                // Calculate normalized coordinates accounting for object-contain letterboxing
+              if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
                 const container = e.currentTarget.getBoundingClientRect();
                 
-                // Get actual video dimensions
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const containerRatio = container.width / container.height;
                 
                 let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
                 
                 if (videoRatio > containerRatio) {
-                  // Video is wider - letterboxed top/bottom
                   videoDisplayWidth = container.width;
                   videoDisplayHeight = container.width / videoRatio;
                   offsetX = 0;
                   offsetY = (container.height - videoDisplayHeight) / 2;
                 } else {
-                  // Video is taller - letterboxed left/right
                   videoDisplayHeight = container.height;
                   videoDisplayWidth = container.height * videoRatio;
                   offsetX = (container.width - videoDisplayWidth) / 2;
@@ -715,15 +711,25 @@ function SessionContent() {
                 const clickX = e.clientX - container.left - offsetX;
                 const clickY = e.clientY - container.top - offsetY;
                 
-                // Normalize to 0-1 range within the actual video area
-                const x = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
-                const y = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
+                const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
+                const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
                 
-                sendControlEvent('click', x, y);
+                // Full control mode - send mouse commands to agent
+                if (fullControlActive || wsControlAllowed) {
+                  const x = normX * 1920;
+                  const y = normY * 1080;
+                  sendFullControlCommand({ type: 'mouse-move', x, y });
+                  setTimeout(() => {
+                    sendFullControlCommand({ type: 'mouse-click', button: 'left' });
+                  }, 50);
+                } else if (controlMode) {
+                  // Pointer mode - show pointer on artist's screen
+                  sendControlEvent('click', normX, normY);
+                }
               }
             }}
             onMouseMove={(e) => {
-              if (role === 'engineer' && controlMode && hasRemoteStream && remoteVideoRef.current) {
+              if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
                 const container = e.currentTarget.getBoundingClientRect();
                 
@@ -747,10 +753,18 @@ function SessionContent() {
                 const moveX = e.clientX - container.left - offsetX;
                 const moveY = e.clientY - container.top - offsetY;
                 
-                const x = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
-                const y = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
+                const normX = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
+                const normY = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
                 
-                sendControlEvent('pointer', x, y);
+                // Full control mode - send mouse move to agent
+                if (fullControlActive || wsControlAllowed) {
+                  const x = normX * 1920;
+                  const y = normY * 1080;
+                  sendFullControlCommand({ type: 'mouse-move', x, y });
+                } else if (controlMode) {
+                  // Pointer mode - show pointer on artist's screen
+                  sendControlEvent('pointer', normX, normY);
+                }
               }
             }}
           >
