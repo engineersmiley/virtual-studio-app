@@ -7,12 +7,13 @@ import { SubscriptionGate } from "@/components/SubscriptionGate";
 
 const AGENT_VERSION = "1.0.0";
 
-// Download URLs - Google Drive direct download links
+// Download URLs - GitHub releases
+const GITHUB_REPO = "engineersmiley/virtual-studio-app";
 const DOWNLOAD_URLS = {
-  windows: "https://drive.google.com/uc?export=download&id=1NkHstI37uzDUA81kShLlegdZbSHUIHsC",
-  mac: "https://drive.google.com/uc?export=download&id=1xAE4a0BqKh8IdmMFxeNrHfSaooqrb369",
-  macLegacy: "", // Add legacy Mac Google Drive link when available
-  linux: "https://drive.google.com/uc?export=download&id=1g8UoPaABGbtPnV_uOLAqvGApXUbjNdHS",
+  windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
+  mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
+  macLegacy: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent-legacy.dmg`,
+  linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
 };
 
 export default function RemoteControl() {
@@ -89,23 +90,21 @@ export default function RemoteControl() {
                     <span className="text-xs opacity-70">.dmg installer</span>
                   </Button>
                 </a>
-                {DOWNLOAD_URLS.macLegacy && (
-                  <a 
-                    href={DOWNLOAD_URLS.macLegacy}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full"
+                <a 
+                  href={DOWNLOAD_URLS.macLegacy}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full"
+                >
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="w-full text-xs"
+                    data-testid="button-download-agent-mac-legacy"
                   >
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      className="w-full text-xs"
-                      data-testid="button-download-agent-mac-legacy"
-                    >
-                      <span>macOS 10.11-10.14 (Legacy .zip)</span>
-                    </Button>
-                  </a>
-                )}
+                    <span>macOS 10.11-10.14 (Legacy .dmg)</span>
+                  </Button>
+                </a>
               </div>
               <a 
                 href={DOWNLOAD_URLS.linux}
