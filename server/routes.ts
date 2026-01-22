@@ -698,7 +698,11 @@ export async function registerRoutes(
         .filter(([pId]) => pId !== userId)
         .map(([pId, p]) => ({ userId: pId, role: p.role }));
       
-      res.json({ messages, participants });
+      // Include agent connection status and control permission status
+      const agentConnected = agentConnections.has(normalizedRoom) || pollingAgents.has(normalizedRoom);
+      const controlActive = controlPermissions.get(normalizedRoom) || false;
+      
+      res.json({ messages, participants, agentConnected, controlActive });
     } catch (err: any) {
       console.error('Polling poll error:', err);
       res.status(500).json({ error: err.message });

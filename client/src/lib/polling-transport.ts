@@ -192,6 +192,17 @@ export class PollingTransport implements PollingTransportEvents {
       
       const data = await res.json();
       
+      // Emit agent status as a synthetic message so frontend can track it
+      if (this.onmessage) {
+        this.onmessage({ 
+          data: JSON.stringify({ 
+            type: 'agent-status', 
+            connected: data.agentConnected || false,
+            controlActive: data.controlActive || false
+          }) 
+        });
+      }
+      
       // Deliver messages
       for (const message of data.messages || []) {
         if (this.onmessage) {

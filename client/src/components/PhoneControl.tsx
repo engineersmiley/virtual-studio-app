@@ -182,7 +182,7 @@ export function PhoneControl({
       </CardHeader>
       <CardContent className="space-y-4">
         {!agentConnected && (
-          <div className="py-3 px-4 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm mb-2">
+          <div className="py-3 px-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-cyan-400 text-sm mb-2">
             <p className="font-bold mb-2">Setup Required:</p>
             <ol className="list-decimal list-inside space-y-1 text-xs">
               <li>Artist opens <a href="/remote-control" target="_blank" className="text-primary underline">this link</a> on their COMPUTER</li>

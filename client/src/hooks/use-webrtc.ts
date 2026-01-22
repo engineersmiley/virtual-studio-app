@@ -378,6 +378,16 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         break;
       }
       
+      case 'agent-status': {
+        // Real-time agent status from polling
+        setAgentConnected(message.connected);
+        if (message.controlActive) {
+          setControlAllowed(true);
+          setControlPending(false);
+        }
+        break;
+      }
+      
       case 'control-response': {
         setControlPending(false);
         setControlAllowed(message.allowed === true);
