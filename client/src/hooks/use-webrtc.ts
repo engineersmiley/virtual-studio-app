@@ -646,7 +646,22 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
       return combinedStream;
     } catch (err: any) {
-      setError(err.message || 'Failed to start sharing');
+      // Handle common screen share errors with friendly messages
+      const errorMsg = err.message || '';
+      if (errorMsg.includes('Permission denied') || errorMsg.includes('NotAllowedError')) {
+        // User cancelled or system denied - don't show error, just silently fail
+        console.log('Screen share cancelled or denied');
+        return;
+      } else if (errorMsg.includes('NotFoundError') || errorMsg.includes('not found')) {
+        setError('No screen or window available to share');
+      } else if (errorMsg.includes('NotReadableError')) {
+        setError('Screen is being used by another app - please close and try again');
+      } else {
+        setError(err.message || 'Failed to start sharing');
+      }
+      
+      // Auto-clear error after 5 seconds
+      setTimeout(() => setError(null), 5000);
       throw err;
     }
   }, [roomId, userId, role, participants, createPeerConnection, canBroadcast]);
@@ -869,10 +884,15 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     wsRef.current!.send(JSON.stringify(payload));
   }, [roomId, userId, role, controlAllowed]);
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
   return {
     connected,
     participants,
     error,
+    clearError,
     localStream,
     hasRemoteStream,
     remoteStreams,

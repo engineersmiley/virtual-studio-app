@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
-  Users, Radio, ArrowLeft, CheckCircle, AlertTriangle,
+  Users, Radio, ArrowLeft, CheckCircle, AlertTriangle, X,
   Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move, Maximize, Minimize,
   Volume2, VolumeX, Music
 } from 'lucide-react';
@@ -261,6 +261,7 @@ function SessionContent() {
     connected,
     participants,
     error,
+    clearError,
     localStream,
     hasRemoteStream,
     remoteStreams,
@@ -662,9 +663,18 @@ function SessionContent() {
       </header>
 
       {error && (
-        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive flex items-center gap-3">
-          <AlertTriangle size={20} />
-          {error}
+        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={20} />
+            {error}
+          </div>
+          <button 
+            onClick={() => clearError?.()}
+            className="text-destructive/70 hover:text-destructive transition-colors"
+            data-testid="button-dismiss-error"
+          >
+            <X size={18} />
+          </button>
         </div>
       )}
 
