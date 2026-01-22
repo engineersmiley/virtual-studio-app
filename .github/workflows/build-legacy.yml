@@ -4,35 +4,31 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-mac-legacy:
     runs-on: macos-13
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Setup legacy build
+      - name: Use legacy package.json
         working-directory: virtual-studio-agent
         run: cp package-legacy.json package.json
 
-      - name: Install
+      - name: Install dependencies
         working-directory: virtual-studio-agent
-        run: npm install --legacy-peer-deps
+        run: npm install
 
-      - name: Build
+      - name: Build for macOS Legacy
         working-directory: virtual-studio-agent
         run: npm run build:mac
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Rename
-        working-directory: virtual-studio-agent/dist
-        run: mv *.zip Virtual.Studio.Agent-legacy.zip
-
-      - name: Upload
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-macos-10.11
-          path: virtual-studio-agent/dist/Virtual.Studio.Agent-legacy.zip
+          name: virtual-studio-agent-mac-legacy
+          path: virtual-studio-agent/dist/*.zip
