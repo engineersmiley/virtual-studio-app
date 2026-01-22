@@ -12,8 +12,8 @@ const GITHUB_REPO = "engineersmiley/virtual-studio-app";
 const DOWNLOAD_URLS = {
   windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
   mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
-  // Legacy build from v1.0.18 - works on macOS 10.11+ (El Capitan)
-  macLegacy: `https://github.com/${GITHUB_REPO}/releases/download/v1.0.18/Virtual.Studio.Agent-legacy.zip`,
+  // Legacy build - works on macOS 10.11+ (El Capitan), hosted on Google Drive
+  macLegacy: "https://drive.google.com/uc?export=download&id=1nWAP3x1jakb66F4oVhPVduY57oeT9cIq",
   linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
 };
 
