@@ -100,21 +100,29 @@ jobs:
 
       - name: Use legacy package.json
         working-directory: virtual-studio-agent
-        run: cp package-legacy.json package.json
+        run: |
+          cp package-legacy.json package.json
+          cat package.json
 
       - name: Install dependencies
         working-directory: virtual-studio-agent
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build for macOS Legacy
         working-directory: virtual-studio-agent
         run: npm run build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: List build output
+        working-directory: virtual-studio-agent
+        run: ls -la dist/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: virtual-studio-agent-mac-legacy
-          path: virtual-studio-agent/dist/*.zip
+          path: virtual-studio-agent/dist/*
 
   release:
     needs: [build-windows, build-mac, build-linux, build-mac-legacy]
