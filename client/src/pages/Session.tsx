@@ -925,17 +925,11 @@ function SessionContent() {
                       <>
                         <p className="font-tech">Waiting for someone to share their screen...</p>
                         <p className="text-sm opacity-50">Room code: <span className="text-primary font-mono">{roomId}</span></p>
-                        {(role === 'engineer' || role === 'producer') && (
-                          <p className="text-sm text-primary mt-2">Or click "Share Screen" above to broadcast yourself!</p>
-                        )}
                       </>
                     ) : (
                       <>
                         <p className="font-tech">Participants connected! Waiting for screen share...</p>
                         <p className="text-sm opacity-50">Someone needs to click "Share Screen" to start broadcasting</p>
-                        {(role === 'engineer' || role === 'producer') && (
-                          <p className="text-sm text-primary mt-2">Or click "Share Screen" above to broadcast yourself!</p>
-                        )}
                       </>
                     )}
                   </div>
