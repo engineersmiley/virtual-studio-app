@@ -13,7 +13,7 @@ const DOWNLOAD_URLS = {
   windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
   mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
   // Legacy build - works on macOS 10.11+ (El Capitan), hosted on Google Drive
-  macLegacy: "https://drive.google.com/uc?export=download&id=1uzvRTwambOcCJ3A-1lqx8etmC_jWnuSq",
+  macLegacy: "https://drive.google.com/uc?export=download&id=1LGg4_Zz0vwGxbIVDEaZXRxZ4yzpz7AEP",
   linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
 };
 
