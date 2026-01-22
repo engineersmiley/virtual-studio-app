@@ -313,7 +313,7 @@
       
       try {
         // Connect with just session code - no token needed!
-        const result = await window.agent.connect(sessionCode, '');
+        const result = await window.agent.connect(sessionCode);
         if (!result.success) {
           showError(result.error || 'Connection failed. Make sure artist clicked "Allow Control".');
           connectBtn.disabled = false;

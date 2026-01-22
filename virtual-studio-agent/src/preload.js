@@ -1,8 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('agent', {
-  connect: (sessionCode, sessionToken) => 
-    ipcRenderer.invoke('connect', { sessionCode, sessionToken }),
+  connect: (sessionCode) => 
+    ipcRenderer.invoke('connect', { sessionCode }),
   disconnect: () => 
     ipcRenderer.invoke('disconnect'),
   stopControl: () => 

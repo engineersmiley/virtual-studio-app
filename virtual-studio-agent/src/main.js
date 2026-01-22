@@ -108,17 +108,13 @@ async function checkAccessibilityPermissions() {
   return true;
 }
 
-async function connectViaPolling(sessionCode, sessionToken) {
+async function connectViaPolling(sessionCode) {
   try {
-    // Connect with or without token - server supports simple mode
-    const body = sessionToken 
-      ? { token: sessionToken, sessionCode }
-      : { sessionCode }; // Simple mode - no token needed
-    
-    const response = await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/connect`, {
+    // Simple mode - no token needed, just session code
+    const response = await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/simple-connect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ sessionCode })
     });
     
     if (!response.ok) {
@@ -129,22 +125,18 @@ async function connectViaPolling(sessionCode, sessionToken) {
     usePolling = true;
     isConnected = true;
     currentSession = sessionCode;
-    currentToken = sessionToken || null; // May be null in simple mode
+    currentToken = null; // No token needed in simple mode
     mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
     updateTrayMenu();
     
     // Start polling for messages
     pollingInterval = setInterval(async () => {
       try {
-        // Poll with or without token
-        const pollBody = currentToken 
-          ? { token: currentToken, sessionCode: currentSession }
-          : { sessionCode: currentSession };
-        
+        // Poll without token - simple mode
         const pollResponse = await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(pollBody)
+          body: JSON.stringify({ sessionCode: currentSession })
         });
         
         if (pollResponse.ok) {
@@ -164,55 +156,19 @@ async function connectViaPolling(sessionCode, sessionToken) {
   }
 }
 
-function connectToServer(sessionCode, sessionToken) {
+function connectToServer(sessionCode) {
+  // Close any existing connections
   if (ws) {
     ws.close();
+    ws = null;
   }
   if (pollingInterval) {
     clearInterval(pollingInterval);
     pollingInterval = null;
   }
   
-  currentToken = sessionToken;
-  usePolling = false;
-
-  const wsUrl = `${VIRTUAL_STUDIO_URL}/agent?session=${sessionCode}&token=${sessionToken}`;
-  
-  ws = new WebSocket(wsUrl);
-  
-  ws.on('open', () => {
-    isConnected = true;
-    currentSession = sessionCode;
-    mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'websocket' });
-    updateTrayMenu();
-  });
-  
-  ws.on('message', async (data) => {
-    try {
-      const message = JSON.parse(data.toString());
-      await handleControlMessage(message);
-    } catch (error) {
-      console.error('Error handling message:', error);
-    }
-  });
-  
-  ws.on('close', () => {
-    if (!usePolling) {
-      isConnected = false;
-      controlEnabled = false;
-      currentSession = null;
-      mainWindow.webContents.send('connection-status', { connected: false });
-      updateTrayMenu();
-    }
-  });
-  
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
-    // Fallback to HTTP polling
-    console.log('Falling back to HTTP polling...');
-    mainWindow.webContents.send('status-message', 'WebSocket blocked, using HTTP polling...');
-    connectViaPolling(sessionCode, sessionToken);
-  });
+  // Use HTTP polling directly - no token needed, simpler and more reliable
+  connectViaPolling(sessionCode);
 }
 
 async function handleControlMessage(message) {
@@ -417,13 +373,13 @@ app.on('activate', () => {
   }
 });
 
-ipcMain.handle('connect', async (event, { sessionCode, sessionToken }) => {
+ipcMain.handle('connect', async (event, { sessionCode }) => {
   const hasPermissions = await checkAccessibilityPermissions();
   if (!hasPermissions) {
     return { success: false, error: 'Accessibility permissions required' };
   }
   
-  connectToServer(sessionCode, sessionToken);
+  connectToServer(sessionCode);
   return { success: true };
 });
 
@@ -433,12 +389,12 @@ ipcMain.handle('disconnect', async () => {
     pollingInterval = null;
   }
   
-  if (usePolling && currentSession && currentToken) {
+  if (usePolling && currentSession) {
     try {
       await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: currentToken, sessionCode: currentSession })
+        body: JSON.stringify({ sessionCode: currentSession })
       });
     } catch (err) {
       console.error('Disconnect error:', err);
@@ -447,6 +403,7 @@ ipcMain.handle('disconnect', async () => {
   
   if (ws) {
     ws.close();
+    ws = null;
   }
   
   isConnected = false;
