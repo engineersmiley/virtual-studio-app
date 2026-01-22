@@ -991,13 +991,20 @@ export async function registerRoutes(
       
       let userId: string;
       
-      // Try token-based auth first
+      // Try token-based auth first, but fall back to simple mode if token is invalid
       if (token) {
         const tokenData = agentTokens.get(token);
-        if (!tokenData || tokenData.sessionCode !== normalizedCode || tokenData.expiresAt < Date.now()) {
-          return res.status(401).json({ error: 'Invalid or expired token' });
+        if (tokenData && tokenData.sessionCode === normalizedCode && tokenData.expiresAt >= Date.now()) {
+          userId = tokenData.userId;
+        } else {
+          // Token invalid - fall back to simple mode (bypass token requirement)
+          const rcData = remoteControlEnabled.get(normalizedCode);
+          if (!rcData) {
+            return res.status(403).json({ error: 'Remote control not enabled. Ask artist to click "Allow Control".' });
+          }
+          userId = rcData.artistUserId;
+          console.log(`Agent connected with invalid/empty token, using simple mode for ${normalizedCode}`);
         }
-        userId = tokenData.userId;
       } else {
         // Simple mode - check if remote control is enabled
         const rcData = remoteControlEnabled.get(normalizedCode);
@@ -1057,18 +1064,10 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Agent not connected' });
       }
       
-      // Verify token if provided, otherwise check simple mode
-      if (token) {
-        const tokenData = agentTokens.get(token);
-        if (!tokenData || tokenData.sessionCode !== normalizedCode) {
-          return res.status(401).json({ error: 'Invalid token' });
-        }
-      } else {
-        // Simple mode - verify remote control is still enabled
-        const rcData = remoteControlEnabled.get(normalizedCode);
-        if (!rcData) {
-          return res.status(403).json({ error: 'Remote control disabled' });
-        }
+      // Token is optional - bypass validation, just check remote control is enabled
+      const rcData = remoteControlEnabled.get(normalizedCode);
+      if (!rcData) {
+        return res.status(403).json({ error: 'Remote control disabled' });
       }
       
       agent.lastPoll = Date.now();
