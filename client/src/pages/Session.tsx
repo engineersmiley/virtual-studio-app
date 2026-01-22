@@ -669,6 +669,15 @@ function SessionContent() {
             {error}
           </div>
           <div className="flex items-center gap-2">
+            {role === 'artist' && !isSharing && (
+              <button 
+                onClick={() => { clearError?.(); handleStartSharing(false); }}
+                className="px-3 py-1 text-sm bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-colors"
+                data-testid="button-try-again"
+              >
+                Try Again
+              </button>
+            )}
             <button 
               onClick={() => window.location.reload()}
               className="px-3 py-1 text-sm bg-destructive/20 hover:bg-destructive/30 rounded-lg transition-colors"
