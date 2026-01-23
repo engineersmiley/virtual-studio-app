@@ -3,6 +3,7 @@ import { useRoute, Link } from 'wouter';
 import { useWebRTC, type RemoteControlEvent, type RemoteStreamInfo } from '@/hooks/use-webrtc';
 import { useUploadRecording } from '@/hooks/use-recordings';
 import { Visualizer } from '@/components/Visualizer';
+import { AudioDeviceSelector } from '@/components/AudioDeviceSelector';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { PhoneControl } from '@/components/PhoneControl';
 import { Button } from '@/components/ui/button';
@@ -1348,6 +1349,14 @@ function SessionContent() {
               </div>
             </div>
           )}
+
+          {/* Audio Device Selector */}
+          <div className="mt-4">
+            <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
+              <Volume2 size={20} /> Audio Devices
+            </h3>
+            <AudioDeviceSelector />
+          </div>
 
           {/* Instructions */}
           <div className="mt-auto p-4 rounded-xl bg-white/5 text-sm text-muted-foreground space-y-2">

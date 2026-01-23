@@ -450,6 +450,12 @@ ipcMain.handle('disconnect', async () => {
   usePolling = false;
   updateTrayMenu();
   
+  // Notify UI of disconnection
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('connection-status', { connected: false });
+    mainWindow.webContents.send('control-status', { enabled: false });
+  }
+  
   return { success: true };
 });
 
