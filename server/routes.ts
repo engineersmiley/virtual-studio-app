@@ -686,12 +686,40 @@ export async function registerRoutes(
         return res.status(403).json({ error: 'Remote control not enabled for this session. Ask artist to click "Allow Control".' });
       }
       
-      // Check if agent already connected
-      if (agentConnections.has(normalizedCode)) {
+      // Check if agent already connected (WebSocket or polling)
+      if (agentConnections.has(normalizedCode) || pollingAgents.has(normalizedCode)) {
         return res.status(409).json({ error: 'Agent already connected to this session' });
       }
       
-      console.log(`Agent simple-connected to session ${normalizedCode}`);
+      // Register polling agent
+      pollingAgents.set(normalizedCode, {
+        sessionCode: normalizedCode,
+        userId: rcData.artistUserId,
+        controlEnabled: false,
+        lastPoll: Date.now(),
+        messages: []
+      });
+      
+      console.log(`Agent simple-connected to session ${normalizedCode} (registered in pollingAgents)`);
+      
+      // Notify room participants via WebSocket
+      const room = rooms.get(normalizedCode);
+      if (room) {
+        room.forEach((participant) => {
+          if (participant.ws.readyState === WebSocket.OPEN) {
+            participant.ws.send(JSON.stringify({ type: 'agent-connected', sessionCode: normalizedCode }));
+          }
+        });
+      }
+      
+      // Notify polling room participants
+      const pollingRoom = pollingRooms.get(normalizedCode);
+      if (pollingRoom) {
+        pollingRoom.forEach(p => {
+          p.messages.push({ type: 'agent-connected', sessionCode: normalizedCode });
+        });
+      }
+      
       res.json({ 
         connected: true, 
         sessionCode: normalizedCode,
