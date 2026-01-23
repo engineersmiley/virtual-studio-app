@@ -867,6 +867,12 @@ export async function registerRoutes(
           return res.json({ success: false, reason: 'control not permitted' });
         }
         
+        // Clear control permission when control-end is received
+        if (type === 'control-end') {
+          controlPermissions.set(normalizedRoom, false);
+          console.log('[Control Polling] Engineer ended control for session:', normalizedRoom);
+        }
+        
         // Try WebSocket agent first
         if (wsAgent && wsAgent.ws.readyState === WebSocket.OPEN) {
           const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
@@ -1515,6 +1521,12 @@ export async function registerRoutes(
           if (message.type !== 'control-request' && message.type !== 'control-end' && !controlPermissions.get(sessionCode)) {
             console.log('[Control] Blocked: control not permitted for session', sessionCode);
             return;
+          }
+          
+          // Clear control permission when control-end is received
+          if (message.type === 'control-end') {
+            controlPermissions.set(sessionCode, false);
+            console.log('[Control] Engineer ended control for session:', sessionCode);
           }
           
           // Forward message with verified session code

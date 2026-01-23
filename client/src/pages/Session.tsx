@@ -111,6 +111,8 @@ function SessionContent() {
   const [remoteControlAllowed, setRemoteControlAllowed] = useState(false);
   const [togglingRemoteControl, setTogglingRemoteControl] = useState(false);
   
+  // Main video audio state - track if audio is muted due to autoplay policy
+  const [videoAudioMuted, setVideoAudioMuted] = useState(true);
   
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
@@ -168,6 +170,15 @@ function SessionContent() {
   const handleRemoteStream = useCallback((stream: MediaStream) => {
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = stream;
+      // Start muted to allow autoplay - keep muted until user clicks Enable Audio
+      remoteVideoRef.current.muted = true;
+      setVideoAudioMuted(true);
+      
+      // Start playing muted
+      remoteVideoRef.current.play().catch(() => {
+        // Autoplay blocked even when muted - unusual but handle it
+        console.log('Autoplay blocked even when muted');
+      });
     }
     
     // Setup analyser for visualizer
@@ -882,6 +893,36 @@ function SessionContent() {
                       </>
                     )}
                   </div>
+                )}
+                {/* Enable Audio button - appears when video audio is muted */}
+                {hasRemoteStream && videoAudioMuted && (
+                  <Button
+                    onClick={() => {
+                      if (remoteVideoRef.current) {
+                        remoteVideoRef.current.muted = false;
+                        remoteVideoRef.current.play().then(() => {
+                          setVideoAudioMuted(false);
+                          toast({
+                            title: "Audio Enabled",
+                            description: "You can now hear the stream audio",
+                          });
+                        }).catch((err) => {
+                          console.error('Audio play failed:', err);
+                          toast({
+                            title: "Audio Failed",
+                            description: "Could not enable audio. Try clicking again.",
+                            variant: "destructive",
+                          });
+                        });
+                      }
+                    }}
+                    data-testid="button-enable-stream-audio"
+                    className="absolute top-3 right-3 z-20"
+                    size="sm"
+                  >
+                    <Volume2 size={16} className="mr-2" />
+                    Enable Audio
+                  </Button>
                 )}
                 {/* Control mode indicator for engineer */}
                 {role === 'engineer' && controlMode && hasRemoteStream && (
