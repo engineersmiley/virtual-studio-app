@@ -807,7 +807,7 @@ export async function registerRoutes(
   }
   
   const pollingRooms = new Map<string, Map<string, PollingParticipant>>();
-  const POLL_TIMEOUT = 30000; // 30 seconds before participant is considered disconnected
+  const POLL_TIMEOUT = 120000; // 2 minutes before participant is considered disconnected (increased for stability)
   
   // Cleanup stale polling participants periodically
   setInterval(() => {
@@ -815,18 +815,30 @@ export async function registerRoutes(
     pollingRooms.forEach((room, roomId) => {
       room.forEach((participant, odId) => {
         if (now - participant.lastPoll > POLL_TIMEOUT) {
-          room.delete(participant.userId);
-          // Notify other participants
-          room.forEach(p => {
-            p.messages.push({ type: 'user-left', userId: participant.userId, roomId });
-          });
+          // Check if user is still connected via WebSocket before marking as left
+          const wsRoom = rooms.get(roomId);
+          const stillConnectedViaWS = wsRoom && Array.from(wsRoom.values()).some(p => p.odId === participant.userId);
+          
+          if (stillConnectedViaWS) {
+            // User switched to WebSocket, just clean up polling entry silently
+            console.log(`[Polling] User ${participant.userId} still on WebSocket, removing stale polling entry`);
+            room.delete(participant.userId);
+          } else {
+            console.log(`[Polling] User ${participant.userId} timed out after ${POLL_TIMEOUT}ms - sending user-left`);
+            room.delete(participant.userId);
+            // Notify other participants
+            room.forEach(p => {
+              p.messages.push({ type: 'user-left', userId: participant.userId, roomId });
+            });
+          }
+          
           if (room.size === 0) {
             pollingRooms.delete(roomId);
           }
         }
       });
     });
-  }, 10000);
+  }, 15000); // Check every 15 seconds
   
   // Join room via polling
   app.post('/api/signal/join', (req, res) => {
