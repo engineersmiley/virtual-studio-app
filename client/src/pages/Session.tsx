@@ -519,6 +519,33 @@ function SessionContent() {
       console.error('Failed to setup audio analyser:', err);
     }
   }, [primaryVideoStream]);
+  
+  // Periodically check video track health and log status
+  useEffect(() => {
+    if (!primaryVideoStream) return;
+    
+    const checkInterval = setInterval(() => {
+      const videoTracks = primaryVideoStream.stream.getVideoTracks();
+      const liveVideoTracks = videoTracks.filter(t => t.readyState === 'live');
+      const endedVideoTracks = videoTracks.filter(t => t.readyState === 'ended');
+      
+      if (endedVideoTracks.length > 0 && liveVideoTracks.length === 0) {
+        console.log('[Video Health] All video tracks ended - connection may need recovery');
+      }
+      
+      // Check if video element is actually playing
+      if (remoteVideoRef.current) {
+        const video = remoteVideoRef.current;
+        const isPlaying = !video.paused && !video.ended && video.readyState > 2;
+        if (!isPlaying && videoTracks.length > 0) {
+          console.log('[Video Health] Video not playing, trying to restart...');
+          video.play().catch(() => {});
+        }
+      }
+    }, 5000);
+    
+    return () => clearInterval(checkInterval);
+  }, [primaryVideoStream]);
 
   useEffect(() => {
     if (roomId) {
