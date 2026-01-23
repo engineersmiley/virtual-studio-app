@@ -476,6 +476,23 @@ function SessionContent() {
         setHasAudioTracks(audioTracks.length > 0);
         console.log('Stream has audio tracks:', audioTracks.length, audioTracks.map(t => ({ label: t.label, enabled: t.enabled, muted: t.muted })));
         
+        // Log video track status
+        const videoTracks = primaryVideoStream.stream.getVideoTracks();
+        console.log('[Video] Attaching stream with', videoTracks.length, 'video tracks:', videoTracks.map(t => ({ label: t.label, readyState: t.readyState })));
+        
+        // Monitor for track ending
+        videoTracks.forEach(track => {
+          track.onended = () => {
+            console.log('[Video] Video track ended:', track.label, '- this should NOT cause video to disappear');
+          };
+          track.onmute = () => {
+            console.log('[Video] Video track muted:', track.label);
+          };
+          track.onunmute = () => {
+            console.log('[Video] Video track unmuted:', track.label);
+          };
+        });
+        
         remoteVideoRef.current.play().catch(() => {
           console.log('Autoplay blocked even when muted');
         });
