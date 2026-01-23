@@ -1165,6 +1165,18 @@ function SessionContent() {
                   </div>
                 )}
                 
+                {/* Audio prompt for engineer when video is playing but audio is muted */}
+                {isViewer && hasRemoteStream && videoAudioMuted && (
+                  <button 
+                    onClick={handleToggleAudio}
+                    className="absolute bottom-16 left-1/2 transform -translate-x-1/2 z-30 flex items-center gap-3 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 text-white font-bold shadow-lg hover:scale-105 transition-all animate-pulse"
+                    data-testid="button-enable-audio-prompt"
+                  >
+                    <Volume2 size={24} />
+                    <span className="text-lg">Click to Enable Audio</span>
+                  </button>
+                )}
+                
               </>
             )}
             
