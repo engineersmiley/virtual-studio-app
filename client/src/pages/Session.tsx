@@ -135,12 +135,62 @@ function SessionContent() {
   const [hasAudioTracks, setHasAudioTracks] = useState(false);
   const [audioConfirmed, setAudioConfirmed] = useState(false);
   const [volume, setVolume] = useState(100); // 0-100
+  const [isTestingAudio, setIsTestingAudio] = useState(false);
   
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
   const producerAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   
   const { toast } = useToast();
+  
+  // Test audio function - plays a short tone to confirm audio is working
+  const playTestAudio = useCallback(async () => {
+    if (isTestingAudio) return;
+    setIsTestingAudio(true);
+    
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Create a pleasant chord for testing
+      const frequencies = [523.25, 659.25, 783.99]; // C5, E5, G5 (C major chord)
+      const duration = 0.5;
+      
+      frequencies.forEach((freq, i) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = freq;
+        oscillator.type = 'sine';
+        
+        // Stagger start times slightly for a richer sound
+        const startTime = audioContext.currentTime + (i * 0.02);
+        gainNode.gain.setValueAtTime(0.15, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      });
+      
+      toast({
+        title: "Audio Test",
+        description: "If you heard a tone, your audio is working!",
+      });
+      
+      // Reset after sound finishes
+      setTimeout(() => setIsTestingAudio(false), 600);
+    } catch (err) {
+      console.error('Audio test failed:', err);
+      toast({
+        title: "Audio Test Failed",
+        description: "Could not play test sound. Check your audio settings.",
+        variant: "destructive",
+      });
+      setIsTestingAudio(false);
+    }
+  }, [isTestingAudio, toast]);
   
   // Count blocked streams
   const blockedCount = Array.from(audioStatus.values()).filter(s => s === 'blocked').length;
@@ -1226,6 +1276,18 @@ function SessionContent() {
                   {isMicActive ? 'Mic On' : 'Mic Off'}
                 </button>
 
+                {/* Test Audio button - plays a test tone to confirm audio is working on this computer */}
+                <button
+                  onClick={playTestAudio}
+                  data-testid="button-engineer-test-audio"
+                  disabled={isTestingAudio}
+                  className="px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border bg-blue-500/20 border-blue-500/50 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50"
+                  title="Play a test tone to confirm audio is working on this device"
+                >
+                  <Volume2 size={16} />
+                  Test Audio
+                </button>
+
                 {/* Share Screen for teaching */}
                 {!isSharing ? (
                   <button
@@ -1467,6 +1529,18 @@ function SessionContent() {
                   <div className={`w-2 h-2 rounded-full ${isMicActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
                   {isMicActive ? 'Mic On' : 'Mic Off'}
                 </button>
+
+                {/* Test Audio button for producers */}
+                <button
+                  onClick={playTestAudio}
+                  data-testid="button-producer-test-audio"
+                  disabled={isTestingAudio}
+                  className="px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border bg-blue-500/20 border-blue-500/50 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50"
+                  title="Play a test tone to confirm audio is working on this device"
+                >
+                  <Volume2 size={16} />
+                  Test Audio
+                </button>
                 
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/20 border border-purple-500/50">
                   <Music size={14} className="text-purple-400" />
@@ -1529,6 +1603,18 @@ function SessionContent() {
                 >
                   <div className={`w-2 h-2 rounded-full ${isMicActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
                   {isMicActive ? 'Mic On' : 'Mic Off'}
+                </button>
+
+                {/* Test Audio button for guests */}
+                <button
+                  onClick={playTestAudio}
+                  data-testid="button-guest-test-audio"
+                  disabled={isTestingAudio}
+                  className="px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border bg-blue-500/20 border-blue-500/50 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50"
+                  title="Play a test tone to confirm audio is working on this device"
+                >
+                  <Volume2 size={16} />
+                  Test Audio
                 </button>
                 
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
