@@ -6,11 +6,21 @@ type SignalingTransport = WebSocket | PollingTransport;
 
 // Storage keys for audio device selection (must match AudioDeviceSelector)
 const STORAGE_KEY_INPUT = 'virtualstudio-audio-input';
+const STORAGE_KEY_DAW_INPUT = 'virtualstudio-daw-input';
 
 // Get the selected input device from localStorage
 function getSelectedInputDevice(): string | undefined {
   const saved = localStorage.getItem(STORAGE_KEY_INPUT);
   return saved || undefined;
+}
+
+// Get the selected DAW input device from localStorage
+function getSelectedDawInputDevice(): string | undefined {
+  const saved = localStorage.getItem(STORAGE_KEY_DAW_INPUT);
+  if (saved && saved !== 'none') {
+    return saved;
+  }
+  return undefined;
 }
 
 function isTransportOpen(transport: SignalingTransport | null): boolean {
@@ -568,11 +578,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   // Check if role can broadcast (artist, engineer, or producer)
   const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
 
-  const startSharing = useCallback(async (audioOnly: boolean = false): Promise<{ hasSystemAudio: boolean; hasMicAudio: boolean }> => {
+  const startSharing = useCallback(async (audioOnly: boolean = false): Promise<{ hasSystemAudio: boolean; hasMicAudio: boolean; hasDawAudio: boolean }> => {
     // Only artist, engineer, and producer can share
     if (!canBroadcast) {
       setError('Only artists, engineers, and producers can share');
-      return { hasSystemAudio: false, hasMicAudio: false };
+      return { hasSystemAudio: false, hasMicAudio: false, hasDawAudio: false };
     }
 
     try {
@@ -625,6 +635,28 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         } as any
       });
 
+      // Get DAW/System audio input if selected
+      const selectedDawDevice = getSelectedDawInputDevice();
+      let dawStream: MediaStream | null = null;
+      if (selectedDawDevice) {
+        try {
+          dawStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              deviceId: { exact: selectedDawDevice },
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              sampleRate: 48000,
+              sampleSize: 16,
+              channelCount: 2,
+            } as any
+          });
+          console.log('[WebRTC] DAW audio input captured');
+        } catch (err) {
+          console.warn('[WebRTC] Failed to capture DAW audio input:', err);
+        }
+      }
+
       // Mix audio using Web Audio API with high quality settings
       const audioContext = new AudioContext({ sampleRate: 48000 });
       audioContextRef.current = audioContext;
@@ -633,16 +665,22 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       // Track what audio sources we have
       const hasSystemAudio = displayStream && displayStream.getAudioTracks().length > 0;
       const hasMicAudio = micStream.getAudioTracks().length > 0;
+      const hasDawAudio = dawStream && dawStream.getAudioTracks().length > 0;
       
-      console.log('[WebRTC] Audio sources - System:', hasSystemAudio, 'Mic:', hasMicAudio);
+      console.log('[WebRTC] Audio sources - System:', hasSystemAudio, 'Mic:', hasMicAudio, 'DAW:', hasDawAudio);
 
-      // Add system audio if available
+      // Add system audio if available (from screen share)
       if (hasSystemAudio) {
         const sysSource = audioContext.createMediaStreamSource(displayStream);
         sysSource.connect(dest);
         console.log('[WebRTC] System audio connected to mix');
-      } else {
-        console.warn('[WebRTC] No system audio - user may not have checked "Share audio" in the browser dialog');
+      }
+
+      // Add DAW audio if available
+      if (hasDawAudio && dawStream) {
+        const dawSource = audioContext.createMediaStreamSource(dawStream);
+        dawSource.connect(dest);
+        console.log('[WebRTC] DAW audio connected to mix');
       }
 
       // Add mic audio
@@ -697,16 +735,16 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
 
       // Store streams for cleanup
-      (combinedStream as any)._originalStreams = [displayStream, micStream].filter(Boolean);
+      (combinedStream as any)._originalStreams = [displayStream, micStream, dawStream].filter(Boolean);
 
-      return { hasSystemAudio, hasMicAudio };
+      return { hasSystemAudio, hasMicAudio, hasDawAudio: !!hasDawAudio };
     } catch (err: any) {
       // Handle common screen share errors with friendly messages
       const errorMsg = err.message || '';
       if (errorMsg.includes('Permission denied') || errorMsg.includes('NotAllowedError')) {
         // User cancelled or system denied - don't show error, just silently fail
         console.log('Screen share cancelled or denied');
-        return { hasSystemAudio: false, hasMicAudio: false };
+        return { hasSystemAudio: false, hasMicAudio: false, hasDawAudio: false };
       } else if (errorMsg.includes('NotFoundError') || errorMsg.includes('not found')) {
         setError('No screen or window available to share');
       } else if (errorMsg.includes('NotReadableError')) {

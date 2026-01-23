@@ -509,16 +509,22 @@ function SessionContent() {
       
       // Show feedback about what audio sources were captured
       if (result) {
-        if (result.hasSystemAudio && result.hasMicAudio) {
-          toast({ title: "Sharing Started", description: "Screen + Mic + System Audio" });
-        } else if (result.hasMicAudio && !result.hasSystemAudio) {
+        const sources = [];
+        if (result.hasMicAudio) sources.push("Mic");
+        if (result.hasDawAudio) sources.push("DAW Audio");
+        if (result.hasSystemAudio) sources.push("System Audio");
+        
+        if (sources.length > 0) {
           toast({ 
-            title: "Mic Only - No System Audio", 
-            description: "To share music/sounds, reshare and check 'Share audio' in the browser dialog",
+            title: "Sharing Started", 
+            description: sources.join(" + ") 
+          });
+        } else {
+          toast({ 
+            title: "No Audio Sources", 
+            description: "Check your audio device settings",
             variant: "destructive"
           });
-        } else if (result.hasSystemAudio && !result.hasMicAudio) {
-          toast({ title: "System Audio Only", description: "Microphone not detected" });
         }
       }
     } catch (e) {
