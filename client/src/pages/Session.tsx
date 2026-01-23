@@ -457,6 +457,58 @@ function SessionContent() {
     setIsSharing(false);
   };
 
+  // Audio toggle handler
+  const handleToggleAudio = async () => {
+    if (videoAudioMuted) {
+      // Enable audio
+      let videoEnabled = false;
+      let audioStreamsEnabled = 0;
+      
+      if (remoteVideoRef.current) {
+        try {
+          remoteVideoRef.current.muted = false;
+          await remoteVideoRef.current.play();
+          setVideoAudioMuted(false);
+          videoEnabled = true;
+        } catch (err) {
+          console.error('Video audio play failed:', err);
+        }
+      }
+      
+      // Enable all blocked audio-only streams
+      const blockedUsers = Array.from(audioStatus.entries())
+        .filter(([, status]) => status === 'blocked')
+        .map(([userId]) => userId);
+      
+      for (const blockedUserId of blockedUsers) {
+        const audio = producerAudioRefs.current.get(blockedUserId);
+        if (audio) {
+          try {
+            await audio.play();
+            markAudioPlaying(blockedUserId);
+            audioStreamsEnabled++;
+          } catch (err) {
+            console.error(`Audio stream ${blockedUserId} failed:`, err);
+          }
+        }
+      }
+      
+      if (videoEnabled || audioStreamsEnabled > 0) {
+        toast({ title: "Audio On", description: "Session audio enabled" });
+      }
+    } else {
+      // Mute audio
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.muted = true;
+        setVideoAudioMuted(true);
+      }
+      for (const audio of producerAudioRefs.current.values()) {
+        audio.pause();
+      }
+      toast({ title: "Audio Muted", description: "Session audio muted" });
+    }
+  };
+
   // Recording controls (Engineer only)
   const startRecordingSession = () => {
     if (!remoteVideoRef.current?.srcObject) return;
@@ -969,92 +1021,6 @@ function SessionContent() {
                     )}
                   </div>
                 )}
-                {/* Audio toggle button - always visible when there's a remote stream */}
-                {hasRemoteStream && (
-                  <Button
-                    onClick={async () => {
-                      if (videoAudioMuted) {
-                        // Enable audio
-                        let videoEnabled = false;
-                        let audioStreamsEnabled = 0;
-                        
-                        // 1. Enable video element audio
-                        if (remoteVideoRef.current) {
-                          try {
-                            remoteVideoRef.current.muted = false;
-                            await remoteVideoRef.current.play();
-                            setVideoAudioMuted(false);
-                            videoEnabled = true;
-                          } catch (err) {
-                            console.error('Video audio play failed:', err);
-                          }
-                        }
-                        
-                        // 2. Enable all blocked audio-only streams
-                        const blockedUsers = Array.from(audioStatus.entries())
-                          .filter(([, status]) => status === 'blocked')
-                          .map(([userId]) => userId);
-                        
-                        for (const blockedUserId of blockedUsers) {
-                          const audio = producerAudioRefs.current.get(blockedUserId);
-                          if (audio) {
-                            try {
-                              await audio.play();
-                              markAudioPlaying(blockedUserId);
-                              audioStreamsEnabled++;
-                            } catch (err) {
-                              console.error(`Audio stream ${blockedUserId} failed:`, err);
-                            }
-                          }
-                        }
-                        
-                        // Show result
-                        if (videoEnabled || audioStreamsEnabled > 0) {
-                          toast({
-                            title: "Audio Enabled",
-                            description: "You can now hear all audio from the session",
-                          });
-                        } else {
-                          toast({
-                            title: "Audio Issue",
-                            description: "Could not enable audio. Try clicking again.",
-                            variant: "destructive",
-                          });
-                        }
-                      } else {
-                        // Mute audio
-                        if (remoteVideoRef.current) {
-                          remoteVideoRef.current.muted = true;
-                          setVideoAudioMuted(true);
-                        }
-                        // Pause all producer audio streams
-                        for (const audio of producerAudioRefs.current.values()) {
-                          audio.pause();
-                        }
-                        toast({
-                          title: "Audio Muted",
-                          description: "Session audio has been muted",
-                        });
-                      }
-                    }}
-                    data-testid="button-toggle-stream-audio"
-                    className={`absolute top-3 right-3 z-20 ${videoAudioMuted ? '' : 'bg-green-600 hover:bg-green-700'}`}
-                    size="sm"
-                    title={!hasAudioTracks ? 'No audio in stream - artist needs to share with audio enabled' : ''}
-                  >
-                    {videoAudioMuted ? (
-                      <>
-                        <VolumeX size={16} className="mr-2" />
-                        {hasAudioTracks ? 'Enable Audio' : 'No Audio'}
-                      </>
-                    ) : (
-                      <>
-                        <Volume2 size={16} className="mr-2" />
-                        Audio On
-                      </>
-                    )}
-                  </Button>
-                )}
                 {/* Control mode indicator for engineer */}
                 {role === 'engineer' && controlMode && hasRemoteStream && (
                   <div className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/90 text-primary-foreground text-sm font-medium">
@@ -1083,77 +1049,100 @@ function SessionContent() {
           </div>
 
           {/* Controls */}
-          <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex flex-wrap gap-2 items-center justify-between">
             {role === 'artist' ? (
               // Artist controls - share screen and generate token for engineer
-              <div className="flex gap-3 items-center flex-wrap">
+              <div className="flex gap-2 items-center flex-wrap">
                 {isMobile || !screenShareSupported ? (
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm">
-                    <p className="font-bold mb-1">Screen sharing requires a computer</p>
-                    <p className="text-xs">Open this session on your computer to share your screen. Your engineer can still watch from their phone.</p>
+                  <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-xs">
+                    <p className="font-bold">Screen sharing requires a computer</p>
                   </div>
                 ) : !isSharing ? (
                   <button
                     onClick={() => handleStartSharing(false)}
                     data-testid="button-start-sharing"
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-background font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                    className="px-3 py-2 rounded-lg bg-gradient-to-r from-primary to-primary/80 text-background font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
                   >
-                    <Video size={20} /> Start Sharing
+                    <Video size={16} /> Share Screen
                   </button>
                 ) : (
                   <button
                     onClick={handleStopSharing}
                     data-testid="button-stop-sharing"
-                    className="px-6 py-3 rounded-xl bg-destructive text-white font-bold flex items-center gap-2 hover:bg-destructive/90 transition-all"
+                    className="px-3 py-2 rounded-lg bg-destructive text-white font-medium text-sm flex items-center gap-2 hover:bg-destructive/90 transition-all"
                   >
-                    <VideoOff size={20} /> Stop Sharing
+                    <VideoOff size={16} /> Stop
                   </button>
                 )}
                 
-                {/* Simple Allow Control Toggle - no token needed */}
+                {/* Control status indicator - like agent lights */}
                 <button
                   onClick={toggleRemoteControl}
                   disabled={togglingRemoteControl}
                   data-testid="button-allow-control"
-                  className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50 ${
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all disabled:opacity-50 border ${
                     remoteControlAllowed
-                      ? 'bg-green-600 text-white shadow-lg shadow-green-500/30 animate-pulse'
-                      : 'bg-gradient-to-r from-amber-600 to-amber-500 text-white hover:brightness-110'
+                      ? 'bg-green-500/20 border-green-500/50 text-green-400'
+                      : 'bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30'
                   }`}
                 >
-                  <MousePointer2 size={20} />
-                  {togglingRemoteControl ? 'Updating...' : remoteControlAllowed ? 'Control Allowed' : 'Allow Control'}
+                  <div className={`w-2 h-2 rounded-full ${remoteControlAllowed ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
+                  {togglingRemoteControl ? 'Updating...' : remoteControlAllowed ? 'Control On' : 'Control Off'}
                 </button>
-                
-                {/* Status message when control is allowed */}
-                {remoteControlAllowed && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500/20 border border-green-500/50">
-                    <span className="text-green-400 text-sm">Engineer can connect with just the room code: <span className="font-mono font-bold">{roomId}</span></span>
-                  </div>
-                )}
               </div>
             ) : canRecord ? (
               // Engineer controls - can share screen, record, and control
               <>
-              <div className="flex gap-3 items-center flex-wrap">
+              <div className="flex gap-2 items-center flex-wrap">
+                {/* Audio indicator light - like agent status */}
+                {hasRemoteStream && (
+                  <button
+                    onClick={handleToggleAudio}
+                    data-testid="button-toggle-stream-audio"
+                    className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                      !hasAudioTracks 
+                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' 
+                        : videoAudioMuted 
+                          ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
+                          : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
+                    }`}
+                    title={!hasAudioTracks ? 'No audio - artist needs to share with audio' : videoAudioMuted ? 'Click to enable audio' : 'Click to mute'}
+                  >
+                    <div className={`w-2 h-2 rounded-full ${
+                      !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
+                    }`} />
+                    {!hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
+                  </button>
+                )}
+
                 {/* Share Screen for teaching */}
                 {!isSharing ? (
                   <button
                     onClick={() => handleStartSharing(false)}
                     data-testid="button-engineer-share-screen"
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-background font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                    className="px-3 py-2 rounded-lg bg-gradient-to-r from-primary to-primary/80 text-background font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
                   >
-                    <Video size={20} /> Share Screen
+                    <Video size={16} /> Share
                   </button>
                 ) : (
                   <button
                     onClick={handleStopSharing}
                     data-testid="button-engineer-stop-sharing"
-                    className="px-6 py-3 rounded-xl bg-destructive text-white font-bold flex items-center gap-2 hover:bg-destructive/90 transition-all"
+                    className="px-3 py-2 rounded-lg bg-destructive text-white font-medium text-sm flex items-center gap-2 hover:bg-destructive/90 transition-all"
                   >
-                    <VideoOff size={20} /> Stop Sharing
+                    <VideoOff size={16} /> Stop
                   </button>
                 )}
+                
+                {/* Agent status indicator */}
+                <div className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 border ${
+                  agentConnected 
+                    ? 'bg-green-500/20 border-green-500/50 text-green-400' 
+                    : 'bg-gray-500/20 border-gray-500/50 text-gray-400'
+                }`}>
+                  <div className={`w-2 h-2 rounded-full ${agentConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+                  Agent {agentConnected ? 'Connected' : 'Offline'}
+                </div>
                 
                 {/* Download Agent - When agent is not connected */}
                 {!agentConnected && (
@@ -1161,10 +1150,9 @@ function SessionContent() {
                     href="/remote-control"
                     target="_blank"
                     data-testid="link-download-agent"
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all shadow-lg shadow-cyan-500/30"
+                    className="px-3 py-2 rounded-lg bg-cyan-600 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
                   >
-                    <Monitor size={20} />
-                    Get Desktop Agent
+                    <Monitor size={16} /> Get Agent
                   </a>
                 )}
                 
@@ -1174,20 +1162,18 @@ function SessionContent() {
                     <button
                       onClick={endFullControl}
                       data-testid="button-end-full-control"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-magenta-600 to-pink-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all shadow-lg shadow-pink-500/30"
+                      className="px-3 py-2 rounded-lg bg-pink-600 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
                     >
-                      <Monitor size={20} />
-                      End Control
+                      <Monitor size={16} /> End Control
                     </button>
                   ) : (
                     <button
                       onClick={() => requestFullControl('Engineer')}
                       disabled={controlPending}
                       data-testid="button-request-full-control"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-primary text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50 shadow-lg shadow-cyan-500/30"
+                      className="px-3 py-2 rounded-lg bg-cyan-600 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
                     >
-                      <Monitor size={20} />
-                      {controlPending ? 'Requesting...' : 'Request Control'}
+                      <Monitor size={16} /> {controlPending ? 'Requesting...' : 'Control'}
                     </button>
                   )
                 )}
@@ -1197,11 +1183,10 @@ function SessionContent() {
                   <button
                     onClick={toggleFullscreen}
                     data-testid="button-fullscreen"
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                    className="px-3 py-2 rounded-lg bg-slate-600 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
                     title={isFullscreen ? 'Exit Fullscreen' : 'View Fullscreen'}
                   >
-                    {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-                    {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                    {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
                   </button>
                 )}
 
@@ -1211,38 +1196,38 @@ function SessionContent() {
                       onClick={startRecordingSession}
                       disabled={!hasRemoteStream}
                       data-testid="button-start-recording"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-2 rounded-lg bg-red-600 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Disc className="animate-pulse" size={20} /> Record
+                      <Disc className="animate-pulse" size={16} /> Record
                     </button>
                   ) : (
                     <button
                       onClick={stopRecordingSession}
                       data-testid="button-stop-recording"
-                      className="px-6 py-3 rounded-xl bg-destructive text-white font-bold flex items-center gap-2 hover:bg-destructive/90 transition-all"
+                      className="px-3 py-2 rounded-lg bg-destructive text-white font-medium text-sm flex items-center gap-2 hover:bg-destructive/90 transition-all"
                     >
-                      <Square fill="currentColor" size={20} /> Stop
+                      <Square fill="currentColor" size={16} /> Stop
                     </button>
                   )
                 ) : (
-                  <div className="flex gap-3">
+                  <div className="flex gap-2">
                     <button
                       onClick={handleDownload}
                       data-testid="button-download-recording"
-                      className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 flex items-center gap-2 transition-colors"
+                      className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-sm flex items-center gap-2 transition-colors"
                     >
-                      <Download size={18} /> Download
+                      <Download size={14} /> Download
                     </button>
                     <button
                       onClick={handleSave}
                       disabled={uploadMutation.isPending}
                       data-testid="button-save-recording"
-                      className="px-6 py-3 rounded-xl bg-secondary text-white font-bold flex items-center gap-2 hover:bg-secondary/90 transition-all disabled:opacity-50"
+                      className="px-3 py-2 rounded-lg bg-secondary text-white font-medium text-sm flex items-center gap-2 hover:bg-secondary/90 transition-all disabled:opacity-50"
                     >
                       {uploadMutation.isPending ? (
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       ) : (
-                        <Save size={18} />
+                        <Save size={14} />
                       )}
                       Save
                     </button>
@@ -1290,43 +1275,82 @@ function SessionContent() {
             </> 
             ) : role === 'producer' ? (
               // Producer - can share screen for beat-making or audio only
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 {!isSharing ? (
                   <>
                     <button
                       onClick={() => handleStartSharing(false)}
                       data-testid="button-producer-share-screen"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all shadow-lg shadow-purple-500/30"
+                      className="px-3 py-2 rounded-lg bg-purple-600 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
                     >
-                      <Monitor size={20} /> Share Screen
+                      <Monitor size={16} /> Screen
                     </button>
                     <button
                       onClick={() => handleStartSharing(true)}
                       data-testid="button-producer-share-audio"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-purple-700 text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                      className="px-3 py-2 rounded-lg bg-purple-700 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
                     >
-                      <Volume2 size={20} /> Audio Only
+                      <Volume2 size={16} /> Audio
                     </button>
                   </>
                 ) : (
                   <button
                     onClick={handleStopSharing}
                     data-testid="button-producer-stop-sharing"
-                    className="px-6 py-3 rounded-xl bg-destructive text-white font-bold flex items-center gap-2 hover:bg-destructive/90 transition-all"
+                    className="px-3 py-2 rounded-lg bg-destructive text-white font-medium text-sm flex items-center gap-2 hover:bg-destructive/90 transition-all"
                   >
-                    <VolumeX size={20} /> Stop Sharing
+                    <VolumeX size={16} /> Stop
                   </button>
                 )}
-                <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/50">
-                  <Music size={18} className="text-purple-400" />
-                  <span className="text-sm text-purple-300 font-tech">Producer</span>
+                {/* Audio indicator for producer */}
+                {hasRemoteStream && (
+                  <button
+                    onClick={handleToggleAudio}
+                    data-testid="button-producer-toggle-audio"
+                    className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                      !hasAudioTracks 
+                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' 
+                        : videoAudioMuted 
+                          ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
+                          : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
+                    }`}
+                  >
+                    <div className={`w-2 h-2 rounded-full ${
+                      !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
+                    }`} />
+                    {!hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
+                  </button>
+                )}
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/20 border border-purple-500/50">
+                  <Music size={14} className="text-purple-400" />
+                  <span className="text-xs text-purple-300">Producer</span>
                 </div>
               </div>
             ) : (
-              // Other - view only, no controls
-              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10">
-                <Eye size={18} className="text-muted-foreground" />
-                <span className="text-sm text-muted-foreground font-tech">Viewing as Guest</span>
+              // Other - view only with audio control
+              <div className="flex gap-2 items-center flex-wrap">
+                {hasRemoteStream && (
+                  <button
+                    onClick={handleToggleAudio}
+                    data-testid="button-other-toggle-audio"
+                    className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                      !hasAudioTracks 
+                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' 
+                        : videoAudioMuted 
+                          ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
+                          : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
+                    }`}
+                  >
+                    <div className={`w-2 h-2 rounded-full ${
+                      !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
+                    }`} />
+                    {!hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
+                  </button>
+                )}
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                  <Eye size={14} className="text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Guest</span>
+                </div>
               </div>
             )}
           </div>
