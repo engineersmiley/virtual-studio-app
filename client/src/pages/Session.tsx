@@ -7,6 +7,7 @@ import { AudioDeviceSelector } from '@/components/AudioDeviceSelector';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { PhoneControl } from '@/components/PhoneControl';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -133,6 +134,7 @@ function SessionContent() {
   const [videoAudioMuted, setVideoAudioMuted] = useState(true);
   const [hasAudioTracks, setHasAudioTracks] = useState(false);
   const [audioConfirmed, setAudioConfirmed] = useState(false);
+  const [volume, setVolume] = useState(100); // 0-100
   
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
@@ -471,8 +473,8 @@ function SessionContent() {
       if (remoteVideoRef.current) {
         try {
           const video = remoteVideoRef.current;
-          // Ensure volume is set first
-          video.volume = 1.0;
+          // Ensure volume is set to current slider value
+          video.volume = volume / 100;
           
           // Pause, unmute, then play to force audio context to restart
           video.pause();
@@ -531,6 +533,23 @@ function SessionContent() {
       unconfirmAudio();
       setAudioConfirmed(false);
       toast({ title: "Audio Muted", description: "Session audio muted" });
+    }
+  };
+
+  // Volume change handler
+  const handleVolumeChange = (newVolume: number[]) => {
+    const vol = newVolume[0];
+    setVolume(vol);
+    const normalizedVolume = vol / 100;
+    
+    // Update video element volume
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.volume = normalizedVolume;
+    }
+    
+    // Update all producer audio elements
+    for (const audio of producerAudioRefs.current.values()) {
+      audio.volume = normalizedVolume;
     }
   };
 
@@ -1139,6 +1158,24 @@ function SessionContent() {
                     {!hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
                   </button>
                 )}
+                
+                {/* Volume Slider */}
+                {hasRemoteStream && !videoAudioMuted && (
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                    <VolumeX size={14} className="text-muted-foreground" />
+                    <Slider
+                      value={[volume]}
+                      onValueChange={handleVolumeChange}
+                      max={100}
+                      min={0}
+                      step={5}
+                      className="w-20"
+                      data-testid="slider-volume"
+                    />
+                    <Volume2 size={14} className="text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground w-8">{volume}%</span>
+                  </div>
+                )}
 
                 {/* Share Screen for teaching */}
                 {!isSharing ? (
@@ -1346,6 +1383,25 @@ function SessionContent() {
                     {!hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
                   </button>
                 )}
+                
+                {/* Volume Slider for Producers */}
+                {hasRemoteStream && !videoAudioMuted && (
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                    <VolumeX size={14} className="text-muted-foreground" />
+                    <Slider
+                      value={[volume]}
+                      onValueChange={handleVolumeChange}
+                      max={100}
+                      min={0}
+                      step={5}
+                      className="w-20"
+                      data-testid="slider-volume-producer"
+                    />
+                    <Volume2 size={14} className="text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground w-8">{volume}%</span>
+                  </div>
+                )}
+                
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/20 border border-purple-500/50">
                   <Music size={14} className="text-purple-400" />
                   <span className="text-xs text-purple-300">Producer</span>
@@ -1372,6 +1428,25 @@ function SessionContent() {
                     {!hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
                   </button>
                 )}
+                
+                {/* Volume Slider for Guests */}
+                {hasRemoteStream && !videoAudioMuted && (
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                    <VolumeX size={14} className="text-muted-foreground" />
+                    <Slider
+                      value={[volume]}
+                      onValueChange={handleVolumeChange}
+                      max={100}
+                      min={0}
+                      step={5}
+                      className="w-20"
+                      data-testid="slider-volume-guest"
+                    />
+                    <Volume2 size={14} className="text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground w-8">{volume}%</span>
+                  </div>
+                )}
+                
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
                   <Eye size={14} className="text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Guest</span>
