@@ -1237,10 +1237,16 @@ export async function registerRoutes(
               .filter(([pId]) => pId !== userId)
               .map(([pId, p]) => ({ userId: pId, role: p.role }));
             
+            // Include agent connection status
+            const agentConnected = agentConnections.has(currentRoom) || pollingAgents.has(currentRoom);
+            const controlActive = controlPermissions.get(currentRoom) || false;
+            
             ws.send(JSON.stringify({
               type: 'room-state',
               roomId: currentRoom,
-              participants
+              participants,
+              agentConnected,
+              controlActive
             }));
             break;
           }

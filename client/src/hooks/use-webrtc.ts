@@ -192,23 +192,33 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         }
         
         // Listen for track ending - only remove stream if ALL tracks have ended
+        // Use a delay to allow reconnection
         stream.getTracks().forEach(track => {
           track.onended = () => {
-            console.log('[WebRTC] Track ended from', targetUserId);
+            console.log('[WebRTC] Track ended from', targetUserId, '- waiting to verify...');
             
-            // Check if all tracks in this stream have ended
-            const allEnded = stream.getTracks().every(t => t.readyState === 'ended');
-            if (allEnded) {
-              console.log('[WebRTC] All tracks ended for', targetUserId, '- removing stream');
-              setRemoteStreams(prev => {
-                const next = new Map(prev);
-                next.delete(targetUserId);
-                if (next.size === 0) {
-                  setHasRemoteStream(false);
+            // Wait a bit before checking - tracks might come back
+            setTimeout(() => {
+              // Check if all tracks in this stream have ended
+              const allEnded = stream.getTracks().every(t => t.readyState === 'ended');
+              if (allEnded) {
+                // Double-check the connection is actually failed
+                const pc = peerConnectionsRef.current.get(targetUserId);
+                if (!pc || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                  console.log('[WebRTC] All tracks ended and connection gone for', targetUserId, '- removing stream');
+                  setRemoteStreams(prev => {
+                    const next = new Map(prev);
+                    next.delete(targetUserId);
+                    if (next.size === 0) {
+                      setHasRemoteStream(false);
+                    }
+                    return next;
+                  });
+                } else {
+                  console.log('[WebRTC] Tracks ended but connection still active - keeping stream');
                 }
-                return next;
-              });
-            }
+              }
+            }, 2000); // Wait 2 seconds before removing
           };
         });
       }
@@ -321,6 +331,14 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     switch (message.type) {
       case 'room-state': {
         setParticipants(message.participants || []);
+        
+        // Set agent status from room state (WebSocket initial join)
+        if (message.agentConnected !== undefined) {
+          setAgentConnected(message.agentConnected);
+        }
+        if (message.controlActive !== undefined) {
+          setControlAllowed(message.controlActive);
+        }
         
         const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
         if (canBroadcast && localStreamRef.current) {
