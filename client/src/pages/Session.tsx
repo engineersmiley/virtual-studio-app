@@ -282,10 +282,13 @@ function SessionContent() {
     controlAllowed: wsControlAllowed,
     controlPending: wsControlPending,
     audioConfirmations,
+    isMicActive,
     connect,
     disconnect,
     startSharing,
     stopSharing,
+    startMic,
+    stopMic,
     sendControlEvent,
     requestFullControl,
     endFullControl,
@@ -461,6 +464,21 @@ function SessionContent() {
   const handleStopSharing = () => {
     stopSharing();
     setIsSharing(false);
+  };
+
+  // Mic toggle handler
+  const handleToggleMic = async () => {
+    if (isMicActive) {
+      stopMic();
+      toast({ title: "Mic Off", description: "Your microphone is now muted" });
+    } else {
+      try {
+        await startMic();
+        toast({ title: "Mic On", description: "Others can now hear you speak" });
+      } catch (e) {
+        console.error('Failed to start mic:', e);
+      }
+    }
   };
 
   // Audio toggle handler
@@ -1119,6 +1137,21 @@ function SessionContent() {
                   </button>
                 )}
                 
+                {/* Mic toggle for artists - especially useful on mobile */}
+                <button
+                  onClick={handleToggleMic}
+                  data-testid="button-artist-toggle-mic"
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                    isMicActive 
+                      ? 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30' 
+                      : 'bg-gray-500/20 border-gray-500/50 text-gray-400 hover:bg-gray-500/30'
+                  }`}
+                  title={isMicActive ? 'Click to mute your mic' : 'Click to speak'}
+                >
+                  <div className={`w-2 h-2 rounded-full ${isMicActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+                  {isMicActive ? 'Mic On' : 'Mic Off'}
+                </button>
+                
                 {/* Control status indicator - like agent lights */}
                 <button
                   onClick={toggleRemoteControl}
@@ -1176,6 +1209,21 @@ function SessionContent() {
                     <span className="text-xs text-muted-foreground w-8">{volume}%</span>
                   </div>
                 )}
+
+                {/* Mic toggle for speaking */}
+                <button
+                  onClick={handleToggleMic}
+                  data-testid="button-engineer-toggle-mic"
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                    isMicActive 
+                      ? 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30' 
+                      : 'bg-gray-500/20 border-gray-500/50 text-gray-400 hover:bg-gray-500/30'
+                  }`}
+                  title={isMicActive ? 'Click to mute your mic' : 'Click to speak'}
+                >
+                  <div className={`w-2 h-2 rounded-full ${isMicActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+                  {isMicActive ? 'Mic On' : 'Mic Off'}
+                </button>
 
                 {/* Share Screen for teaching */}
                 {!isSharing ? (
@@ -1402,6 +1450,21 @@ function SessionContent() {
                   </div>
                 )}
                 
+                {/* Mic toggle for producers */}
+                <button
+                  onClick={handleToggleMic}
+                  data-testid="button-producer-toggle-mic"
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                    isMicActive 
+                      ? 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30' 
+                      : 'bg-gray-500/20 border-gray-500/50 text-gray-400 hover:bg-gray-500/30'
+                  }`}
+                  title={isMicActive ? 'Click to mute your mic' : 'Click to speak'}
+                >
+                  <div className={`w-2 h-2 rounded-full ${isMicActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+                  {isMicActive ? 'Mic On' : 'Mic Off'}
+                </button>
+                
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/20 border border-purple-500/50">
                   <Music size={14} className="text-purple-400" />
                   <span className="text-xs text-purple-300">Producer</span>
@@ -1446,6 +1509,21 @@ function SessionContent() {
                     <span className="text-xs text-muted-foreground w-8">{volume}%</span>
                   </div>
                 )}
+                
+                {/* Mic toggle for guests */}
+                <button
+                  onClick={handleToggleMic}
+                  data-testid="button-guest-toggle-mic"
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                    isMicActive 
+                      ? 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30' 
+                      : 'bg-gray-500/20 border-gray-500/50 text-gray-400 hover:bg-gray-500/30'
+                  }`}
+                  title={isMicActive ? 'Click to mute your mic' : 'Click to speak'}
+                >
+                  <div className={`w-2 h-2 rounded-full ${isMicActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+                  {isMicActive ? 'Mic On' : 'Mic Off'}
+                </button>
                 
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
                   <Eye size={14} className="text-muted-foreground" />

@@ -728,6 +728,108 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     closeAllPeerConnections();
   }, [closeAllPeerConnections]);
 
+  // Mic-only streaming refs
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const [isMicActive, setIsMicActive] = useState(false);
+
+  // Start mic-only streaming (no screen share needed)
+  const startMic = useCallback(async () => {
+    try {
+      // Get microphone with high quality
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 48000,
+          sampleSize: 16,
+          channelCount: 1,
+        } as any
+      });
+
+      micStreamRef.current = micStream;
+      setIsMicActive(true);
+
+      // If already sharing screen, add mic to existing connections
+      if (localStreamRef.current) {
+        // Mix mic into existing audio context
+        if (audioContextRef.current) {
+          const dest = audioContextRef.current.createMediaStreamDestination();
+          const micSource = audioContextRef.current.createMediaStreamSource(micStream);
+          micSource.connect(dest);
+        }
+        return micStream;
+      }
+
+      // If not sharing, create audio-only stream and share it
+      setLocalStream(micStream);
+      localStreamRef.current = micStream;
+
+      // Create peer connections for all current participants
+      for (const participant of participants) {
+        const pc = await createPeerConnection(participant.userId, participant.role);
+        if (!pc) continue;
+
+        // Add mic track to connection
+        micStream.getTracks().forEach(track => {
+          pc.addTrack(track, micStream);
+        });
+
+        // Create and send offer
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          
+          if (isTransportOpen(wsRef.current)) {
+            wsRef.current!.send(JSON.stringify({
+              type: 'offer',
+              userId,
+              targetUserId: participant.userId,
+              payload: {
+                targetUserId: participant.userId,
+                sdp: offer,
+                hasVideo: false,
+                fromRole: role
+              }
+            }));
+          }
+        } catch (err) {
+          console.error('Failed to send mic offer:', err);
+        }
+      }
+
+      return micStream;
+    } catch (err: any) {
+      const errorMsg = err.message || '';
+      if (errorMsg.includes('Permission denied') || errorMsg.includes('NotAllowedError')) {
+        console.log('Mic access denied');
+        setError('Microphone access denied');
+      } else {
+        setError('Failed to access microphone');
+      }
+      setTimeout(() => setError(null), 5000);
+      throw err;
+    }
+  }, [userId, role, participants, createPeerConnection]);
+
+  // Stop mic-only streaming
+  const stopMic = useCallback(() => {
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current = null;
+    }
+    setIsMicActive(false);
+
+    // If not sharing screen, also clear local stream and close connections
+    if (!localStreamRef.current?.getVideoTracks().length) {
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current = null;
+        setLocalStream(null);
+      }
+      closeAllPeerConnections();
+    }
+  }, [closeAllPeerConnections]);
+
   const disconnect = useCallback(() => {
     // Stop sharing first
     stopSharing();
@@ -971,10 +1073,13 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     controlAllowed,
     controlPending,
     audioConfirmations,
+    isMicActive,
     connect,
     disconnect,
     startSharing,
     stopSharing,
+    startMic,
+    stopMic,
     sendControlEvent,
     requestFullControl,
     endFullControl,
