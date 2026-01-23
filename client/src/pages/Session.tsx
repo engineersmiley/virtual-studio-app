@@ -1589,10 +1589,13 @@ function SessionContent() {
               <Button 
                 variant="ghost" 
                 size="icon"
-                onClick={() => {
-                  disconnect();
-                  setTimeout(() => connect(), 500);
+                onClick={async () => {
                   toast({ title: "Refreshing...", description: "Reconnecting to session" });
+                  disconnect();
+                  // Wait for disconnect to complete
+                  await new Promise(r => setTimeout(r, 1000));
+                  // Force reconnect
+                  connect();
                 }}
                 title="Refresh participants"
                 data-testid="button-refresh-participants"
