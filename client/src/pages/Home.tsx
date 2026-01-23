@@ -388,7 +388,7 @@ export default function Home() {
           )}
 
           {/* Session Controls */}
-          <div className="glass-panel rounded-2xl p-8 max-w-2xl mx-auto">
+          <div className="glass-panel rounded-2xl p-8 max-w-2xl mx-auto pointer-events-auto">
             {/* Role Selection */}
             <div className="grid grid-cols-2 gap-3 mb-8">
               <button
@@ -473,7 +473,7 @@ export default function Home() {
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   maxLength={6}
                   data-testid="input-room-code"
-                  className="w-full px-4 py-3 rounded-xl bg-background/50 border border-white/10 focus:border-primary focus:ring-1 focus:ring-primary outline-none font-mono text-center text-2xl tracking-widest transition-all uppercase"
+                  className="w-full px-4 py-3 rounded-xl bg-background/50 border border-white/10 focus:border-primary focus:ring-1 focus:ring-primary outline-none font-mono text-center text-2xl tracking-widest transition-all uppercase cursor-text pointer-events-auto"
                 />
                 <button
                   onClick={handleJoin}

@@ -266,11 +266,8 @@ async function handleControlMessage(message) {
       case 'session-ended':
         // Session ended (artist left), auto-disconnect
         console.log('Session ended:', message.reason);
-        controlEnabled = false;
-        isConnected = false;
-        currentSession = null;
-        currentToken = null;
         
+        // CRITICAL: Stop polling immediately to prevent further requests
         if (pollingInterval) {
           clearInterval(pollingInterval);
           pollingInterval = null;
@@ -280,18 +277,28 @@ async function handleControlMessage(message) {
           ws = null;
         }
         
+        // Reset all connection state
+        controlEnabled = false;
+        isConnected = false;
+        usePolling = false;
+        const endedSession = currentSession;
+        currentSession = null;
+        currentToken = null;
+        
         updateTrayMenu();
         mainWindow.webContents.send('connection-status', { connected: false });
         mainWindow.webContents.send('control-status', { enabled: false });
         mainWindow.webContents.send('session-ended', { reason: message.reason || 'Session ended' });
         
-        // Show notification to user
+        // Show notification to user (non-blocking)
         dialog.showMessageBox(mainWindow, {
           type: 'info',
           title: 'Session Ended',
           message: 'The recording session has ended.',
           detail: message.reason || 'The artist has left the session.'
-        });
+        }).catch(() => {});
+        
+        console.log(`Agent fully disconnected from session ${endedSession}`);
         break;
         
       case 'mouse-move':
