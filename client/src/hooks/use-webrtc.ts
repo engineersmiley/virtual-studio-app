@@ -573,7 +573,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     
     ws.onclose = (event) => {
       console.log('[WebSocket] Connection closed:', event.code, event.reason);
-      closeAllPeerConnections();
+      // DON'T close peer connections on WebSocket close - keep video alive
+      // The peer connections are direct P2P and don't need WebSocket once established
       setConnected(false);
       
       if (event.code !== 1000 && retryCountRef.current < maxRetries) {
