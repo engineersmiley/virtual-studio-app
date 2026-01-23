@@ -504,8 +504,23 @@ function SessionContent() {
 
   const handleStartSharing = async (audioOnly: boolean = false) => {
     try {
-      await startSharing(audioOnly);
+      const result = await startSharing(audioOnly);
       setIsSharing(true);
+      
+      // Show feedback about what audio sources were captured
+      if (result) {
+        if (result.hasSystemAudio && result.hasMicAudio) {
+          toast({ title: "Sharing Started", description: "Screen + Mic + System Audio" });
+        } else if (result.hasMicAudio && !result.hasSystemAudio) {
+          toast({ 
+            title: "Mic Only - No System Audio", 
+            description: "To share music/sounds, reshare and check 'Share audio' in the browser dialog",
+            variant: "destructive"
+          });
+        } else if (result.hasSystemAudio && !result.hasMicAudio) {
+          toast({ title: "System Audio Only", description: "Microphone not detected" });
+        }
+      }
     } catch (e) {
       console.error('Failed to start sharing:', e);
     }

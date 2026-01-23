@@ -568,11 +568,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   // Check if role can broadcast (artist, engineer, or producer)
   const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
 
-  const startSharing = useCallback(async (audioOnly: boolean = false) => {
+  const startSharing = useCallback(async (audioOnly: boolean = false): Promise<{ hasSystemAudio: boolean; hasMicAudio: boolean }> => {
     // Only artist, engineer, and producer can share
     if (!canBroadcast) {
       setError('Only artists, engineers, and producers can share');
-      return;
+      return { hasSystemAudio: false, hasMicAudio: false };
     }
 
     try {
@@ -630,16 +630,26 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       audioContextRef.current = audioContext;
       const dest = audioContext.createMediaStreamDestination();
 
+      // Track what audio sources we have
+      const hasSystemAudio = displayStream && displayStream.getAudioTracks().length > 0;
+      const hasMicAudio = micStream.getAudioTracks().length > 0;
+      
+      console.log('[WebRTC] Audio sources - System:', hasSystemAudio, 'Mic:', hasMicAudio);
+
       // Add system audio if available
-      if (displayStream && displayStream.getAudioTracks().length > 0) {
+      if (hasSystemAudio) {
         const sysSource = audioContext.createMediaStreamSource(displayStream);
         sysSource.connect(dest);
+        console.log('[WebRTC] System audio connected to mix');
+      } else {
+        console.warn('[WebRTC] No system audio - user may not have checked "Share audio" in the browser dialog');
       }
 
       // Add mic audio
-      if (micStream.getAudioTracks().length > 0) {
+      if (hasMicAudio) {
         const micSource = audioContext.createMediaStreamSource(micStream);
         micSource.connect(dest);
+        console.log('[WebRTC] Mic audio connected to mix');
       }
 
       // Create combined stream
@@ -689,14 +699,14 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       // Store streams for cleanup
       (combinedStream as any)._originalStreams = [displayStream, micStream].filter(Boolean);
 
-      return combinedStream;
+      return { hasSystemAudio, hasMicAudio };
     } catch (err: any) {
       // Handle common screen share errors with friendly messages
       const errorMsg = err.message || '';
       if (errorMsg.includes('Permission denied') || errorMsg.includes('NotAllowedError')) {
         // User cancelled or system denied - don't show error, just silently fail
         console.log('Screen share cancelled or denied');
-        return;
+        return { hasSystemAudio: false, hasMicAudio: false };
       } else if (errorMsg.includes('NotFoundError') || errorMsg.includes('not found')) {
         setError('No screen or window available to share');
       } else if (errorMsg.includes('NotReadableError')) {
