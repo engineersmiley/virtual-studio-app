@@ -327,7 +327,16 @@
     });
     
     disconnectBtn.addEventListener('click', async () => {
-      await window.agent.disconnect();
+      disconnectBtn.disabled = true;
+      disconnectBtn.textContent = 'Disconnecting...';
+      try {
+        await window.agent.disconnect();
+      } catch (err) {
+        console.error('Disconnect error:', err);
+      } finally {
+        disconnectBtn.disabled = false;
+        disconnectBtn.textContent = 'Disconnect';
+      }
     });
     
     stopControlBtn.addEventListener('click', async () => {

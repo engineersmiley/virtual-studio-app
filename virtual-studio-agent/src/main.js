@@ -490,41 +490,55 @@ ipcMain.handle('connect', async (event, { sessionCode }) => {
 });
 
 ipcMain.handle('disconnect', async () => {
+  console.log('[Agent] Disconnect requested');
+  
+  // Stop polling first to prevent any more requests
   if (pollingInterval) {
     clearInterval(pollingInterval);
     pollingInterval = null;
+    console.log('[Agent] Polling stopped');
   }
   
-  if (usePolling && currentSession) {
-    try {
-      await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionCode: currentSession })
-      });
-    } catch (err) {
-      console.error('Disconnect error:', err);
-    }
+  const sessionToDisconnect = currentSession;
+  
+  // Notify server of disconnect (don't wait for response)
+  if (usePolling && sessionToDisconnect) {
+    httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionCode: sessionToDisconnect })
+    }).catch(err => {
+      console.error('[Agent] Server disconnect notification error:', err.message);
+    });
   }
   
+  // Close WebSocket if open
   if (ws) {
-    ws.close();
+    try {
+      ws.close();
+    } catch (err) {
+      console.error('[Agent] WebSocket close error:', err.message);
+    }
     ws = null;
   }
   
+  // Reset all state
   isConnected = false;
   controlEnabled = false;
   currentSession = null;
   currentToken = null;
   usePolling = false;
+  consecutiveErrors = 0;
+  
   updateTrayMenu();
   
-  // Notify UI of disconnection
+  // Notify UI of disconnection immediately
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('connection-status', { connected: false });
     mainWindow.webContents.send('control-status', { enabled: false });
   }
   
+  console.log('[Agent] Disconnected successfully');
   return { success: true };
 });
 
