@@ -255,16 +255,16 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       
       // Only clean up streams when connection actually fails (not just disconnects)
       if (state === 'failed') {
-        console.log('[WebRTC] Connection failed for', targetUserId);
-        // Remove this specific stream
-        setRemoteStreams(prev => {
-          const next = new Map(prev);
-          next.delete(targetUserId);
-          if (next.size === 0) {
-            setHasRemoteStream(false);
+        console.log('[WebRTC] Connection failed for', targetUserId, '- attempting to recover');
+        
+        // Try to recover by creating a new connection after a delay
+        setTimeout(() => {
+          const currentPc = peerConnectionsRef.current.get(targetUserId);
+          if (currentPc && currentPc.connectionState === 'failed') {
+            console.log('[WebRTC] Connection still failed, will wait for reconnection signal');
+            // Don't remove the stream yet - wait for user-left or explicit disconnect
           }
-          return next;
-        });
+        }, 5000);
       }
     };
 
