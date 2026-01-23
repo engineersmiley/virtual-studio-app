@@ -1335,6 +1335,15 @@ export async function registerRoutes(
         
         const room = rooms.get(currentRoom);
         if (room) {
+          // Check if this WebSocket is still the current connection for this user
+          // (prevents race condition when user reconnects before old socket closes)
+          const currentEntry = room.get(currentUserId);
+          if (currentEntry && currentEntry.ws !== ws) {
+            // User has reconnected with a new WebSocket, don't send user-left
+            console.log(`[WS] Old socket closed for ${currentUserId} but user already reconnected - skipping user-left`);
+            return;
+          }
+          
           room.delete(currentUserId);
           
           // Notify others

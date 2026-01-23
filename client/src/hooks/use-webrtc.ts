@@ -110,11 +110,15 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     });
   }, [agentConnected, controlAllowed, controlPending]);
 
+  // Multiple STUN servers for better NAT traversal
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    // Additional public STUN servers
+    { urls: 'stun:stun.stunprotocol.org:3478' },
   ];
 
   const createPeerConnection = useCallback((targetUserId: string) => {
@@ -364,16 +368,29 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
 
       case 'user-left': {
-        setParticipants(prev => prev.filter(p => p.userId !== message.userId));
-        closePeerConnection(message.userId);
-        setRemoteStreams(prev => {
-          const next = new Map(prev);
-          next.delete(message.userId);
-          if (next.size === 0) {
-            setHasRemoteStream(false);
+        const leftUserId = message.userId;
+        setParticipants(prev => prev.filter(p => p.userId !== leftUserId));
+        
+        // Don't immediately remove streams - the peer connection might still be alive
+        // Wait a bit and check if the user rejoined or if the connection is still active
+        setTimeout(() => {
+          const pc = peerConnectionsRef.current.get(leftUserId);
+          
+          // Only remove if the peer connection is dead or not connected
+          if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+            closePeerConnection(leftUserId);
+            setRemoteStreams(prev => {
+              const next = new Map(prev);
+              next.delete(leftUserId);
+              if (next.size === 0) {
+                setHasRemoteStream(false);
+              }
+              return next;
+            });
+          } else {
+            console.log('[WebRTC] User left but peer connection still alive - keeping stream');
           }
-          return next;
-        });
+        }, 3000); // Wait 3 seconds before removing
         break;
       }
 
