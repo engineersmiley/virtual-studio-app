@@ -1339,6 +1339,22 @@ function SessionContent() {
                   </button>
                 )}
                 
+                {/* Remote Control - only show when artist has agent running */}
+                {agentConnected && (
+                  fullControlActive ? (
+                    <button onClick={endFullControl} data-testid="button-end-control"
+                      className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1">
+                      <MousePointer2 size={12} /> End Control
+                    </button>
+                  ) : (
+                    <button onClick={() => requestFullControl('Engineer')} disabled={controlPending} data-testid="button-request-control"
+                      className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1 disabled:opacity-50"
+                      title="Request to control artist's screen">
+                      <MousePointer2 size={12} /> {controlPending ? 'Waiting...' : 'Control'}
+                    </button>
+                  )
+                )}
+                
                 {/* Fullscreen */}
                 {hasRemoteStream && (
                   <button onClick={toggleFullscreen} data-testid="button-fullscreen"
