@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -30,6 +30,16 @@ export default function Home() {
   const [showSubscribe, setShowSubscribe] = useState(false);
   const [checkEmail, setCheckEmail] = useState("");
   const { toast } = useToast();
+  const joinCodeInputRef = useRef<HTMLInputElement>(null);
+  
+  // Auto-focus the room code input when page is ready
+  useEffect(() => {
+    // Small delay to ensure page is fully interactive
+    const timer = setTimeout(() => {
+      joinCodeInputRef.current?.focus();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -467,6 +477,7 @@ export default function Home() {
               <div className="space-y-4">
                 <h3 className="font-tech uppercase tracking-wider text-muted-foreground text-sm">Join Existing Session</h3>
                 <input
+                  ref={joinCodeInputRef}
                   type="text"
                   placeholder="Enter room code"
                   value={joinCode}
