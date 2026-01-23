@@ -1269,24 +1269,6 @@ function SessionContent() {
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Audio</span>
                 </button>
                 
-                {/* Agent Status */}
-                <div className="flex items-center gap-1.5" title={agentConnected ? 'Desktop Agent connected' : 'Agent not connected'}>
-                  <div className={`w-2.5 h-2.5 rounded-full ${agentConnected ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)] animate-pulse' : 'bg-gray-500'}`} />
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Agent</span>
-                </div>
-                
-                {/* Control Status */}
-                {agentConnected && (
-                  <div className="flex items-center gap-1.5" title={fullControlActive ? 'Remote control active' : controlPending ? 'Waiting for approval' : 'Control not active'}>
-                    <div className={`w-2.5 h-2.5 rounded-full ${
-                      fullControlActive ? 'bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.6)] animate-pulse' : 
-                      controlPending ? 'bg-yellow-400 animate-pulse' : 
-                      'bg-gray-500'
-                    }`} />
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Ctrl</span>
-                  </div>
-                )}
-                
                 {/* Recording Status */}
                 {isRecording && (
                   <div className="flex items-center gap-1.5" title="Recording">
@@ -1354,24 +1336,6 @@ function SessionContent() {
                   <button onClick={handleStopSharing} data-testid="button-engineer-stop-sharing"
                     className="px-2 py-1 rounded text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition-colors flex items-center gap-1">
                     <VideoOff size={12} /> Stop
-                  </button>
-                )}
-                
-                {/* Agent/Control buttons */}
-                {!agentConnected ? (
-                  <a href="/remote-control" target="_blank" data-testid="link-download-agent"
-                    className="px-2 py-1 rounded text-xs font-medium bg-cyan-600/30 text-cyan-400 border border-cyan-500/50 hover:bg-cyan-500/40 transition-colors flex items-center gap-1">
-                    <Monitor size={12} /> Get Agent
-                  </a>
-                ) : fullControlActive ? (
-                  <button onClick={endFullControl} data-testid="button-end-full-control"
-                    className="px-2 py-1 rounded text-xs font-medium bg-pink-500/20 text-pink-400 border border-pink-500/50 hover:bg-pink-500/30 transition-colors flex items-center gap-1">
-                    <Monitor size={12} /> End
-                  </button>
-                ) : (
-                  <button onClick={() => requestFullControl('Engineer')} disabled={controlPending} data-testid="button-request-full-control"
-                    className="px-2 py-1 rounded text-xs font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 hover:bg-cyan-500/30 transition-colors flex items-center gap-1 disabled:opacity-50">
-                    <Monitor size={12} /> {controlPending ? 'Wait...' : 'Control'}
                   </button>
                 )}
                 
