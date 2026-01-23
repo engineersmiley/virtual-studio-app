@@ -182,29 +182,6 @@ function SessionContent() {
   
   const uploadMutation = useUploadRecording();
 
-  const handleRemoteStream = useCallback((stream: MediaStream) => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = stream;
-      // Start muted to allow autoplay - keep muted until user clicks Enable Audio
-      remoteVideoRef.current.muted = true;
-      setVideoAudioMuted(true);
-      
-      // Start playing muted
-      remoteVideoRef.current.play().catch(() => {
-        // Autoplay blocked even when muted - unusual but handle it
-        console.log('Autoplay blocked even when muted');
-      });
-    }
-    
-    // Setup analyser for visualizer
-    const audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(stream);
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
-    analyserRef.current = analyser;
-  }, []);
-
   const handleRemoteControl = useCallback((event: RemoteControlEvent) => {
     // Show the remote pointer on artist's screen
     setRemotePointer({ x: event.x * 100, y: event.y * 100, visible: true });
@@ -307,7 +284,6 @@ function SessionContent() {
     roomId,
     userId,
     role,
-    onRemoteStream: handleRemoteStream,
     onRemoteControl: handleRemoteControl,
     onAgentStatus: (status) => {
       setAgentConnected(status.connected);
@@ -391,10 +367,49 @@ function SessionContent() {
     lastTouchRef.current = null;
   }, [controlEnabled, sendFullControlCommand]);
 
-  // Get producer audio streams (audio-only streams from producers)
-  const producerAudioStreams = Array.from(remoteStreams.values()).filter(
-    info => info.fromRole === 'producer' && !info.hasVideo
+  // Get ALL audio-only streams (no video) - from any role (producers, engineers teaching, etc.)
+  const audioOnlyStreams = Array.from(remoteStreams.values()).filter(
+    info => !info.hasVideo && info.stream.getAudioTracks().length > 0
   );
+  
+  // Get the primary video stream (first stream with video - prioritize artist)
+  const videoStreams = Array.from(remoteStreams.values()).filter(info => info.hasVideo);
+  const primaryVideoStream = videoStreams.find(s => s.fromRole === 'artist') || videoStreams[0];
+  
+  // Attach primary video stream to video element when it changes
+  useEffect(() => {
+    if (remoteVideoRef.current && primaryVideoStream) {
+      const currentSrc = remoteVideoRef.current.srcObject as MediaStream | null;
+      if (currentSrc?.id !== primaryVideoStream.stream.id) {
+        remoteVideoRef.current.srcObject = primaryVideoStream.stream;
+        remoteVideoRef.current.muted = true;
+        setVideoAudioMuted(true);
+        remoteVideoRef.current.play().catch(() => {
+          console.log('Autoplay blocked even when muted');
+        });
+      }
+    }
+  }, [primaryVideoStream]);
+  
+  // Setup audio analyser for visualizer when primary video stream changes
+  useEffect(() => {
+    if (!primaryVideoStream) return;
+    
+    try {
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(primaryVideoStream.stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+      
+      return () => {
+        audioContext.close().catch(() => {});
+      };
+    } catch (err) {
+      console.error('Failed to setup audio analyser:', err);
+    }
+  }, [primaryVideoStream]);
 
   useEffect(() => {
     if (roomId) {
@@ -932,25 +947,54 @@ function SessionContent() {
                     )}
                   </div>
                 )}
-                {/* Enable Audio button - appears when video audio is muted */}
-                {hasRemoteStream && videoAudioMuted && (
+                {/* Unified Enable Audio button - appears when any audio needs enabling */}
+                {(hasRemoteStream && videoAudioMuted) || hasBlockedAudio ? (
                   <Button
-                    onClick={() => {
-                      if (remoteVideoRef.current) {
-                        remoteVideoRef.current.muted = false;
-                        remoteVideoRef.current.play().then(() => {
+                    onClick={async () => {
+                      let videoEnabled = false;
+                      let audioStreamsEnabled = 0;
+                      
+                      // 1. Enable video element audio
+                      if (remoteVideoRef.current && videoAudioMuted) {
+                        try {
+                          remoteVideoRef.current.muted = false;
+                          await remoteVideoRef.current.play();
                           setVideoAudioMuted(false);
-                          toast({
-                            title: "Audio Enabled",
-                            description: "You can now hear the stream audio",
-                          });
-                        }).catch((err) => {
-                          console.error('Audio play failed:', err);
-                          toast({
-                            title: "Audio Failed",
-                            description: "Could not enable audio. Try clicking again.",
-                            variant: "destructive",
-                          });
+                          videoEnabled = true;
+                        } catch (err) {
+                          console.error('Video audio play failed:', err);
+                        }
+                      }
+                      
+                      // 2. Enable all blocked audio-only streams
+                      const blockedUsers = Array.from(audioStatus.entries())
+                        .filter(([, status]) => status === 'blocked')
+                        .map(([userId]) => userId);
+                      
+                      for (const blockedUserId of blockedUsers) {
+                        const audio = producerAudioRefs.current.get(blockedUserId);
+                        if (audio) {
+                          try {
+                            await audio.play();
+                            markAudioPlaying(blockedUserId);
+                            audioStreamsEnabled++;
+                          } catch (err) {
+                            console.error(`Audio stream ${blockedUserId} failed:`, err);
+                          }
+                        }
+                      }
+                      
+                      // Show result
+                      if (videoEnabled || audioStreamsEnabled > 0) {
+                        toast({
+                          title: "Audio Enabled",
+                          description: "You can now hear all audio from the session",
+                        });
+                      } else {
+                        toast({
+                          title: "Audio Issue",
+                          description: "Could not enable audio. Try clicking again.",
+                          variant: "destructive",
                         });
                       }
                     }}
@@ -961,7 +1005,7 @@ function SessionContent() {
                     <Volume2 size={16} className="mr-2" />
                     Enable Audio
                   </Button>
-                )}
+                ) : null}
                 {/* Control mode indicator for engineer */}
                 {role === 'engineer' && controlMode && hasRemoteStream && (
                   <div className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/90 text-primary-foreground text-sm font-medium">
@@ -976,8 +1020,8 @@ function SessionContent() {
             {/* Scanline overlay */}
             <div className="absolute inset-0 pointer-events-none opacity-10 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-10" style={{backgroundSize: "100% 2px, 3px 100%"}} />
             
-            {/* Producer audio elements - hidden, just for playback */}
-            {producerAudioStreams.map((info) => (
+            {/* Audio-only stream elements - hidden, just for playback */}
+            {audioOnlyStreams.map((info) => (
               <ProducerAudio 
                 key={info.fromUserId} 
                 stream={info.stream} 
@@ -987,52 +1031,6 @@ function SessionContent() {
                 registerRef={registerAudioRef}
               />
             ))}
-            
-            {/* Enable audio button - appears when any producer audio is blocked */}
-            {hasBlockedAudio && producerAudioStreams.length > 0 && (
-              <Button
-                onClick={async () => {
-                  // Get all currently blocked users from the status map
-                  const blockedUsers = Array.from(audioStatus.entries())
-                    .filter(([, status]) => status === 'blocked')
-                    .map(([userId]) => userId);
-                  
-                  // Directly play all blocked audio elements in this user gesture
-                  const results = await Promise.allSettled(
-                    blockedUsers.map(async (userId) => {
-                      const audio = producerAudioRefs.current.get(userId);
-                      if (audio) {
-                        await audio.play();
-                        markAudioPlaying(userId);
-                        return 'success';
-                      }
-                      throw new Error('No audio element');
-                    })
-                  );
-                  
-                  const successCount = results.filter(r => r.status === 'fulfilled').length;
-                  const failCount = results.filter(r => r.status === 'rejected').length;
-                  
-                  if (failCount === 0 && successCount > 0) {
-                    toast({
-                      title: "Producer Audio Enabled",
-                      description: "You can now hear beats from producers",
-                    });
-                  } else if (failCount > 0) {
-                    toast({
-                      title: "Audio Issue",
-                      description: `${failCount} stream${failCount > 1 ? 's' : ''} still blocked. Try again.`,
-                      variant: "destructive",
-                    });
-                  }
-                }}
-                data-testid="button-enable-audio"
-                className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20"
-              >
-                <Volume2 size={16} />
-                Enable Producer Audio ({blockedCount} stream{blockedCount > 1 ? 's' : ''})
-              </Button>
-            )}
           </div>
 
           {/* Controls */}
