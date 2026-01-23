@@ -962,65 +962,91 @@ function SessionContent() {
                     )}
                   </div>
                 )}
-                {/* Unified Enable Audio button - appears when any audio needs enabling */}
-                {(hasRemoteStream && videoAudioMuted) || hasBlockedAudio ? (
+                {/* Audio toggle button - always visible when there's a remote stream */}
+                {hasRemoteStream && (
                   <Button
                     onClick={async () => {
-                      let videoEnabled = false;
-                      let audioStreamsEnabled = 0;
-                      
-                      // 1. Enable video element audio
-                      if (remoteVideoRef.current && videoAudioMuted) {
-                        try {
-                          remoteVideoRef.current.muted = false;
-                          await remoteVideoRef.current.play();
-                          setVideoAudioMuted(false);
-                          videoEnabled = true;
-                        } catch (err) {
-                          console.error('Video audio play failed:', err);
-                        }
-                      }
-                      
-                      // 2. Enable all blocked audio-only streams
-                      const blockedUsers = Array.from(audioStatus.entries())
-                        .filter(([, status]) => status === 'blocked')
-                        .map(([userId]) => userId);
-                      
-                      for (const blockedUserId of blockedUsers) {
-                        const audio = producerAudioRefs.current.get(blockedUserId);
-                        if (audio) {
+                      if (videoAudioMuted) {
+                        // Enable audio
+                        let videoEnabled = false;
+                        let audioStreamsEnabled = 0;
+                        
+                        // 1. Enable video element audio
+                        if (remoteVideoRef.current) {
                           try {
-                            await audio.play();
-                            markAudioPlaying(blockedUserId);
-                            audioStreamsEnabled++;
+                            remoteVideoRef.current.muted = false;
+                            await remoteVideoRef.current.play();
+                            setVideoAudioMuted(false);
+                            videoEnabled = true;
                           } catch (err) {
-                            console.error(`Audio stream ${blockedUserId} failed:`, err);
+                            console.error('Video audio play failed:', err);
                           }
                         }
-                      }
-                      
-                      // Show result
-                      if (videoEnabled || audioStreamsEnabled > 0) {
-                        toast({
-                          title: "Audio Enabled",
-                          description: "You can now hear all audio from the session",
-                        });
+                        
+                        // 2. Enable all blocked audio-only streams
+                        const blockedUsers = Array.from(audioStatus.entries())
+                          .filter(([, status]) => status === 'blocked')
+                          .map(([userId]) => userId);
+                        
+                        for (const blockedUserId of blockedUsers) {
+                          const audio = producerAudioRefs.current.get(blockedUserId);
+                          if (audio) {
+                            try {
+                              await audio.play();
+                              markAudioPlaying(blockedUserId);
+                              audioStreamsEnabled++;
+                            } catch (err) {
+                              console.error(`Audio stream ${blockedUserId} failed:`, err);
+                            }
+                          }
+                        }
+                        
+                        // Show result
+                        if (videoEnabled || audioStreamsEnabled > 0) {
+                          toast({
+                            title: "Audio Enabled",
+                            description: "You can now hear all audio from the session",
+                          });
+                        } else {
+                          toast({
+                            title: "Audio Issue",
+                            description: "Could not enable audio. Try clicking again.",
+                            variant: "destructive",
+                          });
+                        }
                       } else {
+                        // Mute audio
+                        if (remoteVideoRef.current) {
+                          remoteVideoRef.current.muted = true;
+                          setVideoAudioMuted(true);
+                        }
+                        // Pause all producer audio streams
+                        for (const audio of producerAudioRefs.current.values()) {
+                          audio.pause();
+                        }
                         toast({
-                          title: "Audio Issue",
-                          description: "Could not enable audio. Try clicking again.",
-                          variant: "destructive",
+                          title: "Audio Muted",
+                          description: "Session audio has been muted",
                         });
                       }
                     }}
-                    data-testid="button-enable-stream-audio"
-                    className="absolute top-3 right-3 z-20"
+                    data-testid="button-toggle-stream-audio"
+                    className={`absolute top-3 right-3 z-20 ${videoAudioMuted ? '' : 'bg-green-600 hover:bg-green-700'}`}
                     size="sm"
                   >
-                    <Volume2 size={16} className="mr-2" />
-                    Enable Audio
+                    {videoAudioMuted ? (
+                      <>
+                        <VolumeX size={16} className="mr-2" />
+                        Enable Audio
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 size={16} className="mr-2" />
+                        Audio On
+                      </>
+                    )}
                   </Button>
-                ) : null}
+                )}
                 {/* Control mode indicator for engineer */}
                 {role === 'engineer' && controlMode && hasRemoteStream && (
                   <div className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/90 text-primary-foreground text-sm font-medium">
