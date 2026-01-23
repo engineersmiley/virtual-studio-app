@@ -21,6 +21,17 @@ function generateUserId() {
   return 'user_' + Math.random().toString(36).substr(2, 9);
 }
 
+function formatSessionTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
 function ProducerAudio({ 
   stream, 
   userId, 
@@ -95,6 +106,10 @@ function SessionContent() {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [copied, setCopied] = useState(false);
+  
+  // Session timer - starts when connected
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [sessionDuration, setSessionDuration] = useState(0);
   const [controlMode, setControlMode] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [remotePointer, setRemotePointer] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
@@ -300,6 +315,23 @@ function SessionContent() {
       setControlPending(status.controlPending);
     },
   });
+
+  // Start session timer when connected
+  useEffect(() => {
+    if (connected && !sessionStartTime) {
+      setSessionStartTime(Date.now());
+    }
+  }, [connected, sessionStartTime]);
+
+  // Session duration timer
+  useEffect(() => {
+    if (!sessionStartTime) return;
+    
+    const interval = setInterval(() => {
+      setSessionDuration(Math.floor((Date.now() - sessionStartTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [sessionStartTime]);
 
   // Direct screen touch control - touch on video to control computer
   const controlEnabled = fullControlActive || wsControlAllowed;
@@ -670,6 +702,12 @@ function SessionContent() {
                 <span className="text-amber-400">{otherCount}O</span>
               </>
             )}
+          </div>
+          
+          {/* Session Timer */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 text-sm" data-testid="session-timer">
+            <Radio size={16} className={connected ? 'text-green-500' : 'text-muted-foreground'} />
+            <span className="font-mono text-green-400">{formatSessionTime(sessionDuration)}</span>
           </div>
         </div>
       </header>

@@ -955,6 +955,7 @@ export async function registerRoutes(
     controlEnabled: boolean;
     lastPoll: number;
     messages: any[];
+    pendingDisconnect?: boolean; // Set when session ends, prevents cleanup until message delivered
   }
   
   const pollingAgents = new Map<string, PollingAgentConnection>();
@@ -964,6 +965,15 @@ export async function registerRoutes(
   setInterval(() => {
     const now = Date.now();
     pollingAgents.forEach((agent, sessionCode) => {
+      // Don't cleanup agents with pending disconnect - they need to receive the session-ended message first
+      if (agent.pendingDisconnect) {
+        // If pending for too long (2 minutes), cleanup anyway
+        if (now - agent.lastPoll > 120000) {
+          pollingAgents.delete(sessionCode);
+        }
+        return;
+      }
+      
       if (now - agent.lastPoll > AGENT_POLL_TIMEOUT) {
         pollingAgents.delete(sessionCode);
         // Notify room that agent disconnected
@@ -1080,7 +1090,16 @@ export async function registerRoutes(
       const messages = [...agent.messages];
       agent.messages = [];
       
+      // Check if any messages contain session-ended - if so, delete agent after responding
+      const hasSessionEnded = messages.some(m => m.type === 'session-ended');
+      
       res.json({ messages, controlEnabled: agent.controlEnabled });
+      
+      // Delete agent after delivering session-ended message
+      if (hasSessionEnded || agent.pendingDisconnect) {
+        pollingAgents.delete(normalizedCode);
+        console.log(`Polling agent removed from ${normalizedCode} after session-ended delivery`);
+      }
     } catch (err: any) {
       console.error('Agent poll error:', err);
       res.status(500).json({ error: err.message });
@@ -1271,6 +1290,10 @@ export async function registerRoutes(
 
     function handleLeave() {
       if (currentRoom && currentUserId) {
+        // Get the role before cleaning up
+        const connData = wsConnectionData.get(ws);
+        const leavingRole = connData?.role;
+        
         const room = rooms.get(currentRoom);
         if (room) {
           room.delete(currentUserId);
@@ -1288,6 +1311,52 @@ export async function registerRoutes(
           
           if (room.size === 0) {
             rooms.delete(currentRoom);
+          }
+        }
+        
+        // If artist leaves, check if there are any artists remaining
+        if (leavingRole === 'artist') {
+          const sessionCode = currentRoom;
+          const room = rooms.get(sessionCode);
+          
+          // Count remaining artists in the room
+          let remainingArtists = 0;
+          if (room) {
+            room.forEach((p) => {
+              if (p.role === 'artist') remainingArtists++;
+            });
+          }
+          
+          // Only disconnect agent if no artists remain
+          if (remainingArtists === 0) {
+            // Disconnect WebSocket agent
+            const wsAgent = agentConnections.get(sessionCode);
+            if (wsAgent && wsAgent.ws.readyState === WebSocket.OPEN) {
+              wsAgent.ws.send(JSON.stringify({ 
+                type: 'session-ended',
+                sessionCode,
+                reason: 'All artists have left the session'
+              }));
+              wsAgent.ws.close(1000, 'Session ended - no artists remaining');
+            }
+            agentConnections.delete(sessionCode);
+            
+            // For polling agent, mark as pending disconnect
+            // The agent will receive the message on next poll, then be removed
+            const httpAgent = pollingAgents.get(sessionCode);
+            if (httpAgent) {
+              httpAgent.messages.push({
+                type: 'session-ended',
+                sessionCode,
+                reason: 'All artists have left the session'
+              });
+              httpAgent.pendingDisconnect = true; // Prevents cleanup until message delivered
+            }
+            
+            // Clear control permissions
+            controlPermissions.delete(sessionCode);
+            
+            console.log(`Last artist left session ${sessionCode}, agent disconnected`);
           }
         }
       }

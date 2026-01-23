@@ -262,6 +262,37 @@ async function handleControlMessage(message) {
         controlEnabled = false;
         mainWindow.webContents.send('control-status', { enabled: false });
         break;
+      
+      case 'session-ended':
+        // Session ended (artist left), auto-disconnect
+        console.log('Session ended:', message.reason);
+        controlEnabled = false;
+        isConnected = false;
+        currentSession = null;
+        currentToken = null;
+        
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+        }
+        if (ws) {
+          ws.close();
+          ws = null;
+        }
+        
+        updateTrayMenu();
+        mainWindow.webContents.send('connection-status', { connected: false });
+        mainWindow.webContents.send('control-status', { enabled: false });
+        mainWindow.webContents.send('session-ended', { reason: message.reason || 'Session ended' });
+        
+        // Show notification to user
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Session Ended',
+          message: 'The recording session has ended.',
+          detail: message.reason || 'The artist has left the session.'
+        });
+        break;
         
       case 'mouse-move':
         if (controlEnabled) {
