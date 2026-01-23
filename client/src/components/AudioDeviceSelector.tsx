@@ -1,17 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Mic, Speaker, Music } from 'lucide-react';
+import { Mic, Speaker } from 'lucide-react';
 
 interface AudioDeviceSelectorProps {
   onInputChange?: (deviceId: string) => void;
   onOutputChange?: (deviceId: string) => void;
-  onDawInputChange?: (deviceId: string) => void;
   className?: string;
 }
 
 const STORAGE_KEY_INPUT = 'virtualstudio-audio-input';
 const STORAGE_KEY_OUTPUT = 'virtualstudio-audio-output';
-const STORAGE_KEY_DAW_INPUT = 'virtualstudio-daw-input';
 
 function applyOutputToAllElements(deviceId: string) {
   const audioElements = document.querySelectorAll('audio, video');
