@@ -145,6 +145,9 @@ async function checkAccessibilityPermissions() {
   return true;
 }
 
+let consecutiveErrors = 0;
+const MAX_CONSECUTIVE_ERRORS = 10; // Disconnect after 5 seconds of errors
+
 async function connectViaPolling(sessionCode) {
   try {
     // Simple mode - no token needed, just session code
@@ -163,11 +166,23 @@ async function connectViaPolling(sessionCode) {
     isConnected = true;
     currentSession = sessionCode;
     currentToken = null; // No token needed in simple mode
+    consecutiveErrors = 0;
     mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
     updateTrayMenu();
+    console.log(`[Agent] Connected to session ${sessionCode} via polling`);
     
     // Start polling for messages
     pollingInterval = setInterval(async () => {
+      // Safety check - if already disconnected, stop polling
+      if (!currentSession || !isConnected) {
+        console.log('[Agent] Polling stopped - no longer connected');
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+        }
+        return;
+      }
+      
       try {
         // Poll without token - simple mode
         const pollResponse = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
@@ -177,18 +192,34 @@ async function connectViaPolling(sessionCode) {
         });
         
         if (pollResponse.ok) {
+          consecutiveErrors = 0; // Reset on success
           const data = await pollResponse.json();
           for (const message of data.messages) {
+            console.log(`[Agent] Processing message: ${message.type}`);
             await handleControlMessage(message);
           }
+        } else if (pollResponse.status === 404) {
+          // Session no longer exists - disconnect
+          console.log('[Agent] Session not found (404) - disconnecting');
+          await handleControlMessage({ type: 'session-ended', reason: 'Session no longer exists' });
+        } else {
+          consecutiveErrors++;
+          console.log(`[Agent] Poll error (${pollResponse.status}), consecutive: ${consecutiveErrors}`);
         }
       } catch (err) {
-        console.error('Polling error:', err);
+        consecutiveErrors++;
+        console.error(`[Agent] Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, err.message);
+        
+        // Auto-disconnect after too many consecutive errors
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          console.log('[Agent] Too many errors - auto-disconnecting');
+          await handleControlMessage({ type: 'session-ended', reason: 'Connection lost' });
+        }
       }
     }, 500);
     
   } catch (error) {
-    console.error('HTTP connection error:', error);
+    console.error('[Agent] HTTP connection error:', error);
     mainWindow.webContents.send('error', error.message);
   }
 }
