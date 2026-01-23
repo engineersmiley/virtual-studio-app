@@ -1171,29 +1171,30 @@ function SessionContent() {
               // Engineer controls - can share screen, record, and control
               <>
               <div className="flex gap-2 items-center flex-wrap">
-                {/* Audio indicator light - like agent status */}
-                {hasRemoteStream && (
-                  <button
-                    onClick={handleToggleAudio}
-                    data-testid="button-toggle-stream-audio"
-                    className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
-                      !hasAudioTracks 
+                {/* Audio indicator light - always visible */}
+                <button
+                  onClick={handleToggleAudio}
+                  data-testid="button-toggle-stream-audio"
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                    !hasRemoteStream
+                      ? 'bg-gray-500/20 border-gray-500/50 text-gray-400'
+                      : !hasAudioTracks 
                         ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' 
                         : videoAudioMuted 
                           ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
                           : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
-                    }`}
-                    title={!hasAudioTracks ? 'No audio - artist needs to share with audio' : videoAudioMuted ? 'Click to enable audio' : 'Click to mute'}
-                  >
-                    <div className={`w-2 h-2 rounded-full ${
-                      !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
-                    }`} />
-                    {!hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
-                  </button>
-                )}
+                  }`}
+                  title={!hasRemoteStream ? 'Waiting for stream' : !hasAudioTracks ? 'No audio - artist needs to share with audio' : videoAudioMuted ? 'Click to enable audio' : 'Click to mute'}
+                  disabled={!hasRemoteStream}
+                >
+                  <div className={`w-2 h-2 rounded-full ${
+                    !hasRemoteStream ? 'bg-gray-400' : !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
+                  }`} />
+                  {!hasRemoteStream ? 'No Stream' : !hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
+                </button>
                 
                 {/* Volume Slider */}
-                {hasRemoteStream && !videoAudioMuted && (
+                {!videoAudioMuted && hasRemoteStream && (
                   <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
                     <VolumeX size={14} className="text-muted-foreground" />
                     <Slider
@@ -1412,28 +1413,30 @@ function SessionContent() {
                     <VolumeX size={16} /> Stop
                   </button>
                 )}
-                {/* Audio indicator for producer */}
-                {hasRemoteStream && (
-                  <button
-                    onClick={handleToggleAudio}
-                    data-testid="button-producer-toggle-audio"
-                    className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
-                      !hasAudioTracks 
+                {/* Audio indicator for producer - always visible */}
+                <button
+                  onClick={handleToggleAudio}
+                  data-testid="button-producer-toggle-audio"
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                    !hasRemoteStream
+                      ? 'bg-gray-500/20 border-gray-500/50 text-gray-400'
+                      : !hasAudioTracks 
                         ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' 
                         : videoAudioMuted 
                           ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
                           : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
-                    }`}
-                  >
-                    <div className={`w-2 h-2 rounded-full ${
-                      !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
-                    }`} />
-                    {!hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
-                  </button>
-                )}
+                  }`}
+                  title={!hasRemoteStream ? 'Waiting for stream' : !hasAudioTracks ? 'No audio available' : videoAudioMuted ? 'Click to enable audio' : 'Click to mute'}
+                  disabled={!hasRemoteStream}
+                >
+                  <div className={`w-2 h-2 rounded-full ${
+                    !hasRemoteStream ? 'bg-gray-400' : !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
+                  }`} />
+                  {!hasRemoteStream ? 'No Stream' : !hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
+                </button>
                 
                 {/* Volume Slider for Producers */}
-                {hasRemoteStream && !videoAudioMuted && (
+                {!videoAudioMuted && hasRemoteStream && (
                   <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
                     <VolumeX size={14} className="text-muted-foreground" />
                     <Slider
@@ -1473,27 +1476,30 @@ function SessionContent() {
             ) : (
               // Other - view only with audio control
               <div className="flex gap-2 items-center flex-wrap">
-                {hasRemoteStream && (
-                  <button
-                    onClick={handleToggleAudio}
-                    data-testid="button-other-toggle-audio"
-                    className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
-                      !hasAudioTracks 
+                {/* Audio button for guests - always visible */}
+                <button
+                  onClick={handleToggleAudio}
+                  data-testid="button-other-toggle-audio"
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                    !hasRemoteStream
+                      ? 'bg-gray-500/20 border-gray-500/50 text-gray-400'
+                      : !hasAudioTracks 
                         ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' 
                         : videoAudioMuted 
                           ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
                           : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
-                    }`}
-                  >
-                    <div className={`w-2 h-2 rounded-full ${
-                      !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
-                    }`} />
-                    {!hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
-                  </button>
-                )}
+                  }`}
+                  title={!hasRemoteStream ? 'Waiting for stream' : !hasAudioTracks ? 'No audio available' : videoAudioMuted ? 'Click to enable audio' : 'Click to mute'}
+                  disabled={!hasRemoteStream}
+                >
+                  <div className={`w-2 h-2 rounded-full ${
+                    !hasRemoteStream ? 'bg-gray-400' : !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
+                  }`} />
+                  {!hasRemoteStream ? 'No Stream' : !hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
+                </button>
                 
                 {/* Volume Slider for Guests */}
-                {hasRemoteStream && !videoAudioMuted && (
+                {!videoAudioMuted && hasRemoteStream && (
                   <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
                     <VolumeX size={14} className="text-muted-foreground" />
                     <Slider
