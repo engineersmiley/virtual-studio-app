@@ -236,10 +236,21 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       const hasConnected = states.some(s => s === 'connected');
       setConnected(hasConnected);
       
-      // Handle disconnected state - try to recover
+      // Handle disconnected state - try ICE restart to recover
       if (state === 'disconnected') {
-        console.log('[WebRTC] Connection disconnected, waiting for recovery...');
-        // Don't immediately remove - wait for failed state
+        console.log('[WebRTC] Connection disconnected, attempting ICE restart...');
+        // Wait 2 seconds, then try ICE restart if still disconnected
+        setTimeout(() => {
+          const currentPc = peerConnectionsRef.current.get(targetUserId);
+          if (currentPc && currentPc.connectionState === 'disconnected') {
+            console.log('[WebRTC] Still disconnected, triggering ICE restart');
+            try {
+              currentPc.restartIce();
+            } catch (e) {
+              console.log('[WebRTC] ICE restart failed:', e);
+            }
+          }
+        }, 2000);
       }
       
       // Only clean up streams when connection actually fails (not just disconnects)

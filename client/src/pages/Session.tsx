@@ -14,7 +14,7 @@ import {
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
   Users, Radio, ArrowLeft, CheckCircle, AlertTriangle, X,
   Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move, Maximize, Minimize,
-  Volume2, VolumeX, Music
+  Volume2, VolumeX, Music, RefreshCw
 } from 'lucide-react';
 import type { SessionRole } from '@shared/schema';
 
@@ -1339,20 +1339,25 @@ function SessionContent() {
                   </button>
                 )}
                 
-                {/* Remote Control - only show when artist has agent running */}
-                {agentConnected && (
-                  fullControlActive ? (
-                    <button onClick={endFullControl} data-testid="button-end-control"
-                      className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1">
-                      <MousePointer2 size={12} /> End Control
-                    </button>
-                  ) : (
-                    <button onClick={() => requestFullControl('Engineer')} disabled={controlPending} data-testid="button-request-control"
-                      className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1 disabled:opacity-50"
-                      title="Request to control artist's screen">
-                      <MousePointer2 size={12} /> {controlPending ? 'Waiting...' : 'Control'}
-                    </button>
-                  )
+                {/* Remote Control - always show for engineer, but disabled if no agent */}
+                {fullControlActive ? (
+                  <button onClick={endFullControl} data-testid="button-end-control"
+                    className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1">
+                    <MousePointer2 size={12} /> End Control
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => agentConnected && requestFullControl('Engineer')} 
+                    disabled={controlPending || !agentConnected} 
+                    data-testid="button-request-control"
+                    className={`px-2 py-1 rounded text-xs font-medium border transition-colors flex items-center gap-1 disabled:opacity-50 ${
+                      agentConnected 
+                        ? 'bg-purple-500/20 text-purple-400 border-purple-500/50 hover:bg-purple-500/30'
+                        : 'bg-gray-500/20 text-gray-400 border-gray-500/50 cursor-not-allowed'
+                    }`}
+                    title={agentConnected ? "Request to control artist's screen" : "Artist must run Virtual Studio Agent first"}>
+                    <MousePointer2 size={12} /> {controlPending ? 'Waiting...' : agentConnected ? 'Control' : 'No Agent'}
+                  </button>
                 )}
                 
                 {/* Fullscreen */}
@@ -1577,8 +1582,23 @@ function SessionContent() {
         {/* Side Panel */}
         <div className="glass-panel rounded-2xl p-6 flex flex-col gap-6">
           <div>
-            <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
-              <Users size={20} /> Participants
+            <h3 className="font-display font-bold text-lg mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Users size={20} /> Participants
+              </span>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => {
+                  disconnect();
+                  setTimeout(() => connect(), 500);
+                  toast({ title: "Refreshing...", description: "Reconnecting to session" });
+                }}
+                title="Refresh participants"
+                data-testid="button-refresh-participants"
+              >
+                <RefreshCw size={16} />
+              </Button>
             </h3>
             <div className="space-y-2">
               {/* Self */}
