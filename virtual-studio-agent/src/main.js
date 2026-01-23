@@ -1,7 +1,17 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, systemPreferences } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, systemPreferences, screen } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
 const https = require('https');
+
+// Get the actual screen size for accurate mouse positioning
+function getScreenSize() {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  return {
+    width: primaryDisplay.size.width,
+    height: primaryDisplay.size.height,
+    scaleFactor: primaryDisplay.scaleFactor
+  };
+}
 
 // HTTP request helper for legacy Electron (no fetch API)
 function httpRequest(url, options = {}) {
@@ -167,6 +177,27 @@ async function connectViaPolling(sessionCode) {
     currentSession = sessionCode;
     currentToken = null; // No token needed in simple mode
     consecutiveErrors = 0;
+    
+    // Get and send screen size to the session
+    const screenSize = getScreenSize();
+    console.log(`[Agent] Screen size: ${screenSize.width}x${screenSize.height} (scale: ${screenSize.scaleFactor})`);
+    
+    // Send screen size to server so engineers get accurate coordinates
+    try {
+      await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/screen-info`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          sessionCode, 
+          screenWidth: screenSize.width,
+          screenHeight: screenSize.height,
+          scaleFactor: screenSize.scaleFactor
+        })
+      });
+    } catch (err) {
+      console.log('[Agent] Failed to send screen info:', err.message);
+    }
+    
     mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
     updateTrayMenu();
     console.log(`[Agent] Connected to session ${sessionCode} via polling`);
@@ -361,14 +392,53 @@ async function handleControlMessage(message) {
         if (controlEnabled) {
           const key = mapKeyToRobotJs(message.key);
           if (key) {
-            robot.keyTap(key);
+            // Handle modifier keys with the key press
+            const modifiers = [];
+            if (message.modifiers) {
+              if (message.modifiers.ctrl) modifiers.push('control');
+              if (message.modifiers.alt) modifiers.push('alt');
+              if (message.modifiers.shift) modifiers.push('shift');
+              if (message.modifiers.cmd) modifiers.push('command');
+            }
+            robot.keyTap(key, modifiers);
+          }
+        }
+        break;
+        
+      case 'key-combo':
+        // Handle keyboard shortcuts like Cmd+C, Cmd+V
+        if (controlEnabled && message.keys && Array.isArray(message.keys)) {
+          const mappedKeys = message.keys.map(k => mapKeyToRobotJs(k)).filter(k => k);
+          if (mappedKeys.length > 0) {
+            // Last key is the main key, others are modifiers
+            const mainKey = mappedKeys[mappedKeys.length - 1];
+            const modifiers = mappedKeys.slice(0, -1);
+            robot.keyTap(mainKey, modifiers);
           }
         }
         break;
         
       case 'key-type':
         if (controlEnabled) {
-          robot.typeString(message.text);
+          // Type each character with a small delay for better compatibility
+          const text = message.text;
+          for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            // Use keyTap for letters/numbers which is more reliable than typeString
+            if (/[a-zA-Z0-9]/.test(char)) {
+              const isUpperCase = char === char.toUpperCase() && /[A-Z]/.test(char);
+              if (isUpperCase) {
+                robot.keyTap(char.toLowerCase(), ['shift']);
+              } else {
+                robot.keyTap(char.toLowerCase());
+              }
+            } else if (char === ' ') {
+              robot.keyTap('space');
+            } else {
+              // For special characters, use typeString as fallback
+              robot.typeString(char);
+            }
+          }
         }
         break;
     }

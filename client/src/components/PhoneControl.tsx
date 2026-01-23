@@ -129,8 +129,15 @@ export function PhoneControl({
 
   const handleKeyPress = useCallback((key: string) => {
     if (!controlEnabled) return;
-    onSendControl({ type: 'key-press', key });
-  }, [controlEnabled, onSendControl]);
+    // Include current modifier state with key press
+    onSendControl({ 
+      type: 'key-press', 
+      key,
+      modifiers: modifiers
+    });
+    // Reset modifiers after use (like a real keyboard)
+    setModifiers({ ctrl: false, alt: false, shift: false, cmd: false });
+  }, [controlEnabled, onSendControl, modifiers]);
 
   const handleTypeText = useCallback(() => {
     if (!controlEnabled || !textInput) return;
@@ -140,11 +147,8 @@ export function PhoneControl({
 
   const handleShortcut = useCallback((keys: string[]) => {
     if (!controlEnabled) return;
-    keys.forEach((key, index) => {
-      setTimeout(() => {
-        onSendControl({ type: 'key-press', key });
-      }, index * 50);
-    });
+    // Send as a single key combo event for proper modifier handling
+    onSendControl({ type: 'key-combo', keys });
   }, [controlEnabled, onSendControl]);
 
   const toggleModifier = useCallback((mod: 'ctrl' | 'alt' | 'shift' | 'cmd') => {

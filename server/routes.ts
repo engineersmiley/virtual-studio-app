@@ -731,6 +731,71 @@ export async function registerRoutes(
     }
   });
 
+  // Store screen info from agents
+  const agentScreenInfo = new Map<string, { screenWidth: number; screenHeight: number; scaleFactor: number }>();
+
+  // Agent sends screen info for accurate mouse positioning
+  app.post('/api/agent/screen-info', (req, res) => {
+    try {
+      const { sessionCode, screenWidth, screenHeight, scaleFactor } = req.body;
+      
+      if (!sessionCode || !screenWidth || !screenHeight) {
+        return res.status(400).json({ error: 'Session code and screen dimensions required' });
+      }
+      
+      const normalizedCode = sessionCode.toUpperCase();
+      
+      // Store screen info
+      agentScreenInfo.set(normalizedCode, { screenWidth, screenHeight, scaleFactor: scaleFactor || 1 });
+      console.log(`[Agent] Screen info for ${normalizedCode}: ${screenWidth}x${screenHeight} (scale: ${scaleFactor})`);
+      
+      // Notify room participants via WebSocket
+      const room = rooms.get(normalizedCode);
+      if (room) {
+        room.forEach((participant) => {
+          if (participant.ws.readyState === WebSocket.OPEN) {
+            participant.ws.send(JSON.stringify({ 
+              type: 'agent-screen-info', 
+              screenWidth, 
+              screenHeight, 
+              scaleFactor 
+            }));
+          }
+        });
+      }
+      
+      // Notify polling room participants
+      const pollingRoom = pollingRooms.get(normalizedCode);
+      if (pollingRoom) {
+        pollingRoom.forEach(p => {
+          p.messages.push({ 
+            type: 'agent-screen-info', 
+            screenWidth, 
+            screenHeight, 
+            scaleFactor 
+          });
+        });
+      }
+      
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Agent screen info error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get screen info for a session
+  app.get('/api/agent/screen-info/:sessionCode', (req, res) => {
+    const normalizedCode = req.params.sessionCode.toUpperCase();
+    const screenInfo = agentScreenInfo.get(normalizedCode);
+    
+    if (screenInfo) {
+      res.json(screenInfo);
+    } else {
+      res.json({ screenWidth: 1920, screenHeight: 1080, scaleFactor: 1 }); // Default
+    }
+  });
+
   // ============ HTTP POLLING FALLBACK FOR SIGNALING ============
   // Used when WebSocket connections fail (e.g., on custom domains)
   

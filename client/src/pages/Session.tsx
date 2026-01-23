@@ -141,6 +141,9 @@ function SessionContent() {
   const [volume, setVolume] = useState(100); // 0-100
   const [isTestingAudio, setIsTestingAudio] = useState(false);
   
+  // Agent screen dimensions for accurate mouse positioning
+  const [agentScreenSize, setAgentScreenSize] = useState({ width: 1920, height: 1080 });
+  
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
   const producerAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -356,8 +359,17 @@ function SessionContent() {
     onRemoteControl: handleRemoteControl,
     onAgentStatus: (status) => {
       setAgentConnected(status.connected);
-      setFullControlActive(status.controlAllowed);
-      setControlPending(status.controlPending);
+      if (status.controlAllowed !== undefined) {
+        setFullControlActive(status.controlAllowed);
+      }
+      if (status.controlPending !== undefined) {
+        setControlPending(status.controlPending);
+      }
+      // Update screen size if provided by agent
+      if (status.screenWidth && status.screenHeight) {
+        setAgentScreenSize({ width: status.screenWidth, height: status.screenHeight });
+        console.log(`[Session] Agent screen size: ${status.screenWidth}x${status.screenHeight}`);
+      }
     },
   });
 
@@ -404,12 +416,12 @@ function SessionContent() {
     const rect = video.getBoundingClientRect();
     
     // Calculate position relative to video
-    const x = Math.max(0, Math.min(1920, ((touch.clientX - rect.left) / rect.width) * 1920));
-    const y = Math.max(0, Math.min(1080, ((touch.clientY - rect.top) / rect.height) * 1080));
+    const x = Math.max(0, Math.min(agentScreenSize.width, ((touch.clientX - rect.left) / rect.width) * agentScreenSize.width));
+    const y = Math.max(0, Math.min(agentScreenSize.height, ((touch.clientY - rect.top) / rect.height) * agentScreenSize.height));
     
     sendFullControlCommand({ type: 'mouse-move', x, y });
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-  }, [controlEnabled, sendFullControlCommand]);
+  }, [controlEnabled, sendFullControlCommand, agentScreenSize]);
   
   const handleVideoTouchEnd = useCallback((e: React.TouchEvent) => {
     if (!controlEnabled || !touchStartRef.current) return;
@@ -427,8 +439,8 @@ function SessionContent() {
     
     // If it was a tap (not much movement), click at that position
     if (moveDistance < 15 && touchDuration < 400) {
-      const x = ((touch.clientX - rect.left) / rect.width) * 1920;
-      const y = ((touch.clientY - rect.top) / rect.height) * 1080;
+      const x = ((touch.clientX - rect.left) / rect.width) * agentScreenSize.width;
+      const y = ((touch.clientY - rect.top) / rect.height) * agentScreenSize.height;
       
       // Move to position then click
       sendFullControlCommand({ type: 'mouse-move', x, y });
@@ -439,7 +451,7 @@ function SessionContent() {
     
     touchStartRef.current = null;
     lastTouchRef.current = null;
-  }, [controlEnabled, sendFullControlCommand]);
+  }, [controlEnabled, sendFullControlCommand, agentScreenSize]);
 
   // Get ALL audio-only streams (no video) - from any role (producers, engineers teaching, etc.)
   const audioOnlyStreams = Array.from(remoteStreams.values()).filter(
@@ -1036,8 +1048,8 @@ function SessionContent() {
                 
                 // Full control mode - send mouse commands to agent
                 if (controlEnabled) {
-                  const x = normX * 1920;
-                  const y = normY * 1080;
+                  const x = normX * agentScreenSize.width;
+                  const y = normY * agentScreenSize.height;
                   sendFullControlCommand({ type: 'mouse-move', x, y });
                   setTimeout(() => {
                     sendFullControlCommand({ type: 'mouse-click', button: 'left' });
@@ -1083,8 +1095,8 @@ function SessionContent() {
                 
                 // Full control mode - send mouse move to agent
                 if (controlEnabled) {
-                  const x = normX * 1920;
-                  const y = normY * 1080;
+                  const x = normX * agentScreenSize.width;
+                  const y = normY * agentScreenSize.height;
                   sendFullControlCommand({ type: 'mouse-move', x, y });
                 } else if (controlMode) {
                   // Pointer mode - show pointer on artist's screen
@@ -1164,8 +1176,8 @@ function SessionContent() {
                       const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
                       const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
                       
-                      const x = normX * 1920;
-                      const y = normY * 1080;
+                      const x = normX * agentScreenSize.width;
+                      const y = normY * agentScreenSize.height;
                       sendFullControlCommand({ type: 'mouse-move', x, y });
                       setTimeout(() => {
                         sendFullControlCommand({ type: 'mouse-click', button: 'left' });

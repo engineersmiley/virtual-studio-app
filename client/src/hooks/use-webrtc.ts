@@ -549,6 +549,19 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         break;
       }
       
+      case 'agent-screen-info': {
+        // Received screen info from agent - pass to callback
+        if (onAgentStatusRef.current) {
+          onAgentStatusRef.current({ 
+            connected: true, 
+            screenWidth: message.screenWidth,
+            screenHeight: message.screenHeight,
+            scaleFactor: message.scaleFactor
+          });
+        }
+        break;
+      }
+      
       case 'agent-disconnected': {
         setAgentConnected(false);
         setControlAllowed(false);
