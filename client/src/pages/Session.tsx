@@ -131,6 +131,7 @@ function SessionContent() {
   
   // Main video audio state - track if audio is muted due to autoplay policy
   const [videoAudioMuted, setVideoAudioMuted] = useState(true);
+  const [hasAudioTracks, setHasAudioTracks] = useState(false);
   
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
@@ -394,6 +395,12 @@ function SessionContent() {
         remoteVideoRef.current.srcObject = primaryVideoStream.stream;
         remoteVideoRef.current.muted = true;
         setVideoAudioMuted(true);
+        
+        // Check if stream has audio tracks
+        const audioTracks = primaryVideoStream.stream.getAudioTracks();
+        setHasAudioTracks(audioTracks.length > 0);
+        console.log('Stream has audio tracks:', audioTracks.length, audioTracks.map(t => ({ label: t.label, enabled: t.enabled, muted: t.muted })));
+        
         remoteVideoRef.current.play().catch(() => {
           console.log('Autoplay blocked even when muted');
         });
@@ -777,7 +784,7 @@ function SessionContent() {
         <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4">
           <div 
             ref={videoContainerRef}
-            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${remoteControlViewMode && controlEnabled ? 'cursor-none' : ''}`}
+            className="rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px]"
             onClick={(e) => {
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
@@ -944,7 +951,7 @@ function SessionContent() {
                       }, 50);
                     }
                   }}
-                  style={{ cursor: remoteControlViewMode && controlEnabled ? 'none' : 'default' }}
+                  style={{ cursor: 'default' }}
                 />
                 {!hasRemoteStream && !isSharing && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
@@ -1033,11 +1040,12 @@ function SessionContent() {
                     data-testid="button-toggle-stream-audio"
                     className={`absolute top-3 right-3 z-20 ${videoAudioMuted ? '' : 'bg-green-600 hover:bg-green-700'}`}
                     size="sm"
+                    title={!hasAudioTracks ? 'No audio in stream - artist needs to share with audio enabled' : ''}
                   >
                     {videoAudioMuted ? (
                       <>
                         <VolumeX size={16} className="mr-2" />
-                        Enable Audio
+                        {hasAudioTracks ? 'Enable Audio' : 'No Audio'}
                       </>
                     ) : (
                       <>
