@@ -126,6 +126,9 @@ function SessionContent() {
   const [remoteControlAllowed, setRemoteControlAllowed] = useState(false);
   const [togglingRemoteControl, setTogglingRemoteControl] = useState(false);
   
+  // View mode toggle for engineers (regular view vs remote control view)
+  const [remoteControlViewMode, setRemoteControlViewMode] = useState(false);
+  
   // Main video audio state - track if audio is muted due to autoplay policy
   const [videoAudioMuted, setVideoAudioMuted] = useState(true);
   
@@ -313,18 +316,6 @@ function SessionContent() {
 
   // Direct screen touch control - touch on video to control computer
   const controlEnabled = fullControlActive || wsControlAllowed;
-  
-  // Hide cursor globally when control is active (uses CSS class that hides all cursors)
-  useEffect(() => {
-    if (controlEnabled) {
-      document.body.classList.add('control-mode-active');
-    } else {
-      document.body.classList.remove('control-mode-active');
-    }
-    return () => {
-      document.body.classList.remove('control-mode-active');
-    };
-  }, [controlEnabled]);
   
   const handleVideoTouchStart = useCallback((e: React.TouchEvent) => {
     if (!controlEnabled) return;
@@ -786,7 +777,7 @@ function SessionContent() {
         <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4">
           <div 
             ref={videoContainerRef}
-            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${controlEnabled ? 'cursor-none' : ''}`}
+            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${remoteControlViewMode && controlEnabled ? 'cursor-none' : ''}`}
             onClick={(e) => {
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
@@ -953,7 +944,7 @@ function SessionContent() {
                       }, 50);
                     }
                   }}
-                  style={{ cursor: controlEnabled ? 'none' : 'default' }}
+                  style={{ cursor: remoteControlViewMode && controlEnabled ? 'none' : 'default' }}
                 />
                 {!hasRemoteStream && !isSharing && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
@@ -1231,61 +1222,37 @@ function SessionContent() {
                   </div>
                 )}
               </div>
-              
-              {/* Control Status Panel - shows what's happening */}
-              <div className="w-full mt-4 p-4 rounded-xl bg-card border border-white/10">
-                <h3 className="text-sm font-bold mb-3 text-primary flex items-center gap-2">
-                  <Zap size={16} />
-                  Control Status
-                </h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <span>Session: {connected ? 'Connected' : 'Disconnected'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${agentConnected ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                    <span>Agent: {agentConnected ? 'Online' : 'Not Connected'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${fullControlActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
-                    <span>Control: {fullControlActive ? 'ACTIVE' : 'Not Active'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${controlPending ? 'bg-yellow-500 animate-pulse' : 'bg-gray-500'}`} />
-                    <span>Request: {controlPending ? 'Pending...' : 'None'}</span>
-                  </div>
-                </div>
-                {!agentConnected && (
-                  <div className="mt-3 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs text-yellow-400">
-                    <strong>Waiting for Artist:</strong> The artist needs to download and run the Desktop Agent on their computer.
-                    <a href="/remote-control" target="_blank" className="text-primary underline ml-1">Share this link with artist</a>
-                  </div>
-                )}
-                {agentConnected && !fullControlActive && (
-                  <div className="mt-3 p-2 bg-primary/10 border border-primary/30 rounded text-xs text-primary">
-                    Click "Request Control" below. The artist will see a popup asking for permission.
-                  </div>
-                )}
-                {fullControlActive && (
-                  <div className="mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-400">
-                    Control is ACTIVE! Use the touchpad below or move your mouse over the video.
-                  </div>
-                )}
+
+              {/* View Mode Toggle */}
+              <div className="w-full mt-4 flex justify-center">
+                <button
+                  onClick={() => setRemoteControlViewMode(!remoteControlViewMode)}
+                  data-testid="button-toggle-view-mode"
+                  className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
+                    remoteControlViewMode
+                      ? 'bg-gradient-to-r from-cyan-600 to-primary text-white shadow-lg shadow-cyan-500/30'
+                      : 'bg-white/5 border border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  <Monitor size={20} />
+                  {remoteControlViewMode ? 'Exit Remote Control Mode' : 'Enter Remote Control Mode'}
+                </button>
               </div>
 
-              {/* Phone/Touch Control for engineers - available on all devices */}
-              <div className="w-full mt-4">
-                <PhoneControl
-                  sessionCode={roomId}
-                  isConnected={connected}
-                  agentConnected={agentConnected}
-                  controlEnabled={fullControlActive}
-                  onSendControl={sendFullControlCommand}
-                  onRequestControl={() => requestFullControl('Engineer')}
-                  onEndControl={endFullControl}
-                />
-              </div>
+              {/* Phone/Touch Control for engineers - only visible in remote control view mode */}
+              {remoteControlViewMode && (
+                <div className="w-full mt-4">
+                  <PhoneControl
+                    sessionCode={roomId}
+                    isConnected={connected}
+                    agentConnected={agentConnected}
+                    controlEnabled={fullControlActive}
+                    onSendControl={sendFullControlCommand}
+                    onRequestControl={() => requestFullControl('Engineer')}
+                    onEndControl={endFullControl}
+                  />
+                </div>
+              )}
             </> 
             ) : role === 'producer' ? (
               // Producer - can share screen for beat-making or audio only
