@@ -74,7 +74,9 @@ function createTray() {
       label: 'Quit', 
       click: () => {
         app.isQuitting = true;
+        if (pollingInterval) clearInterval(pollingInterval);
         app.quit();
+        process.exit(0);
       }
     }
   ]);
