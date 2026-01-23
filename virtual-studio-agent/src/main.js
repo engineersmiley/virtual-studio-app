@@ -1,6 +1,41 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, systemPreferences } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
+const https = require('https');
+
+// HTTP request helper for legacy Electron (no fetch API)
+function httpRequest(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const reqOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || 443,
+      path: urlObj.pathname + urlObj.search,
+      method: options.method || 'GET',
+      headers: options.headers || {}
+    };
+
+    const req = https.request(reqOptions, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          json: () => Promise.resolve(JSON.parse(data)),
+          text: () => Promise.resolve(data)
+        });
+      });
+    });
+
+    req.on('error', reject);
+    
+    if (options.body) {
+      req.write(options.body);
+    }
+    req.end();
+  });
+}
 
 // Single instance lock - only allow one window
 const gotTheLock = app.requestSingleInstanceLock();
@@ -113,7 +148,7 @@ async function checkAccessibilityPermissions() {
 async function connectViaPolling(sessionCode) {
   try {
     // Simple mode - no token needed, just session code
-    const response = await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/simple-connect`, {
+    const response = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/simple-connect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionCode })
@@ -135,7 +170,7 @@ async function connectViaPolling(sessionCode) {
     pollingInterval = setInterval(async () => {
       try {
         // Poll without token - simple mode
-        const pollResponse = await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
+        const pollResponse = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessionCode: currentSession })
@@ -203,7 +238,7 @@ async function handleControlMessage(message) {
         
         // Send response via appropriate channel
         if (usePolling) {
-          await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
+          await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -393,7 +428,7 @@ ipcMain.handle('disconnect', async () => {
   
   if (usePolling && currentSession) {
     try {
-      await fetch(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
+      await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionCode: currentSession })
