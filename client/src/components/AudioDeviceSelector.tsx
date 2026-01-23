@@ -25,11 +25,9 @@ function applyOutputToAllElements(deviceId: string) {
 export function AudioDeviceSelector({ 
   onInputChange, 
   onOutputChange,
-  onDawInputChange,
   className = "" 
 }: AudioDeviceSelectorProps) {
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDawInput, setSelectedDawInput] = useState<string>('');
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedInput, setSelectedInput] = useState<string>('');
   const [selectedOutput, setSelectedOutput] = useState<string>('');
@@ -48,20 +46,12 @@ export function AudioDeviceSelector({
       
       const savedInput = localStorage.getItem(STORAGE_KEY_INPUT);
       const savedOutput = localStorage.getItem(STORAGE_KEY_OUTPUT);
-      const savedDawInput = localStorage.getItem(STORAGE_KEY_DAW_INPUT);
       
       if (inputs.length > 0) {
         const inputToUse = savedInput && inputs.some(d => d.deviceId === savedInput)
           ? savedInput
           : inputs.find(d => d.deviceId === 'default')?.deviceId || inputs[0].deviceId;
         setSelectedInput(inputToUse);
-        
-        // Load DAW input (can be 'none' or a device)
-        if (savedDawInput && (savedDawInput === 'none' || inputs.some(d => d.deviceId === savedDawInput))) {
-          setSelectedDawInput(savedDawInput);
-        } else {
-          setSelectedDawInput('none');
-        }
       }
       
       if (outputs.length > 0) {
@@ -92,7 +82,6 @@ export function AudioDeviceSelector({
   useEffect(() => {
     async function checkPermissionAndLoad() {
       try {
-        // Try to enumerate devices first - if we get labels, we have permission
         const devices = await navigator.mediaDevices.enumerateDevices();
         const hasLabels = devices.some(d => d.label);
         
@@ -162,12 +151,6 @@ export function AudioDeviceSelector({
     applyOutputToAllElements(deviceId);
   };
 
-  const handleDawInputChange = (deviceId: string) => {
-    setSelectedDawInput(deviceId);
-    localStorage.setItem(STORAGE_KEY_DAW_INPUT, deviceId);
-    onDawInputChange?.(deviceId);
-  };
-
   if (isLoading) {
     return (
       <div className={`space-y-3 ${className}`}>
@@ -225,35 +208,6 @@ export function AudioDeviceSelector({
             )}
           </SelectContent>
         </Select>
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-xs font-tech uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-          <Music size={14} /> DAW/System Audio Input
-        </label>
-        <Select value={selectedDawInput} onValueChange={handleDawInputChange}>
-          <SelectTrigger 
-            className="w-full bg-black/40 border-white/20"
-            data-testid="select-daw-input"
-          >
-            <SelectValue placeholder="Select DAW audio source" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">None (Mic Only)</SelectItem>
-            {inputDevices.map((device) => (
-              <SelectItem 
-                key={device.deviceId} 
-                value={device.deviceId}
-                data-testid={`daw-device-${device.deviceId}`}
-              >
-                {device.label || `Input ${inputDevices.indexOf(device) + 1}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          Select your Scarlett loopback or audio interface output to share DAW audio
-        </p>
       </div>
 
       <div className="space-y-2">

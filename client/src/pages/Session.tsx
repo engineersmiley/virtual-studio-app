@@ -511,7 +511,6 @@ function SessionContent() {
       if (result) {
         const sources = [];
         if (result.hasMicAudio) sources.push("Mic");
-        if (result.hasDawAudio) sources.push("DAW Audio");
         if (result.hasSystemAudio) sources.push("System Audio");
         
         if (sources.length > 0) {
@@ -606,7 +605,9 @@ function SessionContent() {
       if (videoEnabled || audioStreamsEnabled > 0) {
         toast({ title: "Audio On", description: "Session audio enabled" });
         // Confirm audio to all broadcasters
-        confirmAudio();
+        remoteStreams.forEach(stream => {
+          if (stream.fromUserId) confirmAudio(stream.fromUserId);
+        });
         setAudioConfirmed(true);
       }
     } else {
@@ -615,11 +616,13 @@ function SessionContent() {
         remoteVideoRef.current.muted = true;
         setVideoAudioMuted(true);
       }
-      for (const audio of producerAudioRefs.current.values()) {
+      Array.from(producerAudioRefs.current.values()).forEach(audio => {
         audio.pause();
-      }
+      });
       // Unconfirm audio to all broadcasters
-      unconfirmAudio();
+      remoteStreams.forEach(stream => {
+        if (stream.fromUserId) unconfirmAudio(stream.fromUserId);
+      });
       setAudioConfirmed(false);
       toast({ title: "Audio Muted", description: "Session audio muted" });
     }
@@ -637,9 +640,9 @@ function SessionContent() {
     }
     
     // Update all producer audio elements
-    for (const audio of producerAudioRefs.current.values()) {
+    Array.from(producerAudioRefs.current.values()).forEach(audio => {
       audio.volume = normalizedVolume;
-    }
+    });
   };
 
   // Recording controls (Engineer only)
