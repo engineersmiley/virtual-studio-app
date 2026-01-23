@@ -195,21 +195,24 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           onRemoteStreamWithInfoRef.current(streamInfo);
         }
         
-        // Listen for track ending - only remove stream if ALL tracks have ended
-        // Use a delay to allow reconnection
+        // Listen for track ending - VERY conservative about removing streams
+        // Only remove if we're absolutely certain the artist stopped sharing
         stream.getTracks().forEach(track => {
           track.onended = () => {
-            console.log('[WebRTC] Track ended from', targetUserId, '- waiting to verify...');
+            console.log('[WebRTC] Track ended from', targetUserId, '- waiting extended time to verify...');
             
-            // Wait a bit before checking - tracks might come back
+            // Wait a LONG time before checking - tracks might come back after network issues
             setTimeout(() => {
               // Check if all tracks in this stream have ended
               const allEnded = stream.getTracks().every(t => t.readyState === 'ended');
               if (allEnded) {
-                // Double-check the connection is actually failed
+                // Triple-check: connection must be completely dead for a while
                 const pc = peerConnectionsRef.current.get(targetUserId);
-                if (!pc || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-                  console.log('[WebRTC] All tracks ended and connection gone for', targetUserId, '- removing stream');
+                const connectionDead = !pc || pc.connectionState === 'closed';
+                
+                // Only remove if connection is completely closed (not just failed/disconnected)
+                if (connectionDead) {
+                  console.log('[WebRTC] All tracks ended and connection closed for', targetUserId, '- removing stream');
                   setRemoteStreams(prev => {
                     const next = new Map(prev);
                     next.delete(targetUserId);
@@ -219,10 +222,16 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
                     return next;
                   });
                 } else {
-                  console.log('[WebRTC] Tracks ended but connection still active - keeping stream');
+                  console.log('[WebRTC] Tracks ended but connection still exists - keeping stream, will retry ICE');
+                  // Try one more ICE restart
+                  try {
+                    pc?.restartIce();
+                  } catch (e) {
+                    console.log('[WebRTC] ICE restart attempt failed:', e);
+                  }
                 }
               }
-            }, 2000); // Wait 2 seconds before removing
+            }, 15000); // Wait 15 seconds before removing - maximum patience
           };
         });
       }
@@ -236,35 +245,72 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       const hasConnected = states.some(s => s === 'connected');
       setConnected(hasConnected);
       
-      // Handle disconnected state - try ICE restart to recover
+      // Handle disconnected state - aggressively try ICE restart to recover
       if (state === 'disconnected') {
         console.log('[WebRTC] Connection disconnected, attempting ICE restart...');
-        // Wait 2 seconds, then try ICE restart if still disconnected
+        // Try ICE restart immediately
+        try {
+          pc.restartIce();
+        } catch (e) {
+          console.log('[WebRTC] Immediate ICE restart failed:', e);
+        }
+        
+        // Also try again after delay if still disconnected
         setTimeout(() => {
           const currentPc = peerConnectionsRef.current.get(targetUserId);
-          if (currentPc && currentPc.connectionState === 'disconnected') {
-            console.log('[WebRTC] Still disconnected, triggering ICE restart');
+          if (currentPc && (currentPc.connectionState === 'disconnected' || currentPc.connectionState === 'failed')) {
+            console.log('[WebRTC] Still disconnected after 3s, retrying ICE restart');
             try {
               currentPc.restartIce();
             } catch (e) {
-              console.log('[WebRTC] ICE restart failed:', e);
+              console.log('[WebRTC] ICE restart retry failed:', e);
             }
           }
-        }, 2000);
-      }
-      
-      // Only clean up streams when connection actually fails (not just disconnects)
-      if (state === 'failed') {
-        console.log('[WebRTC] Connection failed for', targetUserId, '- attempting to recover');
+        }, 3000);
         
-        // Try to recover by creating a new connection after a delay
+        // Third attempt after longer delay
         setTimeout(() => {
           const currentPc = peerConnectionsRef.current.get(targetUserId);
-          if (currentPc && currentPc.connectionState === 'failed') {
-            console.log('[WebRTC] Connection still failed, will wait for reconnection signal');
-            // Don't remove the stream yet - wait for user-left or explicit disconnect
+          if (currentPc && (currentPc.connectionState === 'disconnected' || currentPc.connectionState === 'failed')) {
+            console.log('[WebRTC] Still disconnected after 10s, final ICE restart attempt');
+            try {
+              currentPc.restartIce();
+            } catch (e) {
+              console.log('[WebRTC] Final ICE restart failed:', e);
+            }
           }
-        }, 5000);
+        }, 10000);
+      }
+      
+      // Connection failed - try multiple recovery attempts, NEVER auto-remove streams
+      if (state === 'failed') {
+        console.log('[WebRTC] Connection failed for', targetUserId, '- attempting aggressive recovery');
+        
+        // Try ICE restart immediately
+        try {
+          pc.restartIce();
+        } catch (e) {
+          console.log('[WebRTC] ICE restart on failure failed:', e);
+        }
+        
+        // Keep trying every 5 seconds for up to 30 seconds
+        [5000, 10000, 15000, 20000, 25000, 30000].forEach(delay => {
+          setTimeout(() => {
+            const currentPc = peerConnectionsRef.current.get(targetUserId);
+            if (currentPc && currentPc.connectionState === 'failed') {
+              console.log(`[WebRTC] Connection still failed after ${delay}ms, attempting ICE restart`);
+              try {
+                currentPc.restartIce();
+              } catch (e) {
+                console.log('[WebRTC] ICE restart attempt failed:', e);
+              }
+            }
+          }, delay);
+        });
+        
+        // NEVER auto-remove streams on connection failure
+        // Only remove when we receive explicit user-left from server
+        console.log('[WebRTC] Keeping stream despite connection failure - waiting for explicit disconnect');
       }
     };
 
@@ -382,13 +428,24 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         const leftUserId = message.userId;
         setParticipants(prev => prev.filter(p => p.userId !== leftUserId));
         
-        // Don't immediately remove streams - the peer connection might still be alive
-        // Wait a bit and check if the user rejoined or if the connection is still active
+        // MAXIMUM PATIENCE: Don't remove streams quickly - user might reconnect
+        // Wait a very long time and verify multiple times before removing
+        console.log('[WebRTC] User left signal for', leftUserId, '- waiting extended time before cleanup');
+        
+        // First check after 10 seconds
         setTimeout(() => {
           const pc = peerConnectionsRef.current.get(leftUserId);
           
-          // Only remove if the peer connection is dead or not connected
-          if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+          // Check if user rejoined (would be in participants list)
+          const userRejoined = participantsRef.current.some(p => p.userId === leftUserId);
+          if (userRejoined) {
+            console.log('[WebRTC] User', leftUserId, 'rejoined - keeping stream');
+            return;
+          }
+          
+          // Only close if connection is completely closed
+          if (!pc || pc.connectionState === 'closed') {
+            console.log('[WebRTC] User', leftUserId, 'confirmed gone after 10s - cleaning up');
             closePeerConnection(leftUserId);
             setRemoteStreams(prev => {
               const next = new Map(prev);
@@ -399,9 +456,35 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
               return next;
             });
           } else {
-            console.log('[WebRTC] User left but peer connection still alive - keeping stream');
+            console.log('[WebRTC] User left but peer connection still active (state:', pc.connectionState, ') - keeping stream');
+            
+            // Final check after 30 seconds total
+            setTimeout(() => {
+              const finalPc = peerConnectionsRef.current.get(leftUserId);
+              const stillRejoined = participantsRef.current.some(p => p.userId === leftUserId);
+              
+              if (stillRejoined) {
+                console.log('[WebRTC] User', leftUserId, 'confirmed active - keeping stream');
+                return;
+              }
+              
+              if (!finalPc || finalPc.connectionState === 'closed' || finalPc.connectionState === 'failed') {
+                console.log('[WebRTC] Final check: user', leftUserId, 'gone - cleaning up');
+                closePeerConnection(leftUserId);
+                setRemoteStreams(prev => {
+                  const next = new Map(prev);
+                  next.delete(leftUserId);
+                  if (next.size === 0) {
+                    setHasRemoteStream(false);
+                  }
+                  return next;
+                });
+              } else {
+                console.log('[WebRTC] Connection still alive after 30s - stream preserved');
+              }
+            }, 20000); // Additional 20 seconds (30s total)
           }
-        }, 3000); // Wait 3 seconds before removing
+        }, 10000); // Wait 10 seconds before first check
         break;
       }
 
