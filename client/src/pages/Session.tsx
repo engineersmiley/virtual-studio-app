@@ -179,6 +179,8 @@ function SessionContent() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const lastTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastMouseMoveRef = useRef<number>(0);
+  const MOUSE_THROTTLE_MS = 16; // ~60fps for smooth movement
   
   const uploadMutation = useUploadRecording();
 
@@ -312,6 +314,18 @@ function SessionContent() {
   // Direct screen touch control - touch on video to control computer
   const controlEnabled = fullControlActive || wsControlAllowed;
   
+  // Hide cursor globally when control is active (uses CSS class that hides all cursors)
+  useEffect(() => {
+    if (controlEnabled) {
+      document.body.classList.add('control-mode-active');
+    } else {
+      document.body.classList.remove('control-mode-active');
+    }
+    return () => {
+      document.body.classList.remove('control-mode-active');
+    };
+  }, [controlEnabled]);
+  
   const handleVideoTouchStart = useCallback((e: React.TouchEvent) => {
     if (!controlEnabled) return;
     const touch = e.touches[0];
@@ -322,6 +336,11 @@ function SessionContent() {
   const handleVideoTouchMove = useCallback((e: React.TouchEvent) => {
     if (!controlEnabled || !lastTouchRef.current) return;
     e.preventDefault();
+    
+    // Throttle touch move to reduce lag (~60fps)
+    const now = Date.now();
+    if (now - lastMouseMoveRef.current < MOUSE_THROTTLE_MS) return;
+    lastMouseMoveRef.current = now;
     
     const video = remoteVideoRef.current;
     if (!video) return;
@@ -767,7 +786,7 @@ function SessionContent() {
         <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4">
           <div 
             ref={videoContainerRef}
-            className="rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px]"
+            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${controlEnabled ? 'cursor-none' : ''}`}
             onClick={(e) => {
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
@@ -812,6 +831,11 @@ function SessionContent() {
             }}
             onMouseMove={(e) => {
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
+                // Throttle mouse move to reduce lag (~60fps)
+                const now = Date.now();
+                if (now - lastMouseMoveRef.current < MOUSE_THROTTLE_MS) return;
+                lastMouseMoveRef.current = now;
+                
                 const video = remoteVideoRef.current;
                 const container = e.currentTarget.getBoundingClientRect();
                 
@@ -929,7 +953,7 @@ function SessionContent() {
                       }, 50);
                     }
                   }}
-                  style={{ cursor: 'default' }}
+                  style={{ cursor: controlEnabled ? 'none' : 'default' }}
                 />
                 {!hasRemoteStream && !isSharing && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">

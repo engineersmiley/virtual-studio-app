@@ -50,6 +50,8 @@ export function PhoneControl({
   const touchPadRef = useRef<HTMLDivElement>(null);
   const lastTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastMoveTimeRef = useRef<number>(0);
+  const THROTTLE_MS = 16; // ~60fps for smooth movement
 
   const sensitivity = 2;
 
@@ -63,6 +65,11 @@ export function PhoneControl({
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!controlEnabled || !lastTouchRef.current) return;
     e.preventDefault();
+    
+    // Throttle to ~60fps to reduce lag
+    const now = Date.now();
+    if (now - lastMoveTimeRef.current < THROTTLE_MS) return;
+    lastMoveTimeRef.current = now;
     
     const touch = e.touches[0];
     const deltaX = (touch.clientX - lastTouchRef.current.x) * sensitivity;

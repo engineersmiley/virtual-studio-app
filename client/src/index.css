@@ -83,6 +83,12 @@
   }
 }
 
+/* Hide cursor during remote control mode */
+.control-mode-active,
+.control-mode-active * {
+  cursor: none !important;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
