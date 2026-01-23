@@ -130,6 +130,17 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       iceCandidatePoolSize: 10,
     });
 
+    // Monitor ICE connection state for stability
+    pc.oniceconnectionstatechange = () => {
+      console.log('[WebRTC] ICE connection state for', targetUserId, ':', pc.iceConnectionState);
+      
+      // If ICE fails, try to restart it
+      if (pc.iceConnectionState === 'failed') {
+        console.log('[WebRTC] ICE failed, attempting restart...');
+        pc.restartIce();
+      }
+    };
+
     pc.onicecandidate = (event) => {
       if (event.candidate && isTransportOpen(wsRef.current)) {
         wsRef.current!.send(JSON.stringify({
@@ -180,33 +191,55 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           onRemoteStreamWithInfoRef.current(streamInfo);
         }
         
-        // Listen for track ending to remove from map
+        // Listen for track ending - only remove stream if ALL tracks have ended
         stream.getTracks().forEach(track => {
           track.onended = () => {
-            setRemoteStreams(prev => {
-              const next = new Map(prev);
-              next.delete(targetUserId);
-              if (next.size === 0) {
-                setHasRemoteStream(false);
-              }
-              return next;
-            });
+            console.log('[WebRTC] Track ended from', targetUserId);
+            
+            // Check if all tracks in this stream have ended
+            const allEnded = stream.getTracks().every(t => t.readyState === 'ended');
+            if (allEnded) {
+              console.log('[WebRTC] All tracks ended for', targetUserId, '- removing stream');
+              setRemoteStreams(prev => {
+                const next = new Map(prev);
+                next.delete(targetUserId);
+                if (next.size === 0) {
+                  setHasRemoteStream(false);
+                }
+                return next;
+              });
+            }
           };
         });
       }
     };
 
     pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      console.log('[WebRTC] Connection state changed for', targetUserId, ':', state);
+      
       const states = Array.from(peerConnectionsRef.current.values()).map(p => p.connectionState);
       const hasConnected = states.some(s => s === 'connected');
       setConnected(hasConnected);
       
-      // Reset hasRemoteStream if connection is lost for viewers
-      if (role !== 'artist' && (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed')) {
-        const anyConnected = states.some(s => s === 'connected');
-        if (!anyConnected) {
-          setHasRemoteStream(false);
-        }
+      // Handle disconnected state - try to recover
+      if (state === 'disconnected') {
+        console.log('[WebRTC] Connection disconnected, waiting for recovery...');
+        // Don't immediately remove - wait for failed state
+      }
+      
+      // Only clean up streams when connection actually fails (not just disconnects)
+      if (state === 'failed') {
+        console.log('[WebRTC] Connection failed for', targetUserId);
+        // Remove this specific stream
+        setRemoteStreams(prev => {
+          const next = new Map(prev);
+          next.delete(targetUserId);
+          if (next.size === 0) {
+            setHasRemoteStream(false);
+          }
+          return next;
+        });
       }
     };
 
