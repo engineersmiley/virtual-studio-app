@@ -5,15 +5,15 @@ import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, 
 import { Link } from "wouter";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 
-const AGENT_VERSION = "1.0.0";
+const AGENT_VERSION = "1.2.2";
 
 // Download URLs - GitHub releases
 const GITHUB_REPO = "engineersmiley/virtual-studio-app";
 const DOWNLOAD_URLS = {
   windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
   mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
-  // Legacy build - works on macOS 10.11+ (El Capitan), from GitHub releases
-  macLegacy: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent-Legacy.dmg`,
+  // Legacy build - works on macOS 10.11+ (El Capitan), from GitHub releases (separate workflow)
+  macLegacy: `https://github.com/${GITHUB_REPO}/releases/download/legacy-latest/Virtual.Studio.Agent.Legacy.zip`,
   linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
 };
 
