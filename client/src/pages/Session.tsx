@@ -470,12 +470,27 @@ function SessionContent() {
       
       if (remoteVideoRef.current) {
         try {
-          remoteVideoRef.current.muted = false;
-          await remoteVideoRef.current.play();
+          const video = remoteVideoRef.current;
+          // Ensure volume is set first
+          video.volume = 1.0;
+          
+          // Pause, unmute, then play to force audio context to restart
+          video.pause();
+          video.muted = false;
+          video.currentTime = video.currentTime; // Reset playhead
+          
+          await video.play();
           setVideoAudioMuted(false);
           videoEnabled = true;
+          
+          // Log audio track info for debugging
+          const stream = video.srcObject as MediaStream;
+          const audioTracks = stream?.getAudioTracks() || [];
+          console.log('Audio enabled - muted:', video.muted, 'volume:', video.volume, 'audio tracks:', audioTracks.length);
+          audioTracks.forEach(t => console.log('  Track:', t.label, 'enabled:', t.enabled, 'muted:', t.muted));
         } catch (err) {
           console.error('Video audio play failed:', err);
+          toast({ title: "Audio Failed", description: "Could not enable audio. Try clicking again.", variant: "destructive" });
         }
       }
       
@@ -1015,7 +1030,7 @@ function SessionContent() {
                   }}
                   style={{ cursor: 'default' }}
                 />
-                {!hasRemoteStream && !isSharing && (
+                {!hasRemoteStream && !isSharing && !remoteVideoRef.current?.srcObject && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
                     <Radio size={64} className="opacity-30 animate-pulse" />
                     {participants.filter(p => p.role === 'artist' || p.role === 'producer' || p.role === 'engineer').length === 0 ? (
@@ -1264,7 +1279,7 @@ function SessionContent() {
                   }`}
                 >
                   <Monitor size={20} />
-                  {remoteControlViewMode ? 'Exit Remote Control Mode' : 'Enter Remote Control Mode'}
+                  {remoteControlViewMode ? 'Exit Mouse Control' : 'Phone Mouse Control'}
                 </button>
               </div>
 
