@@ -405,6 +405,38 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         setControlAllowed(false);
         break;
       }
+      
+      case 'audio-confirmed': {
+        // Someone confirmed they can hear a broadcaster's audio
+        const { confirmerId, confirmerRole, broadcasterId } = message.payload;
+        setAudioConfirmations(prev => {
+          const next = new Map(prev);
+          const confirmers = next.get(broadcasterId) || new Set();
+          confirmers.add(confirmerId);
+          next.set(broadcasterId, confirmers);
+          return next;
+        });
+        break;
+      }
+      
+      case 'audio-unconfirmed': {
+        // Someone muted or left - remove their confirmation
+        const { confirmerId, broadcasterId } = message.payload;
+        setAudioConfirmations(prev => {
+          const next = new Map(prev);
+          const confirmers = next.get(broadcasterId);
+          if (confirmers) {
+            confirmers.delete(confirmerId);
+            if (confirmers.size === 0) {
+              next.delete(broadcasterId);
+            } else {
+              next.set(broadcasterId, confirmers);
+            }
+          }
+          return next;
+        });
+        break;
+      }
     }
   }, [roomId, userId, role, createPeerConnection, closePeerConnection, sendOfferToViewer]);
 
@@ -896,6 +928,37 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     setError(null);
   }, []);
 
+  // Send audio confirmation - call when you can hear a broadcaster
+  const confirmAudio = useCallback((broadcasterId: string) => {
+    if (!isTransportOpen(wsRef.current)) return;
+    wsRef.current!.send(JSON.stringify({
+      type: 'audio-confirmed',
+      roomId,
+      userId,
+      role,
+      payload: {
+        confirmerId: userId,
+        confirmerRole: role,
+        broadcasterId
+      }
+    }));
+  }, [roomId, userId, role]);
+
+  // Remove audio confirmation - call when you mute or lose audio
+  const unconfirmAudio = useCallback((broadcasterId: string) => {
+    if (!isTransportOpen(wsRef.current)) return;
+    wsRef.current!.send(JSON.stringify({
+      type: 'audio-unconfirmed',
+      roomId,
+      userId,
+      role,
+      payload: {
+        confirmerId: userId,
+        broadcasterId
+      }
+    }));
+  }, [roomId, userId, role]);
+
   return {
     connected,
     participants,
@@ -907,6 +970,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     agentConnected,
     controlAllowed,
     controlPending,
+    audioConfirmations,
     connect,
     disconnect,
     startSharing,
@@ -915,6 +979,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     requestFullControl,
     endFullControl,
     sendFullControlCommand,
+    confirmAudio,
+    unconfirmAudio,
   };
 }
 

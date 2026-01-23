@@ -132,6 +132,7 @@ function SessionContent() {
   // Main video audio state - track if audio is muted due to autoplay policy
   const [videoAudioMuted, setVideoAudioMuted] = useState(true);
   const [hasAudioTracks, setHasAudioTracks] = useState(false);
+  const [audioConfirmed, setAudioConfirmed] = useState(false);
   
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
@@ -278,6 +279,7 @@ function SessionContent() {
     agentConnected: wsAgentConnected,
     controlAllowed: wsControlAllowed,
     controlPending: wsControlPending,
+    audioConfirmations,
     connect,
     disconnect,
     startSharing,
@@ -286,6 +288,8 @@ function SessionContent() {
     requestFullControl,
     endFullControl,
     sendFullControlCommand,
+    confirmAudio,
+    unconfirmAudio,
   } = useWebRTC({
     roomId,
     userId,
@@ -495,6 +499,9 @@ function SessionContent() {
       
       if (videoEnabled || audioStreamsEnabled > 0) {
         toast({ title: "Audio On", description: "Session audio enabled" });
+        // Confirm audio to all broadcasters
+        confirmAudio();
+        setAudioConfirmed(true);
       }
     } else {
       // Mute audio
@@ -505,6 +512,9 @@ function SessionContent() {
       for (const audio of producerAudioRefs.current.values()) {
         audio.pause();
       }
+      // Unconfirm audio to all broadcasters
+      unconfirmAudio();
+      setAudioConfirmed(false);
       toast({ title: "Audio Muted", description: "Session audio muted" });
     }
   };
@@ -1369,11 +1379,31 @@ function SessionContent() {
                 <span className="font-tech text-sm flex items-center gap-2">
                   {getRoleIcon(role)} You ({role})
                 </span>
-                {(role === 'artist' || role === 'producer') && isSharing && (
-                  <span className="ml-auto text-xs text-green-400 flex items-center gap-1">
-                    <Radio size={12} /> {role === 'producer' ? 'Audio' : 'Live'}
-                  </span>
-                )}
+                <span className="ml-auto flex items-center gap-2">
+                  {/* Show audio confirmation status for viewers */}
+                  {isViewer && (
+                    <span 
+                      className={`text-xs flex items-center gap-1 ${audioConfirmed ? 'text-green-400' : 'text-muted-foreground'}`}
+                      title={audioConfirmed ? 'Audio synced' : 'Enable audio to sync'}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${audioConfirmed ? 'bg-green-500 animate-pulse' : 'bg-muted-foreground'}`} />
+                      {audioConfirmed ? 'Synced' : 'No Audio'}
+                    </span>
+                  )}
+                  {/* Show broadcasting status for broadcasters */}
+                  {(role === 'artist' || role === 'producer') && isSharing && (
+                    <span className="text-xs text-green-400 flex items-center gap-1">
+                      <Radio size={12} /> {role === 'producer' ? 'Audio' : 'Live'}
+                      {/* Audio sync indicator - green when at least one listener confirmed */}
+                      {audioConfirmations.size > 0 && (
+                        <span className="ml-1 flex items-center gap-1 text-green-400" title={`${audioConfirmations.size} listener(s) confirmed audio`}>
+                          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                          <span className="text-xs">{audioConfirmations.size}</span>
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </span>
               </div>
               
               {/* Others */}

@@ -1282,6 +1282,39 @@ export async function registerRoutes(
             handleLeave();
             break;
           }
+          
+          case 'audio-confirmed':
+          case 'audio-unconfirmed': {
+            // Broadcast audio confirmation to all participants in the room
+            if (!currentRoom) return;
+            const room = rooms.get(currentRoom);
+            if (!room) return;
+            
+            room.forEach((participant, pId) => {
+              if (pId !== currentUserId && participant.ws.readyState === WebSocket.OPEN) {
+                participant.ws.send(JSON.stringify({
+                  type,
+                  userId: currentUserId,
+                  payload
+                }));
+              }
+            });
+            
+            // Also broadcast to polling participants
+            const pollingRoom = pollingRooms.get(currentRoom);
+            if (pollingRoom) {
+              pollingRoom.forEach((participant, pId) => {
+                if (pId !== currentUserId) {
+                  participant.messages.push({
+                    type,
+                    userId: currentUserId,
+                    payload
+                  });
+                }
+              });
+            }
+            break;
+          }
         }
       } catch (err) {
         console.error('WebSocket message error:', err);
