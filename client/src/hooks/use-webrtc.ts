@@ -55,6 +55,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const [agentConnected, setAgentConnected] = useState(false);
   const [controlAllowed, setControlAllowed] = useState(false);
   const [controlPending, setControlPending] = useState(false);
+  // Audio confirmations: Map of broadcasterUserId -> Set of confirming userIds
+  const [audioConfirmations, setAudioConfirmations] = useState<Map<string, Set<string>>>(new Map());
 
   const wsRef = useRef<SignalingTransport | null>(null);
   const retryCountRef = useRef(0);
