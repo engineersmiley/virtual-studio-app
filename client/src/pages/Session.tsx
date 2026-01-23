@@ -1778,13 +1778,26 @@ function SessionContent() {
                         Download BlackHole
                       </a> (click "Download BlackHole 2ch")
                     </li>
-                    <li>Run the installer</li>
-                    <li>Open Audio MIDI Setup (search in Spotlight)</li>
-                    <li>Click "+" → Create Multi-Output Device</li>
-                    <li>Check both "BlackHole 2ch" and your speakers</li>
-                    <li>Set your Mac audio output to Multi-Output Device</li>
+                    <li>Run the installer, then open <strong>Audio MIDI Setup</strong> (Spotlight search)</li>
+                  </ol>
+                  
+                  <p className="text-xs font-semibold mt-3 text-cyan-400">Using an Audio Interface (Scarlett, Apollo, etc)?</p>
+                  <ol className="list-decimal list-inside space-y-1 text-xs mt-1 opacity-80">
+                    <li>Click "+" → <strong>Create Aggregate Device</strong></li>
+                    <li>Check your interface (e.g., Scarlett) AND BlackHole 2ch</li>
+                    <li>Set <strong>Clock Source</strong> to your interface (Scarlett)</li>
+                    <li>Enable <strong>Drift Correction</strong> on BlackHole only</li>
+                    <li>In Pro Tools: Setup → Playback Engine → select Aggregate Device</li>
+                  </ol>
+                  
+                  <p className="text-xs font-semibold mt-3 text-cyan-400">For Audio Output to Chrome:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-xs mt-1 opacity-80">
+                    <li>Click "+" → <strong>Create Multi-Output Device</strong></li>
+                    <li>Check your interface AND BlackHole 2ch</li>
+                    <li>Set Mac system output to Multi-Output Device</li>
                     <li>Now share screen with audio - it will work!</li>
                   </ol>
+                  
                   <p className="text-xs mt-2 text-green-400">
                     Windows users: Audio sharing works automatically!
                   </p>
@@ -1835,10 +1848,22 @@ function SessionContent() {
                       className="text-cyan-400 hover:underline"
                     >
                       BlackHole (free)
-                    </a>{' '}
-                    and create a Multi-Output Device in Audio MIDI Setup.
+                    </a>
                   </p>
-                  <p className="text-xs mt-1 text-green-400">
+                  
+                  <p className="text-xs font-semibold mt-2 text-cyan-400">Using an Audio Interface?</p>
+                  <ol className="list-decimal list-inside space-y-1 text-xs mt-1 opacity-80">
+                    <li>Open <strong>Audio MIDI Setup</strong> (Spotlight search)</li>
+                    <li>Click "+" → <strong>Create Aggregate Device</strong></li>
+                    <li>Check your interface AND BlackHole 2ch</li>
+                    <li>Set <strong>Clock Source</strong> to your interface</li>
+                    <li>Enable <strong>Drift Correction</strong> on BlackHole only</li>
+                    <li>Click "+" → <strong>Create Multi-Output Device</strong></li>
+                    <li>Check your interface AND BlackHole 2ch</li>
+                    <li>Set Mac output to Multi-Output Device</li>
+                  </ol>
+                  
+                  <p className="text-xs mt-2 text-green-400">
                     Windows users: Audio sharing works automatically!
                   </p>
                 </div>

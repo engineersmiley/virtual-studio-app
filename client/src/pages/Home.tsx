@@ -242,20 +242,34 @@ export default function Home() {
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 text-2xl">💻</div>
               <div className="text-sm">
-                <p className="font-semibold text-white mb-1">Works on Windows & Mac</p>
+                <p className="font-semibold text-white mb-2">Works on Windows & Mac</p>
                 <p className="text-muted-foreground">
-                  <span className="text-green-400">Windows:</span> Audio sharing works automatically.{' '}
-                  <span className="text-amber-400">Mac:</span> Requires free{' '}
-                  <a 
-                    href="https://existential.audio/blackhole/" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-cyan-400 hover:underline"
-                  >
-                    BlackHole
-                  </a>{' '}
-                  for DAW audio (one-time setup).
+                  <span className="text-green-400">Windows:</span> Audio sharing works automatically!
                 </p>
+                <div className="mt-2 pt-2 border-t border-white/10">
+                  <p className="text-amber-400 font-semibold">Mac Users (one-time setup):</p>
+                  <p className="text-muted-foreground text-xs mt-1">
+                    Install free{' '}
+                    <a 
+                      href="https://existential.audio/blackhole/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-cyan-400 hover:underline"
+                    >
+                      BlackHole
+                    </a>{' '}
+                    to share DAW audio.
+                  </p>
+                  <p className="text-cyan-400 font-semibold text-xs mt-2">Using an Audio Interface (Scarlett, Apollo, etc)?</p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-xs mt-1 text-muted-foreground">
+                    <li>Open Audio MIDI Setup (Spotlight search)</li>
+                    <li>Create Aggregate Device with interface + BlackHole</li>
+                    <li>Set Clock Source to your interface</li>
+                    <li>Enable Drift Correction on BlackHole only</li>
+                    <li>Create Multi-Output Device with interface + BlackHole</li>
+                    <li>Set Mac output to Multi-Output Device</li>
+                  </ol>
+                </div>
               </div>
             </div>
           </div>
