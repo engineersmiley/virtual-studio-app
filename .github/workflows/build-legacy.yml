@@ -19,13 +19,19 @@ jobs:
         working-directory: virtual-studio-agent
         run: cp package-legacy.json package.json
 
-      - name: Install dependencies
+      - name: Install dependencies for x64
         working-directory: virtual-studio-agent
         run: npm install
+        env:
+          npm_config_arch: x64
 
-      - name: Build for macOS Legacy
+      - name: Rebuild native modules for x64
         working-directory: virtual-studio-agent
-        run: npm run build:mac
+        run: ./node_modules/.bin/electron-builder install-app-deps --arch x64
+
+      - name: Build for macOS Intel (x64)
+        working-directory: virtual-studio-agent
+        run: npm run build:mac -- --x64
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
