@@ -1449,9 +1449,22 @@ export async function registerRoutes(
             return;
           }
           
+          // IMPORTANT: Check if user is still active via HTTP polling before sending user-left
+          // This prevents false disconnects when switching transports
+          const pollingRoom = pollingRooms.get(currentRoom);
+          const stillActiveViaPolling = pollingRoom && pollingRoom.has(currentUserId);
+          
+          if (stillActiveViaPolling) {
+            console.log(`[WS] WebSocket closed for ${currentUserId} but user still active via polling - skipping user-left`);
+            room.delete(currentUserId);
+            return;
+          }
+          
           room.delete(currentUserId);
           
-          // Notify others
+          console.log(`[WS] User ${currentUserId} left room ${currentRoom} - notifying others`);
+          
+          // Notify WebSocket participants
           room.forEach((participant) => {
             if (participant.ws.readyState === WebSocket.OPEN) {
               participant.ws.send(JSON.stringify({
@@ -1461,6 +1474,16 @@ export async function registerRoutes(
               }));
             }
           });
+          
+          // Also notify polling participants
+          const pollingRoomForNotify = pollingRooms.get(currentRoom);
+          if (pollingRoomForNotify) {
+            pollingRoomForNotify.forEach((p, pId) => {
+              if (pId !== currentUserId) {
+                p.messages.push({ type: 'user-left', userId: currentUserId, roomId: currentRoom });
+              }
+            });
+          }
           
           if (room.size === 0) {
             rooms.delete(currentRoom);
