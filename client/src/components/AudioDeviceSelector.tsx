@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Mic, Speaker } from 'lucide-react';
 
@@ -32,50 +32,78 @@ export function AudioDeviceSelector({
   const [selectedInput, setSelectedInput] = useState<string>('');
   const [selectedOutput, setSelectedOutput] = useState<string>('');
   const [hasPermission, setHasPermission] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const observerRef = useRef<MutationObserver | null>(null);
 
+  const loadDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput' && d.deviceId);
+      const outputs = devices.filter(d => d.kind === 'audiooutput' && d.deviceId);
+      
+      setInputDevices(inputs);
+      setOutputDevices(outputs);
+      
+      const savedInput = localStorage.getItem(STORAGE_KEY_INPUT);
+      const savedOutput = localStorage.getItem(STORAGE_KEY_OUTPUT);
+      
+      if (inputs.length > 0) {
+        const inputToUse = savedInput && inputs.some(d => d.deviceId === savedInput)
+          ? savedInput
+          : inputs.find(d => d.deviceId === 'default')?.deviceId || inputs[0].deviceId;
+        setSelectedInput(inputToUse);
+      }
+      
+      if (outputs.length > 0) {
+        const outputToUse = savedOutput && outputs.some(d => d.deviceId === savedOutput)
+          ? savedOutput
+          : outputs.find(d => d.deviceId === 'default')?.deviceId || outputs[0].deviceId;
+        setSelectedOutput(outputToUse);
+        applyOutputToAllElements(outputToUse);
+      }
+    } catch (err) {
+      console.error('Error loading devices:', err);
+    }
+  }, []);
+
+  const requestPermission = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      setHasPermission(true);
+      await loadDevices();
+    } catch (err) {
+      console.error('Permission denied:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadDevices]);
+
   useEffect(() => {
-    async function getDevices() {
+    async function checkPermissionAndLoad() {
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        setHasPermission(true);
-        
+        // Try to enumerate devices first - if we get labels, we have permission
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const inputs = devices.filter(d => d.kind === 'audioinput');
-        const outputs = devices.filter(d => d.kind === 'audiooutput');
+        const hasLabels = devices.some(d => d.label);
         
-        setInputDevices(inputs);
-        setOutputDevices(outputs);
-        
-        const savedInput = localStorage.getItem(STORAGE_KEY_INPUT);
-        const savedOutput = localStorage.getItem(STORAGE_KEY_OUTPUT);
-        
-        if (inputs.length > 0) {
-          const inputToUse = savedInput && inputs.some(d => d.deviceId === savedInput)
-            ? savedInput
-            : inputs.find(d => d.deviceId === 'default')?.deviceId || inputs[0].deviceId;
-          setSelectedInput(inputToUse);
-        }
-        
-        if (outputs.length > 0) {
-          const outputToUse = savedOutput && outputs.some(d => d.deviceId === savedOutput)
-            ? savedOutput
-            : outputs.find(d => d.deviceId === 'default')?.deviceId || outputs[0].deviceId;
-          setSelectedOutput(outputToUse);
-          applyOutputToAllElements(outputToUse);
+        if (hasLabels) {
+          setHasPermission(true);
+          await loadDevices();
         }
       } catch (err) {
-        console.error('Error getting audio devices:', err);
+        console.error('Error checking permissions:', err);
+      } finally {
+        setIsLoading(false);
       }
     }
     
-    getDevices();
+    checkPermissionAndLoad();
     
-    navigator.mediaDevices.addEventListener('devicechange', getDevices);
+    navigator.mediaDevices.addEventListener('devicechange', loadDevices);
     return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', getDevices);
+      navigator.mediaDevices.removeEventListener('devicechange', loadDevices);
     };
-  }, []);
+  }, [loadDevices]);
 
   useEffect(() => {
     if (!selectedOutput || !hasPermission) return;
@@ -124,22 +152,29 @@ export function AudioDeviceSelector({
     applyOutputToAllElements(deviceId);
   };
 
+  if (isLoading) {
+    return (
+      <div className={`space-y-3 ${className}`}>
+        <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-sm text-muted-foreground animate-pulse">
+          Loading audio devices...
+        </div>
+      </div>
+    );
+  }
+
   if (!hasPermission) {
     return (
-      <div 
-        className={`p-3 rounded-lg bg-white/5 border border-white/10 text-sm text-muted-foreground cursor-pointer hover:bg-white/10 transition-colors ${className}`}
-        onClick={async () => {
-          try {
-            await navigator.mediaDevices.getUserMedia({ audio: true });
-            setHasPermission(true);
-          } catch (err) {
-            console.error('Permission denied:', err);
-          }
-        }}
-        data-testid="audio-permission-request"
-      >
-        <p className="flex items-center gap-2">
-          <Mic size={16} /> Click to enable audio device selection
+      <div className={`space-y-3 ${className}`}>
+        <button 
+          onClick={requestPermission}
+          className="w-full p-4 rounded-lg bg-primary/20 border border-primary/30 text-sm text-primary hover:bg-primary/30 transition-colors flex items-center justify-center gap-2"
+          data-testid="audio-permission-request"
+        >
+          <Mic size={18} />
+          <span className="font-medium">Enable Audio Devices</span>
+        </button>
+        <p className="text-xs text-muted-foreground text-center">
+          Click to select your microphone and speakers
         </p>
       </div>
     );
@@ -159,15 +194,19 @@ export function AudioDeviceSelector({
             <SelectValue placeholder="Select microphone" />
           </SelectTrigger>
           <SelectContent>
-            {inputDevices.map((device) => (
-              <SelectItem 
-                key={device.deviceId} 
-                value={device.deviceId}
-                data-testid={`input-device-${device.deviceId}`}
-              >
-                {device.label || `Microphone ${inputDevices.indexOf(device) + 1}`}
-              </SelectItem>
-            ))}
+            {inputDevices.length === 0 ? (
+              <SelectItem value="none" disabled>No microphones found</SelectItem>
+            ) : (
+              inputDevices.map((device) => (
+                <SelectItem 
+                  key={device.deviceId} 
+                  value={device.deviceId}
+                  data-testid={`input-device-${device.deviceId}`}
+                >
+                  {device.label || `Microphone ${inputDevices.indexOf(device) + 1}`}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -184,15 +223,19 @@ export function AudioDeviceSelector({
             <SelectValue placeholder="Select speakers" />
           </SelectTrigger>
           <SelectContent>
-            {outputDevices.map((device) => (
-              <SelectItem 
-                key={device.deviceId} 
-                value={device.deviceId}
-                data-testid={`output-device-${device.deviceId}`}
-              >
-                {device.label || `Speaker ${outputDevices.indexOf(device) + 1}`}
-              </SelectItem>
-            ))}
+            {outputDevices.length === 0 ? (
+              <SelectItem value="none" disabled>No speakers found</SelectItem>
+            ) : (
+              outputDevices.map((device) => (
+                <SelectItem 
+                  key={device.deviceId} 
+                  value={device.deviceId}
+                  data-testid={`output-device-${device.deviceId}`}
+                >
+                  {device.label || `Speaker ${outputDevices.indexOf(device) + 1}`}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
