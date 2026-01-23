@@ -4,6 +4,15 @@ import { PollingTransport } from '@/lib/polling-transport';
 
 type SignalingTransport = WebSocket | PollingTransport;
 
+// Storage keys for audio device selection (must match AudioDeviceSelector)
+const STORAGE_KEY_INPUT = 'virtualstudio-audio-input';
+
+// Get the selected input device from localStorage
+function getSelectedInputDevice(): string | undefined {
+  const saved = localStorage.getItem(STORAGE_KEY_INPUT);
+  return saved || undefined;
+}
+
 function isTransportOpen(transport: SignalingTransport | null): boolean {
   if (!transport) return false;
   return transport.readyState === WebSocket.OPEN || transport.readyState === PollingTransport.OPEN;
@@ -603,9 +612,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         displayStream.getVideoTracks().forEach(t => t.stop());
       }
 
-      // Get microphone with high quality
+      // Get microphone with high quality - use selected device if available
+      const selectedInputDevice = getSelectedInputDevice();
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: 48000,
@@ -735,9 +746,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   // Start mic-only streaming (no screen share needed)
   const startMic = useCallback(async () => {
     try {
-      // Get microphone with high quality
+      // Get microphone with high quality - use selected device if available
+      const selectedInputDevice = getSelectedInputDevice();
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: 48000,
@@ -766,7 +779,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
       // Create peer connections for all current participants
       for (const participant of participants) {
-        const pc = await createPeerConnection(participant.userId, participant.role);
+        const pc = await createPeerConnection(participant.userId);
         if (!pc) continue;
 
         // Add mic track to connection
