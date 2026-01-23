@@ -1,11 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Volume2, Mic, Speaker } from 'lucide-react';
+import { Mic, Speaker } from 'lucide-react';
 
 interface AudioDeviceSelectorProps {
   onInputChange?: (deviceId: string) => void;
   onOutputChange?: (deviceId: string) => void;
   className?: string;
+}
+
+const STORAGE_KEY_INPUT = 'virtualstudio-audio-input';
+const STORAGE_KEY_OUTPUT = 'virtualstudio-audio-output';
+
+function applyOutputToAllElements(deviceId: string) {
+  const audioElements = document.querySelectorAll('audio, video');
+  audioElements.forEach((el: any) => {
+    if (el.setSinkId && typeof el.setSinkId === 'function') {
+      el.setSinkId(deviceId).catch((err: Error) => {
+        console.error('Error setting audio output:', err);
+      });
+    }
+  });
 }
 
 export function AudioDeviceSelector({ 
@@ -18,6 +32,7 @@ export function AudioDeviceSelector({
   const [selectedInput, setSelectedInput] = useState<string>('');
   const [selectedOutput, setSelectedOutput] = useState<string>('');
   const [hasPermission, setHasPermission] = useState(false);
+  const observerRef = useRef<MutationObserver | null>(null);
 
   useEffect(() => {
     async function getDevices() {
@@ -32,14 +47,22 @@ export function AudioDeviceSelector({
         setInputDevices(inputs);
         setOutputDevices(outputs);
         
-        if (inputs.length > 0 && !selectedInput) {
-          const defaultInput = inputs.find(d => d.deviceId === 'default') || inputs[0];
-          setSelectedInput(defaultInput.deviceId);
+        const savedInput = localStorage.getItem(STORAGE_KEY_INPUT);
+        const savedOutput = localStorage.getItem(STORAGE_KEY_OUTPUT);
+        
+        if (inputs.length > 0) {
+          const inputToUse = savedInput && inputs.some(d => d.deviceId === savedInput)
+            ? savedInput
+            : inputs.find(d => d.deviceId === 'default')?.deviceId || inputs[0].deviceId;
+          setSelectedInput(inputToUse);
         }
         
-        if (outputs.length > 0 && !selectedOutput) {
-          const defaultOutput = outputs.find(d => d.deviceId === 'default') || outputs[0];
-          setSelectedOutput(defaultOutput.deviceId);
+        if (outputs.length > 0) {
+          const outputToUse = savedOutput && outputs.some(d => d.deviceId === savedOutput)
+            ? savedOutput
+            : outputs.find(d => d.deviceId === 'default')?.deviceId || outputs[0].deviceId;
+          setSelectedOutput(outputToUse);
+          applyOutputToAllElements(outputToUse);
         }
       } catch (err) {
         console.error('Error getting audio devices:', err);
@@ -54,28 +77,67 @@ export function AudioDeviceSelector({
     };
   }, []);
 
+  useEffect(() => {
+    if (!selectedOutput || !hasPermission) return;
+    
+    observerRef.current = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof HTMLElement) {
+            const audioElements = node.querySelectorAll('audio, video');
+            audioElements.forEach((el: any) => {
+              if (el.setSinkId && typeof el.setSinkId === 'function') {
+                el.setSinkId(selectedOutput).catch(console.error);
+              }
+            });
+            if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO') {
+              const el = node as any;
+              if (el.setSinkId && typeof el.setSinkId === 'function') {
+                el.setSinkId(selectedOutput).catch(console.error);
+              }
+            }
+          }
+        });
+      });
+    });
+
+    observerRef.current.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    return () => {
+      observerRef.current?.disconnect();
+    };
+  }, [selectedOutput, hasPermission]);
+
   const handleInputChange = (deviceId: string) => {
     setSelectedInput(deviceId);
+    localStorage.setItem(STORAGE_KEY_INPUT, deviceId);
     onInputChange?.(deviceId);
   };
 
   const handleOutputChange = (deviceId: string) => {
     setSelectedOutput(deviceId);
+    localStorage.setItem(STORAGE_KEY_OUTPUT, deviceId);
     onOutputChange?.(deviceId);
-    
-    const audioElements = document.querySelectorAll('audio, video');
-    audioElements.forEach((el: any) => {
-      if (el.setSinkId) {
-        el.setSinkId(deviceId).catch((err: Error) => {
-          console.error('Error setting audio output:', err);
-        });
-      }
-    });
+    applyOutputToAllElements(deviceId);
   };
 
   if (!hasPermission) {
     return (
-      <div className={`p-3 rounded-lg bg-white/5 border border-white/10 text-sm text-muted-foreground ${className}`}>
+      <div 
+        className={`p-3 rounded-lg bg-white/5 border border-white/10 text-sm text-muted-foreground cursor-pointer hover:bg-white/10 transition-colors ${className}`}
+        onClick={async () => {
+          try {
+            await navigator.mediaDevices.getUserMedia({ audio: true });
+            setHasPermission(true);
+          } catch (err) {
+            console.error('Permission denied:', err);
+          }
+        }}
+        data-testid="audio-permission-request"
+      >
         <p className="flex items-center gap-2">
           <Mic size={16} /> Click to enable audio device selection
         </p>

@@ -703,7 +703,7 @@ function SessionContent() {
         <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4">
           <div 
             ref={videoContainerRef}
-            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${(controlMode || controlEnabled) && role === 'engineer' ? 'cursor-crosshair' : ''}`}
+            className="rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px]"
             onClick={(e) => {
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
@@ -811,67 +811,6 @@ function SessionContent() {
                       <p className="text-muted-foreground mt-2">Your screen is being shared with participants</p>
                     </div>
                   </div>
-                  {/* Remote pointer from engineer - show on overlay */}
-                  <AnimatePresence>
-                    {remotePointer.visible && videoContainerRef.current && (() => {
-                      const video = localVideoRef.current;
-                      const container = videoContainerRef.current;
-                      const containerRect = container.getBoundingClientRect();
-                      
-                      // Calculate video display area with object-contain letterboxing
-                      const videoRatio = video.videoWidth / video.videoHeight || 16/9;
-                      const containerRatio = containerRect.width / containerRect.height;
-                      
-                      let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                      
-                      if (videoRatio > containerRatio) {
-                        videoDisplayWidth = containerRect.width;
-                        videoDisplayHeight = containerRect.width / videoRatio;
-                        offsetX = 0;
-                        offsetY = (containerRect.height - videoDisplayHeight) / 2;
-                      } else {
-                        videoDisplayHeight = containerRect.height;
-                        videoDisplayWidth = containerRect.height * videoRatio;
-                        offsetX = (containerRect.width - videoDisplayWidth) / 2;
-                        offsetY = 0;
-                      }
-                      
-                      // Convert normalized 0-1 coords to pixel position within container
-                      const pixelX = offsetX + (remotePointer.x / 100) * videoDisplayWidth;
-                      const pixelY = offsetY + (remotePointer.y / 100) * videoDisplayHeight;
-                      
-                      // Convert to percentage of container
-                      const leftPct = (pixelX / containerRect.width) * 100;
-                      const topPct = (pixelY / containerRect.height) * 100;
-                      
-                      return (
-                        <motion.div
-                          initial={{ scale: 0, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          exit={{ scale: 0, opacity: 0 }}
-                          className="absolute z-20 pointer-events-none"
-                          style={{
-                            left: `${leftPct}%`,
-                            top: `${topPct}%`,
-                            transform: 'translate(-50%, -50%)',
-                          }}
-                        >
-                          <div className="relative">
-                            {/* Large glowing pointer */}
-                            <MousePointer2 className="w-10 h-10 text-cyan-400 drop-shadow-lg" style={{ filter: 'drop-shadow(0 0 8px #00ffff) drop-shadow(0 0 16px #00ffff)' }} />
-                            {/* Label */}
-                            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm font-bold bg-cyan-500 text-black px-3 py-1 rounded-full shadow-lg">
-                              Engineer pointing here
-                            </div>
-                            {/* Ping animation */}
-                            <div className="absolute inset-0 w-12 h-12 -m-1 rounded-full bg-cyan-400/40 animate-ping" />
-                            {/* Static glow ring */}
-                            <div className="absolute inset-0 w-16 h-16 -m-3 rounded-full bg-cyan-400/20 animate-pulse" />
-                          </div>
-                        </motion.div>
-                      );
-                    })()}
-                  </AnimatePresence>
                 </>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 p-8">
@@ -926,7 +865,7 @@ function SessionContent() {
                       }, 50);
                     }
                   }}
-                  style={{ cursor: controlEnabled ? 'crosshair' : 'default' }}
+                  style={{ cursor: 'default' }}
                 />
                 {!hasRemoteStream && !isSharing && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
