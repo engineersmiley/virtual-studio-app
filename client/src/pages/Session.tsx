@@ -127,6 +127,10 @@ function SessionContent() {
   const [remoteControlAllowed, setRemoteControlAllowed] = useState(false);
   const [togglingRemoteControl, setTogglingRemoteControl] = useState(false);
   
+  // Mac detection for audio setup warning
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+  const [macWarningDismissed, setMacWarningDismissed] = useState(false);
+  
   // View mode toggle for engineers (regular view vs remote control view)
   const [remoteControlViewMode, setRemoteControlViewMode] = useState(false);
   
@@ -931,6 +935,35 @@ function SessionContent() {
           </div>
         </div>
       </header>
+
+      {/* Mac Audio Setup Warning Banner - for artists/producers on Mac */}
+      {isMac && (role === 'artist' || role === 'producer') && !macWarningDismissed && (
+        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🍎</span>
+            <div className="text-sm">
+              <strong>Mac Audio Setup Required:</strong>{' '}
+              Chrome on Mac needs{' '}
+              <a 
+                href="https://existential.audio/blackhole/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-cyan-400 hover:underline font-medium"
+              >
+                BlackHole (free)
+              </a>{' '}
+              to share DAW audio. See instructions in the right panel.
+            </div>
+          </div>
+          <button 
+            onClick={() => setMacWarningDismissed(true)}
+            className="p-1 hover:bg-white/10 rounded transition-colors"
+            data-testid="button-dismiss-mac-warning"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive flex items-center justify-between gap-3">
@@ -1782,14 +1815,31 @@ function SessionContent() {
               <>
                 <p><strong>Producer Controls:</strong></p>
                 <ol className="list-decimal list-inside space-y-1 text-xs">
-                  <li>Click "Share Audio" to broadcast your beats</li>
-                  <li>Check "Share System Audio" when prompted</li>
+                  <li>Click "Audio" to broadcast your beats</li>
+                  <li>Check "Share audio" checkbox when prompted</li>
                   <li>Everyone in the session will hear your audio</li>
-                  <li>Click "Stop Sharing" when done</li>
+                  <li>Click "Stop" when done</li>
                 </ol>
+                
+                {/* Mac Audio Setup for Producers */}
                 <div className="mt-3 pt-3 border-t border-white/10">
-                  <p className="text-xs text-muted-foreground">
-                    <strong>Tip:</strong> Your audio plays alongside the artist's stream so everyone can hear both.
+                  <p className="text-xs font-semibold text-amber-400 flex items-center gap-1">
+                    <span>🍎</span> Mac Users - Audio Setup Required
+                  </p>
+                  <p className="text-xs mt-1 opacity-80">
+                    Chrome on Mac cannot capture system audio directly. Install{' '}
+                    <a 
+                      href="https://existential.audio/blackhole/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-cyan-400 hover:underline"
+                    >
+                      BlackHole (free)
+                    </a>{' '}
+                    and create a Multi-Output Device in Audio MIDI Setup.
+                  </p>
+                  <p className="text-xs mt-1 text-green-400">
+                    Windows users: Audio sharing works automatically!
                   </p>
                 </div>
               </>

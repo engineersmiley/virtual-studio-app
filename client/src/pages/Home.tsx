@@ -219,7 +219,7 @@ export default function Home() {
           </p>
 
           {/* Feature Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="glass-panel rounded-2xl p-6 text-left">
               <Monitor className="w-10 h-10 text-primary mb-4" />
               <h3 className="font-display font-bold text-lg mb-2">Virtual Recording</h3>
@@ -234,6 +234,29 @@ export default function Home() {
               <Disc className="w-10 h-10 text-primary mb-4" />
               <h3 className="font-display font-bold text-lg mb-2">Instant Capture</h3>
               <p className="text-sm text-muted-foreground">Never miss a moment of creative inspiration</p>
+            </div>
+          </div>
+          
+          {/* Platform Requirements Note */}
+          <div className="glass-panel rounded-xl p-4 mb-12 max-w-2xl mx-auto text-left border border-white/10">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 text-2xl">💻</div>
+              <div className="text-sm">
+                <p className="font-semibold text-white mb-1">Works on Windows & Mac</p>
+                <p className="text-muted-foreground">
+                  <span className="text-green-400">Windows:</span> Audio sharing works automatically.{' '}
+                  <span className="text-amber-400">Mac:</span> Requires free{' '}
+                  <a 
+                    href="https://existential.audio/blackhole/" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-cyan-400 hover:underline"
+                  >
+                    BlackHole
+                  </a>{' '}
+                  for DAW audio (one-time setup).
+                </p>
+              </div>
             </div>
           </div>
 
