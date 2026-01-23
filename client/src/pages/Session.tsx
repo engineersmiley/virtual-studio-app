@@ -1720,11 +1720,42 @@ function SessionContent() {
               <>
                 <p><strong>Artist Instructions:</strong></p>
                 <ol className="list-decimal list-inside space-y-1 text-xs">
-                  <li>Click "Start Sharing"</li>
+                  <li>Click "Share" button</li>
                   <li>Select your DAW window or entire screen</li>
-                  <li>Check "Share System Audio"</li>
+                  <li>Check "Share audio" checkbox</li>
                   <li>Your engineer will see and hear everything</li>
                 </ol>
+                
+                {/* Mac Audio Setup */}
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  <p className="text-xs font-semibold text-amber-400 flex items-center gap-1">
+                    <span>🍎</span> Mac Users - Audio Setup Required
+                  </p>
+                  <p className="text-xs mt-1 opacity-80">
+                    Chrome on Mac cannot capture DAW audio directly. You need BlackHole (free):
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 text-xs mt-2 opacity-80">
+                    <li>
+                      <a 
+                        href="https://existential.audio/blackhole/" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-cyan-400 hover:underline"
+                      >
+                        Download BlackHole
+                      </a> (click "Download BlackHole 2ch")
+                    </li>
+                    <li>Run the installer</li>
+                    <li>Open Audio MIDI Setup (search in Spotlight)</li>
+                    <li>Click "+" → Create Multi-Output Device</li>
+                    <li>Check both "BlackHole 2ch" and your speakers</li>
+                    <li>Set your Mac audio output to Multi-Output Device</li>
+                    <li>Now share screen with audio - it will work!</li>
+                  </ol>
+                  <p className="text-xs mt-2 text-green-400">
+                    Windows users: Audio sharing works automatically!
+                  </p>
+                </div>
               </>
             )}
             {role === 'engineer' && (
