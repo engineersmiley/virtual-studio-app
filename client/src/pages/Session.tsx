@@ -1659,6 +1659,24 @@ function SessionContent() {
                 );
               })}
             </div>
+            
+            {/* Agent Status Indicator */}
+            <div className={`mt-3 p-2 rounded-lg border text-xs ${
+              agentConnected 
+                ? 'bg-purple-500/10 border-purple-500/30 text-purple-300' 
+                : 'bg-gray-500/10 border-gray-500/30 text-gray-400'
+            }`}>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${agentConnected ? 'bg-purple-400 animate-pulse' : 'bg-gray-500'}`} />
+                <span>Agent: {agentConnected ? 'Connected' : 'Not Connected'}</span>
+              </div>
+              {!agentConnected && role === 'artist' && (
+                <p className="mt-1 text-[10px] opacity-70">Click Ctrl button above, then run agent on your computer</p>
+              )}
+              {!agentConnected && role === 'engineer' && (
+                <p className="mt-1 text-[10px] opacity-70">Artist must enable control and run agent</p>
+              )}
+            </div>
           </div>
 
           {/* Audio Visualizer (for viewers) */}
