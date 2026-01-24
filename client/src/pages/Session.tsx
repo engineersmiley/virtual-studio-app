@@ -1837,7 +1837,7 @@ function SessionContent() {
                     <li>Run the installer, then open <strong>Audio MIDI Setup</strong> (Spotlight search)</li>
                   </ol>
                   
-                  <p className="text-xs font-semibold mt-3 text-cyan-400">Using an Audio Interface (Scarlett, Apollo, etc)?</p>
+                  <p className="text-xs font-semibold mt-3 text-cyan-400">Use an Audio Interface</p>
                   <ol className="list-decimal list-inside space-y-1 text-xs mt-1 opacity-80">
                     <li>Click "+" → <strong>Create Aggregate Device</strong></li>
                     <li>Check your interface (e.g., Scarlett) AND BlackHole 2ch</li>
@@ -1907,7 +1907,7 @@ function SessionContent() {
                     </a>
                   </p>
                   
-                  <p className="text-xs font-semibold mt-2 text-cyan-400">Using an Audio Interface?</p>
+                  <p className="text-xs font-semibold mt-2 text-cyan-400">Use an Audio Interface</p>
                   <ol className="list-decimal list-inside space-y-1 text-xs mt-1 opacity-80">
                     <li>Open <strong>Audio MIDI Setup</strong> (Spotlight search)</li>
                     <li>Click "+" → <strong>Create Aggregate Device</strong></li>

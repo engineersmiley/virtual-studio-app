@@ -260,7 +260,7 @@ export default function Home() {
                     </a>{' '}
                     to share DAW audio.
                   </p>
-                  <p className="text-cyan-400 font-semibold text-xs mt-2">Using an Audio Interface (Scarlett, Apollo, etc)?</p>
+                  <p className="text-cyan-400 font-semibold text-xs mt-2">Use an Audio Interface</p>
                   <ol className="list-decimal list-inside space-y-0.5 text-xs mt-1 text-muted-foreground">
                     <li>Open Audio MIDI Setup (Spotlight search)</li>
                     <li>Create Aggregate Device with interface + BlackHole</li>
