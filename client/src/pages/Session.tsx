@@ -148,6 +148,10 @@ function SessionContent() {
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
   const producerAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   
+  // Touch guard to prevent double triggers (touch + synthetic click)
+  const lastTouchTimeRef = useRef<number>(0);
+  const TOUCH_DELAY_MS = 500; // Ignore clicks within 500ms of touch
+  
   const { toast } = useToast();
   
   // Test audio function - plays a short tone to confirm audio is working
@@ -611,6 +615,25 @@ function SessionContent() {
     }
   };
 
+  // Touch-safe click handler - ignores clicks that follow touch events
+  const handleClickWithTouchGuard = useCallback((handler: () => void) => {
+    return () => {
+      if (Date.now() - lastTouchTimeRef.current < TOUCH_DELAY_MS) {
+        return; // Ignore - this click was triggered by touch
+      }
+      handler();
+    };
+  }, []);
+  
+  // Touch handler - sets guard and executes
+  const handleTouchWithGuard = useCallback((handler: () => void) => {
+    return (e: React.TouchEvent) => {
+      e.preventDefault();
+      lastTouchTimeRef.current = Date.now();
+      handler();
+    };
+  }, []);
+  
   // Audio toggle handler
   const handleToggleAudio = async () => {
     if (videoAudioMuted) {
@@ -1257,12 +1280,13 @@ function SessionContent() {
                 {/* Audio prompt for engineer when video is playing but audio is muted */}
                 {isViewer && hasRemoteStream && videoAudioMuted && (
                   <button 
-                    onClick={handleToggleAudio}
+                    onClick={handleClickWithTouchGuard(handleToggleAudio)}
+                    onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
                     className="absolute bottom-16 left-1/2 transform -translate-x-1/2 z-30 flex items-center gap-3 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 text-white font-bold shadow-lg hover:scale-105 transition-all animate-pulse"
                     data-testid="button-enable-audio-prompt"
                   >
                     <Volume2 size={24} />
-                    <span className="text-lg">Click to Enable Audio</span>
+                    <span className="text-lg">Tap to Enable Audio</span>
                   </button>
                 )}
                 
@@ -1355,10 +1379,11 @@ function SessionContent() {
             {canRecord && (
               <>
                 <button 
-                  onClick={handleToggleAudio}
+                  onClick={handleClickWithTouchGuard(handleToggleAudio)}
+                  onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
                   disabled={!hasRemoteStream}
                   className="flex items-center gap-1.5 hover:opacity-80 transition-opacity disabled:opacity-50"
-                  title={!hasRemoteStream ? 'No stream' : !hasAudioTracks ? 'No audio in stream' : videoAudioMuted ? 'Audio muted - click to enable' : 'Audio on - click to mute'}
+                  title={!hasRemoteStream ? 'No stream' : !hasAudioTracks ? 'No audio in stream' : videoAudioMuted ? 'Audio muted - tap to enable' : 'Audio on - tap to mute'}
                   data-testid="button-toggle-stream-audio"
                 >
                   <div className={`w-2.5 h-2.5 rounded-full ${
@@ -1383,7 +1408,8 @@ function SessionContent() {
             {/* Producer Status Lights */}
             {role === 'producer' && (
               <button 
-                onClick={handleToggleAudio}
+                onClick={handleClickWithTouchGuard(handleToggleAudio)}
+                onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
                 disabled={!hasRemoteStream}
                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity disabled:opacity-50"
                 title={!hasRemoteStream ? 'No stream' : videoAudioMuted ? 'Audio muted' : 'Audio on'}
@@ -1399,7 +1425,8 @@ function SessionContent() {
             {/* Other role Status Lights */}
             {role === 'other' && (
               <button 
-                onClick={handleToggleAudio}
+                onClick={handleClickWithTouchGuard(handleToggleAudio)}
+                onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
                 disabled={!hasRemoteStream}
                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity disabled:opacity-50"
                 title={!hasRemoteStream ? 'No stream' : videoAudioMuted ? 'Audio muted' : 'Audio on'}
@@ -1463,7 +1490,10 @@ function SessionContent() {
                 
                 {/* Fullscreen */}
                 {hasRemoteStream && (
-                  <button onClick={toggleFullscreen} data-testid="button-fullscreen"
+                  <button 
+                    onClick={handleClickWithTouchGuard(toggleFullscreen)}
+                    onTouchEnd={handleTouchWithGuard(toggleFullscreen)}
+                    data-testid="button-fullscreen"
                     className="px-2 py-1 rounded text-xs font-medium bg-slate-500/20 text-slate-300 border border-slate-500/50 hover:bg-slate-500/30 transition-colors">
                     {isFullscreen ? <Minimize size={12} /> : <Maximize size={12} />}
                   </button>
@@ -1529,7 +1559,8 @@ function SessionContent() {
                 )}
                 {/* Audio indicator for producer - always visible */}
                 <button
-                  onClick={handleToggleAudio}
+                  onClick={handleClickWithTouchGuard(handleToggleAudio)}
+                  onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
                   data-testid="button-producer-toggle-audio"
                   className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
                     !hasRemoteStream
@@ -1540,7 +1571,7 @@ function SessionContent() {
                           ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
                           : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
                   }`}
-                  title={!hasRemoteStream ? 'Waiting for stream' : !hasAudioTracks ? 'No audio available' : videoAudioMuted ? 'Click to enable audio' : 'Click to mute'}
+                  title={!hasRemoteStream ? 'Waiting for stream' : !hasAudioTracks ? 'No audio available' : videoAudioMuted ? 'Tap to enable audio' : 'Tap to mute'}
                   disabled={!hasRemoteStream}
                 >
                   <div className={`w-2 h-2 rounded-full ${
@@ -1606,7 +1637,8 @@ function SessionContent() {
               <div className="flex gap-2 items-center flex-wrap">
                 {/* Audio button for guests - always visible */}
                 <button
-                  onClick={handleToggleAudio}
+                  onClick={handleClickWithTouchGuard(handleToggleAudio)}
+                  onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
                   data-testid="button-other-toggle-audio"
                   className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
                     !hasRemoteStream
@@ -1617,7 +1649,7 @@ function SessionContent() {
                           ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
                           : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
                   }`}
-                  title={!hasRemoteStream ? 'Waiting for stream' : !hasAudioTracks ? 'No audio available' : videoAudioMuted ? 'Click to enable audio' : 'Click to mute'}
+                  title={!hasRemoteStream ? 'Waiting for stream' : !hasAudioTracks ? 'No audio available' : videoAudioMuted ? 'Tap to enable audio' : 'Tap to mute'}
                   disabled={!hasRemoteStream}
                 >
                   <div className={`w-2 h-2 rounded-full ${
