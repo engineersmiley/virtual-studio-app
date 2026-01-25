@@ -596,7 +596,7 @@ async function handleControlMessage(message) {
           // Use AppleScript on macOS (works in fullscreen), robotjs elsewhere
           if (process.platform === 'darwin') {
             typeTextWithAppleScript(text);
-          } else {
+          } else if (robot && !robotFailed) {
             // Windows/Linux: type character by character for reliability
             for (let i = 0; i < text.length; i++) {
               const char = text[i];
@@ -614,6 +614,8 @@ async function handleControlMessage(message) {
                 robot.typeString(char);
               }
             }
+          } else {
+            console.log('[Agent] Cannot type - robotjs not available');
           }
         }
         break;
