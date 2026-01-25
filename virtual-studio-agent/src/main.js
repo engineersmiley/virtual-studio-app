@@ -452,7 +452,7 @@ async function handleControlMessage(message) {
         if (controlEnabled) {
           const key = mapKeyToRobotJs(message.key);
           if (key) {
-            // Handle modifier keys with the key press
+            // Build modifiers array
             const modifiers = [];
             if (message.modifiers) {
               if (message.modifiers.ctrl) modifiers.push('control');
@@ -460,7 +460,13 @@ async function handleControlMessage(message) {
               if (message.modifiers.shift) modifiers.push('shift');
               if (message.modifiers.cmd) modifiers.push('command');
             }
-            robot.keyTap(key, modifiers);
+            
+            // Use AppleScript on macOS (works in fullscreen), robotjs elsewhere
+            if (process.platform === 'darwin') {
+              sendKeyWithAppleScript(key, modifiers);
+            } else {
+              robot.keyTap(key, modifiers);
+            }
           }
         }
         break;
@@ -473,30 +479,41 @@ async function handleControlMessage(message) {
             // Last key is the main key, others are modifiers
             const mainKey = mappedKeys[mappedKeys.length - 1];
             const modifiers = mappedKeys.slice(0, -1);
-            robot.keyTap(mainKey, modifiers);
+            
+            // Use AppleScript on macOS (works in fullscreen), robotjs elsewhere
+            if (process.platform === 'darwin') {
+              sendKeyWithAppleScript(mainKey, modifiers);
+            } else {
+              robot.keyTap(mainKey, modifiers);
+            }
           }
         }
         break;
         
       case 'key-type':
         if (controlEnabled) {
-          // Type each character with a small delay for better compatibility
           const text = message.text;
-          for (let i = 0; i < text.length; i++) {
-            const char = text[i];
-            // Use keyTap for letters/numbers which is more reliable than typeString
-            if (/[a-zA-Z0-9]/.test(char)) {
-              const isUpperCase = char === char.toUpperCase() && /[A-Z]/.test(char);
-              if (isUpperCase) {
-                robot.keyTap(char.toLowerCase(), ['shift']);
+          
+          // Use AppleScript on macOS (works in fullscreen), robotjs elsewhere
+          if (process.platform === 'darwin') {
+            typeTextWithAppleScript(text);
+          } else {
+            // Windows/Linux: type character by character for reliability
+            for (let i = 0; i < text.length; i++) {
+              const char = text[i];
+              if (/[a-zA-Z0-9]/.test(char)) {
+                const isUpperCase = char === char.toUpperCase() && /[A-Z]/.test(char);
+                if (isUpperCase) {
+                  robot.keyTap(char.toLowerCase(), ['shift']);
+                } else {
+                  robot.keyTap(char.toLowerCase());
+                }
+              } else if (char === ' ') {
+                robot.keyTap('space');
               } else {
-                robot.keyTap(char.toLowerCase());
+                // For special characters, use typeString
+                robot.typeString(char);
               }
-            } else if (char === ' ') {
-              robot.keyTap('space');
-            } else {
-              // For special characters, use typeString as fallback
-              robot.typeString(char);
             }
           }
         }
