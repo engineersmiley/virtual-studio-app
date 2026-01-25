@@ -104,35 +104,91 @@ This allows type-safe API calls between frontend and backend.
 - `framer-motion`: UI animations
 - `date-fns`: Date formatting
 
+## Mobile Touch Handling
+
+The app uses a touch guard pattern to prevent double-trigger issues on iOS Safari:
+- **Problem**: iOS fires both `touchend` and a synthetic `click` event, causing buttons to trigger twice
+- **Solution**: 500ms global suppression window after any touch event
+- **Implementation**: `handleTouchWithGuard()` and `handleClickWithTouchGuard()` helper functions in Session.tsx
+- **Affected buttons**: All audio toggle buttons, fullscreen button
+
 ## Virtual Studio Agent (Desktop App)
 
 ### Location
 `virtual-studio-agent/` - Electron desktop application for remote control
 
-### Building Installers
-The agent requires native compilation on each target platform. Use GitHub Actions:
-1. Push code to GitHub repository
-2. Create a version tag: `git tag v1.0.0 && git push --tags`
-3. GitHub Actions builds Windows (.exe), macOS (.dmg), macOS Legacy (.dmg for 10.10+), and Linux (.AppImage)
+### Agent Features
+- **Keyboard Shortcuts**: Uses AppleScript on macOS for fullscreen app compatibility (Pro Tools, Logic, etc.)
+- **Right-Click Menu**: Simulates secondary click with proper event handling
+- **Typing**: Sends keystrokes via AppleScript `keystroke` command on macOS
 
-### Legacy macOS Build
-For older Macs (macOS 10.11-10.14), a legacy build is available using Electron 19.x:
-- **Config file**: `virtual-studio-agent/package-legacy.json`
-- **Minimum macOS**: 10.11 (El Capitan)
-- **Security note**: Uses EOL Electron version without security updates - use only when necessary
-- **Download URL placeholder**: Update `DOWNLOAD_URLS.macLegacy` in RemoteControl.tsx after uploading to Google Drive
+### Building Installers - Full Steps
+
+The agent requires native compilation on each target platform. GitHub Actions handles this automatically.
+
+#### Prerequisites
+1. GitHub repository: `engineersmiley/virtual-studio-app`
+2. Replit connected to GitHub (Git panel → Sign in with GitHub)
+3. Code pushed to the repository
+
+#### Building Regular Installers (Windows, macOS, Linux)
+
+1. **Make your code changes** in `virtual-studio-agent/`
+
+2. **Update version** in `virtual-studio-agent/package.json`:
+   ```json
+   "version": "1.0.1"
+   ```
+
+3. **Commit and push** to GitHub:
+   ```bash
+   git add .
+   git commit -m "Agent v1.0.1 - description of changes"
+   git push origin main
+   ```
+
+4. **Create and push a version tag**:
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+
+5. **GitHub Actions builds automatically**:
+   - Workflow: `.github/workflows/build-agent.yml`
+   - Outputs: Windows (.exe), macOS (.dmg), Linux (.AppImage)
+   - Find builds at: `https://github.com/engineersmiley/virtual-studio-app/releases`
+
+#### Building Legacy macOS Installer (for macOS 10.11-10.14)
+
+1. **Update version** in `virtual-studio-agent/package-legacy.json`:
+   ```json
+   "version": "1.0.1"
+   ```
+
+2. **Commit and push** to GitHub
+
+3. **Create and push a LEGACY version tag** (note the `legacy-` prefix):
+   ```bash
+   git tag legacy-v1.0.1
+   git push origin legacy-v1.0.1
+   ```
+
+4. **GitHub Actions builds automatically**:
+   - Workflow: `.github/workflows/build-legacy.yml`
+   - Output: macOS Legacy (.zip) for macOS 10.11+
+   - Uses Electron 19.x (EOL - security note applies)
+
+#### After Building
+
+1. **Download page** (`/remote-control`) automatically shows GitHub release links
+2. **Legacy macOS**: Upload .zip to Google Drive and update `DOWNLOAD_URLS.macLegacy` in `client/src/pages/RemoteControl.tsx`
 
 ### GitHub Repository Setup
 - **Repository Name:** `virtual-studio-app`
 - **GitHub Username:** `engineersmiley`
 - **Environment Variable:** `VITE_GITHUB_REPO=engineersmiley/virtual-studio-app`
 
-### Next Steps for GitHub Integration
-1. Connect GitHub account in Replit Git panel (inside project, not account settings)
-2. Sign in with `engineersmiley` account
-3. Connect to `virtual-studio-app` repository
-4. Push code to trigger GitHub Actions builds
-
 ### Download Page
 - Route: `/remote-control`
 - Links to GitHub releases for Windows, macOS, and Linux downloads
+- Legacy macOS links to Google Drive (manual upload required)
