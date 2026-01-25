@@ -112,15 +112,34 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     });
   }, [agentConnected, controlAllowed, controlPending]);
 
-  // Multiple STUN servers for better NAT traversal
+  // Multiple STUN and TURN servers for NAT traversal
+  // TURN servers are required when both parties are behind symmetric NAT
   const iceServers = [
+    // Google STUN servers
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    // Additional public STUN servers
-    { urls: 'stun:stun.stunprotocol.org:3478' },
+    // Free TURN servers from Open Relay Project (metered.ca)
+    {
+      urls: 'turn:a.relay.metered.ca:80',
+      username: 'e8dd65d92ae1c65e22aadb74',
+      credential: 'kAJMvLMx8DgYKvhR',
+    },
+    {
+      urls: 'turn:a.relay.metered.ca:80?transport=tcp',
+      username: 'e8dd65d92ae1c65e22aadb74',
+      credential: 'kAJMvLMx8DgYKvhR',
+    },
+    {
+      urls: 'turn:a.relay.metered.ca:443',
+      username: 'e8dd65d92ae1c65e22aadb74',
+      credential: 'kAJMvLMx8DgYKvhR',
+    },
+    {
+      urls: 'turns:a.relay.metered.ca:443',
+      username: 'e8dd65d92ae1c65e22aadb74',
+      credential: 'kAJMvLMx8DgYKvhR',
+    },
   ];
 
   const createPeerConnection = useCallback((targetUserId: string) => {
