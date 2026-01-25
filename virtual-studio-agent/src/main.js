@@ -19,6 +19,8 @@ function sendKeyWithAppleScript(key, modifiers = []) {
   let script;
   const keyCode = keyCodeMap[key.toLowerCase()];
   
+  console.log('[AppleScript] Sending key:', key, 'with modifiers:', modifiers);
+  
   if (keyCode !== undefined) {
     const modStr = modifiers.map(m => {
       if (m === 'command' || m === 'cmd') return 'command down';
@@ -44,21 +46,47 @@ function sendKeyWithAppleScript(key, modifiers = []) {
       ? `tell application "System Events" to keystroke "${key}" using {${modStr}}`
       : `tell application "System Events" to keystroke "${key}"`;
   } else {
+    console.log('[AppleScript] Unknown key:', key);
     return false;
   }
   
-  exec(`osascript -e '${script}'`, (err) => {
-    if (err) console.error('[AppleScript] Error:', err.message);
+  // Use double quotes for shell to handle special characters better
+  const cmd = `osascript -e "${script.replace(/"/g, '\\"')}"`;
+  console.log('[AppleScript] Executing:', cmd);
+  
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) {
+      console.error('[AppleScript] Key error:', err.message);
+      console.error('[AppleScript] stderr:', stderr);
+    } else {
+      console.log('[AppleScript] Key success');
+    }
   });
   return true;
 }
 
 function typeTextWithAppleScript(text) {
   if (process.platform !== 'darwin') return false;
-  const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "'\\''");
+  console.log('[AppleScript] Typing text:', text);
+  
+  // Escape for AppleScript string (inside double quotes)
+  const escaped = text
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+  
   const script = `tell application "System Events" to keystroke "${escaped}"`;
-  exec(`osascript -e '${script}'`, (err) => {
-    if (err) console.error('[AppleScript] Type error:', err.message);
+  
+  // Use double quotes for the shell command to avoid single quote issues
+  const cmd = `osascript -e "${script.replace(/"/g, '\\"')}"`;
+  console.log('[AppleScript] Executing:', cmd);
+  
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) {
+      console.error('[AppleScript] Type error:', err.message);
+      console.error('[AppleScript] stderr:', stderr);
+    } else {
+      console.log('[AppleScript] Type success');
+    }
   });
   return true;
 }
