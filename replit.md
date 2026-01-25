@@ -125,7 +125,7 @@ When the engineer has remote control active (`fullControlActive`):
 
 ## Virtual Studio Agent (Desktop App)
 
-**Current Version: v1.0.14** (last pushed tag)
+**Current Version: v1.0.15** (last pushed tag)
 
 ### Location
 `virtual-studio-agent/` - Electron desktop application for remote control
