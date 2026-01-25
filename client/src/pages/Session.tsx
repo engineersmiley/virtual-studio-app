@@ -626,9 +626,9 @@ function SessionContent() {
   }, []);
   
   // Touch handler - sets guard and executes
+  // NOTE: Do NOT call e.preventDefault() as it breaks iOS Safari's user gesture for audio
   const handleTouchWithGuard = useCallback((handler: () => void) => {
     return (e: React.TouchEvent) => {
-      e.preventDefault();
       lastTouchTimeRef.current = Date.now();
       handler();
     };
@@ -647,12 +647,13 @@ function SessionContent() {
           // Ensure volume is set to current slider value
           video.volume = volume / 100;
           
-          // Pause, unmute, then play to force audio context to restart
-          video.pause();
+          // Simple unmute and play - don't pause first as it breaks iOS user gesture
           video.muted = false;
-          video.currentTime = video.currentTime; // Reset playhead
           
-          await video.play();
+          // Only call play if not already playing (iOS requires user gesture)
+          if (video.paused) {
+            await video.play();
+          }
           setVideoAudioMuted(false);
           videoEnabled = true;
           

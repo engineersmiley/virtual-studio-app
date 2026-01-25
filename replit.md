@@ -111,6 +111,8 @@ The app uses a touch guard pattern to prevent double-trigger issues on iOS Safar
 - **Solution**: 500ms global suppression window after any touch event
 - **Implementation**: `handleTouchWithGuard()` and `handleClickWithTouchGuard()` helper functions in Session.tsx
 - **Affected buttons**: All audio toggle buttons, fullscreen button
+- **Important**: Do NOT call `e.preventDefault()` in touch handlers for audio buttons - it breaks iOS user gesture requirements for audio playback
+- **Audio Enable**: Do NOT call `video.pause()` before `video.play()` - only unmute and play if paused to preserve user gesture context
 
 ## Virtual Studio Agent (Desktop App)
 
