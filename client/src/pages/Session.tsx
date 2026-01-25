@@ -281,20 +281,23 @@ function SessionContent() {
     );
     
     if (!isCurrentlyFullscreen) {
-      // iOS Safari: Only supports fullscreen on video element directly via webkitEnterFullscreen
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      // Mobile devices: Use CSS fullscreen (more reliable than native fullscreen APIs)
+      const isMobile = /iPad|iPhone|iPod|Android/i.test(navigator.userAgent);
       
-      if (isIOS && video && (video as any).webkitEnterFullscreen) {
-        try {
-          (video as any).webkitEnterFullscreen();
-          setIsFullscreen(true);
-          return;
-        } catch (err) {
-          console.log('iOS video fullscreen failed, trying CSS fallback');
-        }
+      if (isMobile) {
+        // Use CSS-based "fullscreen" for mobile - more reliable
+        container.style.position = 'fixed';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '100vw';
+        container.style.height = '100vh';
+        container.style.zIndex = '9999';
+        container.style.backgroundColor = 'black';
+        setIsFullscreen(true);
+        return;
       }
       
-      // Standard fullscreen API (container for desktop/Android)
+      // Desktop: Use standard fullscreen API
       const enterFullscreen = (el: any) => {
         if (el.requestFullscreen) {
           return el.requestFullscreen();
