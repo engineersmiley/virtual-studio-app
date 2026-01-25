@@ -63,6 +63,80 @@ function typeTextWithAppleScript(text) {
   return true;
 }
 
+// AppleScript mouse control for macOS (fallback when robotjs fails)
+function moveMouseWithAppleScript(x, y) {
+  if (process.platform !== 'darwin') return false;
+  // Use cliclick if available, or fallback to Python
+  const script = `
+    do shell script "python3 -c \\"
+import Quartz
+Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, (${x}, ${y}), 0))
+\\""
+  `;
+  exec(`osascript -e '${script}'`, (err) => {
+    if (err) {
+      console.error('[AppleScript] Mouse move error:', err.message);
+    }
+  });
+  return true;
+}
+
+function clickMouseWithAppleScript(button = 'left') {
+  if (process.platform !== 'darwin') return false;
+  const eventDown = button === 'right' ? 'kCGEventRightMouseDown' : 'kCGEventLeftMouseDown';
+  const eventUp = button === 'right' ? 'kCGEventRightMouseUp' : 'kCGEventLeftMouseUp';
+  const buttonCode = button === 'right' ? 1 : 0;
+  
+  const script = `
+    do shell script "python3 -c \\"
+import Quartz
+import time
+pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateMouseEvent(None, Quartz.${eventDown}, pos, ${buttonCode}))
+time.sleep(0.01)
+Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateMouseEvent(None, Quartz.${eventUp}, pos, ${buttonCode}))
+\\""
+  `;
+  exec(`osascript -e '${script}'`, (err) => {
+    if (err) console.error('[AppleScript] Click error:', err.message);
+  });
+  return true;
+}
+
+function doubleClickWithAppleScript() {
+  if (process.platform !== 'darwin') return false;
+  const script = `
+    do shell script "python3 -c \\"
+import Quartz
+import time
+pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+for i in range(2):
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseDown, pos, 0))
+    time.sleep(0.01)
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseUp, pos, 0))
+    time.sleep(0.05)
+\\""
+  `;
+  exec(`osascript -e '${script}'`, (err) => {
+    if (err) console.error('[AppleScript] Double-click error:', err.message);
+  });
+  return true;
+}
+
+function scrollWithAppleScript(deltaY) {
+  if (process.platform !== 'darwin') return false;
+  const script = `
+    do shell script "python3 -c \\"
+import Quartz
+Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateScrollWheelEvent(None, Quartz.kCGScrollEventUnitLine, 1, ${Math.round(deltaY)}))
+\\""
+  `;
+  exec(`osascript -e '${script}'`, (err) => {
+    if (err) console.error('[AppleScript] Scroll error:', err.message);
+  });
+  return true;
+}
+
 // Get the actual screen size for accurate mouse positioning
 function getScreenSize() {
   const primaryDisplay = screen.getPrimaryDisplay();
@@ -336,12 +410,18 @@ async function handleControlMessage(message) {
     console.log('[Agent] Received control command:', message.type, JSON.stringify(message));
   }
   
-  let robot;
+  let robot = null;
+  let robotFailed = false;
   try {
     robot = require('@jitsi/robotjs');
   } catch (e) {
-    console.error('Failed to load robotjs:', e);
-    return;
+    console.error('Failed to load robotjs, will use AppleScript fallback on macOS:', e.message);
+    robotFailed = true;
+    // Don't return - continue to try AppleScript on macOS
+    if (process.platform !== 'darwin') {
+      console.error('No fallback available on non-macOS platforms');
+      return;
+    }
   }
   
   try {
@@ -425,26 +505,42 @@ async function handleControlMessage(message) {
         
       case 'mouse-move':
         if (controlEnabled) {
-          robot.moveMouse(Math.round(message.x), Math.round(message.y));
+          if (robot && !robotFailed) {
+            robot.moveMouse(Math.round(message.x), Math.round(message.y));
+          } else if (process.platform === 'darwin') {
+            moveMouseWithAppleScript(Math.round(message.x), Math.round(message.y));
+          }
         }
         break;
         
       case 'mouse-click':
         if (controlEnabled) {
           const button = message.button === 'right' ? 'right' : 'left';
-          robot.mouseClick(button);
+          if (robot && !robotFailed) {
+            robot.mouseClick(button);
+          } else if (process.platform === 'darwin') {
+            clickMouseWithAppleScript(button);
+          }
         }
         break;
         
       case 'mouse-double-click':
         if (controlEnabled) {
-          robot.mouseClick('left', true);
+          if (robot && !robotFailed) {
+            robot.mouseClick('left', true);
+          } else if (process.platform === 'darwin') {
+            doubleClickWithAppleScript();
+          }
         }
         break;
         
       case 'mouse-scroll':
         if (controlEnabled) {
-          robot.scrollMouse(0, Math.round(message.deltaY));
+          if (robot && !robotFailed) {
+            robot.scrollMouse(0, Math.round(message.deltaY));
+          } else if (process.platform === 'darwin') {
+            scrollWithAppleScript(Math.round(message.deltaY));
+          }
         }
         break;
         
@@ -464,7 +560,7 @@ async function handleControlMessage(message) {
             // Use AppleScript on macOS (works in fullscreen), robotjs elsewhere
             if (process.platform === 'darwin') {
               sendKeyWithAppleScript(key, modifiers);
-            } else {
+            } else if (robot && !robotFailed) {
               robot.keyTap(key, modifiers);
             }
           }
@@ -483,7 +579,7 @@ async function handleControlMessage(message) {
             // Use AppleScript on macOS (works in fullscreen), robotjs elsewhere
             if (process.platform === 'darwin') {
               sendKeyWithAppleScript(mainKey, modifiers);
-            } else {
+            } else if (robot && !robotFailed) {
               robot.keyTap(mainKey, modifiers);
             }
           }
