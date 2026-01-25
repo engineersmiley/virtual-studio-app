@@ -550,6 +550,40 @@ function SessionContent() {
     
     return () => clearInterval(checkInterval);
   }, [primaryVideoStream]);
+  
+  // Keyboard capture when control mode is active - send keystrokes to agent
+  useEffect(() => {
+    if (!fullControlActive) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't capture keys if user is typing in an input/textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      // Prevent default for most keys to avoid browser shortcuts
+      if (e.key !== 'F5' && e.key !== 'F12') {
+        e.preventDefault();
+      }
+      
+      // Map modifier state
+      const modifiers = {
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+        shift: e.shiftKey,
+        cmd: e.metaKey
+      };
+      
+      // Handle printable characters as key-type
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        sendFullControlCommand({ type: 'key-type', text: e.key });
+      } else {
+        // Handle special keys and modified keys as key-press
+        sendFullControlCommand({ type: 'key-press', key: e.key, modifiers });
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [fullControlActive, sendFullControlCommand]);
 
   useEffect(() => {
     if (roomId) {
@@ -625,14 +659,90 @@ function SessionContent() {
     };
   }, []);
   
-  // Touch handler - sets guard and executes
+  // Touch handler - sets guard and executes synchronously for iOS audio gesture
   // NOTE: Do NOT call e.preventDefault() as it breaks iOS Safari's user gesture for audio
   const handleTouchWithGuard = useCallback((handler: () => void) => {
     return (e: React.TouchEvent) => {
       lastTouchTimeRef.current = Date.now();
+      // Execute handler synchronously within user gesture context
       handler();
     };
   }, []);
+  
+  // Synchronous audio enable - for iOS user gesture requirement
+  // iOS Safari requires play() to be called synchronously in the user gesture handler
+  const enableAudioSync = useCallback(() => {
+    if (!videoAudioMuted) return;
+    
+    const video = remoteVideoRef.current;
+    if (!video) return;
+    
+    // Set volume and unmute synchronously
+    video.volume = volume / 100;
+    video.muted = false;
+    
+    // Call play() - the promise will resolve/reject but the call itself is synchronous
+    const playPromise = video.play();
+    
+    // Handle the promise result
+    if (playPromise) {
+      playPromise
+        .then(() => {
+          setVideoAudioMuted(false);
+          toast({ title: "Audio On", description: "Session audio enabled" });
+          // Confirm audio to all broadcasters
+          remoteStreams.forEach(stream => {
+            if (stream.fromUserId) confirmAudio(stream.fromUserId);
+          });
+          setAudioConfirmed(true);
+        })
+        .catch((err) => {
+          console.error('Audio play failed:', err);
+          // Re-mute on failure
+          video.muted = true;
+          toast({ title: "Audio Failed", description: "Could not enable audio. Try tapping again.", variant: "destructive" });
+        });
+    }
+    
+    // Also enable blocked audio-only streams
+    const blockedUsers = Array.from(audioStatus.entries())
+      .filter(([, status]) => status === 'blocked')
+      .map(([userId]) => userId);
+    
+    blockedUsers.forEach(blockedUserId => {
+      const audio = producerAudioRefs.current.get(blockedUserId);
+      if (audio) {
+        audio.play().then(() => markAudioPlaying(blockedUserId)).catch(() => {});
+      }
+    });
+  }, [videoAudioMuted, volume, remoteStreams, audioStatus, confirmAudio, toast, markAudioPlaying]);
+  
+  // Touch-specific audio handler - uses sync for enable, async for mute
+  const handleAudioTouch = useCallback((e: React.TouchEvent) => {
+    lastTouchTimeRef.current = Date.now();
+    if (videoAudioMuted) {
+      enableAudioSync(); // Synchronous for iOS user gesture
+    } else {
+      handleToggleMuteAudio(); // Just muting, no gesture needed
+    }
+  }, [videoAudioMuted, enableAudioSync]);
+  
+  // Simple mute handler (no user gesture needed)
+  const handleToggleMuteAudio = useCallback(() => {
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = true;
+      setVideoAudioMuted(true);
+    }
+    Array.from(producerAudioRefs.current.values()).forEach(audio => {
+      audio.pause();
+    });
+    // Unconfirm audio to all broadcasters
+    remoteStreams.forEach(stream => {
+      if (stream.fromUserId) unconfirmAudio(stream.fromUserId);
+    });
+    setAudioConfirmed(false);
+    toast({ title: "Audio Off", description: "Session audio muted" });
+  }, [remoteStreams, unconfirmAudio, toast]);
   
   // Audio toggle handler
   const handleToggleAudio = async () => {
@@ -1282,7 +1392,7 @@ function SessionContent() {
                 {isViewer && hasRemoteStream && videoAudioMuted && (
                   <button 
                     onClick={handleClickWithTouchGuard(handleToggleAudio)}
-                    onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
+                    onTouchEnd={handleAudioTouch}
                     className="absolute bottom-16 left-1/2 transform -translate-x-1/2 z-30 flex items-center gap-3 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 text-white font-bold shadow-lg hover:scale-105 transition-all animate-pulse"
                     data-testid="button-enable-audio-prompt"
                   >
@@ -1381,7 +1491,7 @@ function SessionContent() {
               <>
                 <button 
                   onClick={handleClickWithTouchGuard(handleToggleAudio)}
-                  onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
+                  onTouchEnd={handleAudioTouch}
                   disabled={!hasRemoteStream}
                   className="flex items-center gap-1.5 hover:opacity-80 transition-opacity disabled:opacity-50"
                   title={!hasRemoteStream ? 'No stream' : !hasAudioTracks ? 'No audio in stream' : videoAudioMuted ? 'Audio muted - tap to enable' : 'Audio on - tap to mute'}
@@ -1410,7 +1520,7 @@ function SessionContent() {
             {role === 'producer' && (
               <button 
                 onClick={handleClickWithTouchGuard(handleToggleAudio)}
-                onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
+                onTouchEnd={handleAudioTouch}
                 disabled={!hasRemoteStream}
                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity disabled:opacity-50"
                 title={!hasRemoteStream ? 'No stream' : videoAudioMuted ? 'Audio muted' : 'Audio on'}
@@ -1427,7 +1537,7 @@ function SessionContent() {
             {role === 'other' && (
               <button 
                 onClick={handleClickWithTouchGuard(handleToggleAudio)}
-                onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
+                onTouchEnd={handleAudioTouch}
                 disabled={!hasRemoteStream}
                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity disabled:opacity-50"
                 title={!hasRemoteStream ? 'No stream' : videoAudioMuted ? 'Audio muted' : 'Audio on'}
@@ -1561,7 +1671,7 @@ function SessionContent() {
                 {/* Audio indicator for producer - always visible */}
                 <button
                   onClick={handleClickWithTouchGuard(handleToggleAudio)}
-                  onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
+                  onTouchEnd={handleAudioTouch}
                   data-testid="button-producer-toggle-audio"
                   className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
                     !hasRemoteStream
@@ -1639,7 +1749,7 @@ function SessionContent() {
                 {/* Audio button for guests - always visible */}
                 <button
                   onClick={handleClickWithTouchGuard(handleToggleAudio)}
-                  onTouchEnd={handleTouchWithGuard(handleToggleAudio)}
+                  onTouchEnd={handleAudioTouch}
                   data-testid="button-other-toggle-audio"
                   className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
                     !hasRemoteStream

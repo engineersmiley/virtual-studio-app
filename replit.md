@@ -112,7 +112,16 @@ The app uses a touch guard pattern to prevent double-trigger issues on iOS Safar
 - **Implementation**: `handleTouchWithGuard()` and `handleClickWithTouchGuard()` helper functions in Session.tsx
 - **Affected buttons**: All audio toggle buttons, fullscreen button
 - **Important**: Do NOT call `e.preventDefault()` in touch handlers for audio buttons - it breaks iOS user gesture requirements for audio playback
-- **Audio Enable**: Do NOT call `video.pause()` before `video.play()` - only unmute and play if paused to preserve user gesture context
+- **Audio Enable**: Audio toggle uses dedicated `handleAudioTouch` and `enableAudioSync` functions that call `play()` synchronously within the user gesture context - this is critical for iOS Safari which requires the play() call to be in the same synchronous call stack as the user gesture
+
+## Desktop Keyboard Capture
+
+When the engineer has remote control active (`fullControlActive`):
+- Keyboard events are captured via `keydown` listener
+- Printable characters (single chars without Ctrl/Alt/Cmd) sent as `key-type` messages
+- Special keys and modified keys sent as `key-press` with modifiers object
+- Events are suppressed for input/textarea elements
+- Browser shortcuts (F5, F12) are not prevented
 
 ## Virtual Studio Agent (Desktop App)
 
