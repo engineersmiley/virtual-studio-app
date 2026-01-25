@@ -1385,6 +1385,17 @@ function SessionContent() {
             ) : (
               // Non-broadcasting participants see remote stream or their own placeholder
               <>
+                {/* Mobile fullscreen exit button - only visible in CSS fullscreen mode */}
+                {isFullscreen && (
+                  <button
+                    onClick={handleClickWithTouchGuard(toggleFullscreen)}
+                    onTouchEnd={handleTouchWithGuard(toggleFullscreen)}
+                    className="absolute top-4 right-4 z-50 p-3 rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors"
+                    data-testid="button-exit-fullscreen-mobile"
+                  >
+                    <Minimize size={24} />
+                  </button>
+                )}
                 <video
                   ref={remoteVideoRef}
                   autoPlay
