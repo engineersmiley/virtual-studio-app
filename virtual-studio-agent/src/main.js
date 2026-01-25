@@ -545,8 +545,10 @@ async function handleControlMessage(message) {
         break;
         
       case 'key-press':
+        console.log('[Agent] Received key-press:', message.key, 'controlEnabled:', controlEnabled);
         if (controlEnabled) {
           const key = mapKeyToRobotJs(message.key);
+          console.log('[Agent] Mapped key:', key);
           if (key) {
             // Build modifiers array
             const modifiers = [];
@@ -587,6 +589,7 @@ async function handleControlMessage(message) {
         break;
         
       case 'key-type':
+        console.log('[Agent] Received key-type:', message.text, 'controlEnabled:', controlEnabled);
         if (controlEnabled) {
           const text = message.text;
           

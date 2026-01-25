@@ -267,13 +267,34 @@ function SessionContent() {
     }, 2000);
   }, []);
 
-  // Fullscreen toggle - always use container to preserve click handlers
+  // Fullscreen toggle - iOS requires video element, others use container
   const toggleFullscreen = useCallback(() => {
     const container = videoContainerRef.current;
+    const video = remoteVideoRef.current;
     if (!container) return;
     
-    if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
-      // Always use container for fullscreen to preserve click/touch handlers
+    // Check if already in fullscreen (any mode)
+    const isCurrentlyFullscreen = !!(
+      document.fullscreenElement || 
+      (document as any).webkitFullscreenElement ||
+      (video as any)?.webkitDisplayingFullscreen
+    );
+    
+    if (!isCurrentlyFullscreen) {
+      // iOS Safari: Only supports fullscreen on video element directly via webkitEnterFullscreen
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      
+      if (isIOS && video && (video as any).webkitEnterFullscreen) {
+        try {
+          (video as any).webkitEnterFullscreen();
+          setIsFullscreen(true);
+          return;
+        } catch (err) {
+          console.log('iOS video fullscreen failed, trying CSS fallback');
+        }
+      }
+      
+      // Standard fullscreen API (container for desktop/Android)
       const enterFullscreen = (el: any) => {
         if (el.requestFullscreen) {
           return el.requestFullscreen();
@@ -303,6 +324,9 @@ function SessionContent() {
         document.exitFullscreen().then(() => setIsFullscreen(false));
       } else if ((document as any).webkitExitFullscreen) {
         (document as any).webkitExitFullscreen();
+        setIsFullscreen(false);
+      } else if (video && (video as any).webkitExitFullscreen) {
+        (video as any).webkitExitFullscreen();
         setIsFullscreen(false);
       } else {
         // Undo CSS fallback
@@ -574,9 +598,11 @@ function SessionContent() {
       
       // Handle printable characters as key-type
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        console.log('[Keyboard] Sending key-type:', e.key);
         sendFullControlCommand({ type: 'key-type', text: e.key });
       } else {
         // Handle special keys and modified keys as key-press
+        console.log('[Keyboard] Sending key-press:', e.key, modifiers);
         sendFullControlCommand({ type: 'key-press', key: e.key, modifiers });
       }
     };
