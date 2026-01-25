@@ -902,7 +902,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       setLocalStream(combinedStream);
 
       // Send offer to all other participants (not ourselves)
-      const others = participants.filter(p => p.userId !== userId);
+      // Use participantsRef.current to get the latest participants (avoid stale closure)
+      const others = participantsRef.current.filter(p => p.userId !== userId);
+      console.log('[WebRTC] Sending offers to', others.length, 'participants:', others.map(p => p.userId));
       for (const other of others) {
         const pc = createPeerConnection(other.userId);
         combinedStream.getTracks().forEach(track => {
@@ -954,7 +956,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       setTimeout(() => setError(null), 5000);
       throw err;
     }
-  }, [roomId, userId, role, participants, createPeerConnection, canBroadcast]);
+  }, [roomId, userId, role, createPeerConnection, canBroadcast]);
 
   const stopSharing = useCallback(() => {
     // Stop all tracks on local stream
