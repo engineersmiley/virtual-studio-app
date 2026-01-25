@@ -147,6 +147,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
     pc.onicecandidate = (event) => {
       if (event.candidate && isTransportOpen(wsRef.current)) {
+        console.log('[WebRTC] Sending ICE candidate to', targetUserId, ':', event.candidate.candidate?.substring(0, 50) + '...');
         wsRef.current!.send(JSON.stringify({
           type: 'ice-candidate',
           roomId,
@@ -157,13 +158,21 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
             targetUserId 
           }
         }));
+      } else if (event.candidate === null) {
+        console.log('[WebRTC] ICE gathering complete for', targetUserId);
       }
+    };
+    
+    pc.onicegatheringstatechange = () => {
+      console.log('[WebRTC] ICE gathering state for', targetUserId, ':', pc.iceGatheringState);
     };
 
     pc.ontrack = (event) => {
+      console.log('[WebRTC] ontrack event received from', targetUserId, 'tracks:', event.track.kind, 'streams:', event.streams.length);
       if (event.streams[0]) {
         const stream = event.streams[0];
         const hasVideo = stream.getVideoTracks().length > 0;
+        console.log('[WebRTC] Stream received from', targetUserId, '- video tracks:', stream.getVideoTracks().length, ', audio tracks:', stream.getAudioTracks().length);
         
         // Find the sender's role from participants
         const senderParticipant = participantsRef.current.find(p => p.userId === targetUserId);
@@ -489,21 +498,25 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
 
       case 'offer': {
+        console.log('[WebRTC] Received offer from', message.userId, '- my role:', role);
         if (message.userId !== userId) {
           const pc = createPeerConnection(message.userId);
           
           if (role === 'engineer' || role === 'producer' || role === 'other') {
             const dataChannel = pc.createDataChannel('control', { ordered: true });
             dataChannel.onopen = () => {
-              console.log('Control data channel opened');
+              console.log('[WebRTC] Control data channel opened');
             };
             dataChannelsRef.current.set(message.userId, dataChannel);
           }
           
+          console.log('[WebRTC] Setting remote description from offer...');
           await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
           
+          console.log('[WebRTC] Creating answer...');
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
+          console.log('[WebRTC] Answer created and set as local description');
           
           wsRef.current?.send(JSON.stringify({
             type: 'answer',
@@ -520,21 +533,30 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
 
       case 'answer': {
+        console.log('[WebRTC] Received answer from', message.userId);
         const pc = peerConnectionsRef.current.get(message.userId);
         if (pc) {
+          console.log('[WebRTC] Setting remote description from answer...');
           await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
+          console.log('[WebRTC] Remote description set from answer');
+        } else {
+          console.log('[WebRTC] No peer connection found for answer from', message.userId);
         }
         break;
       }
 
       case 'ice-candidate': {
+        console.log('[WebRTC] Received ICE candidate from', message.userId);
         const pc = peerConnectionsRef.current.get(message.userId);
         if (pc && message.payload.candidate) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(message.payload.candidate));
+            console.log('[WebRTC] Added ICE candidate from', message.userId);
           } catch (e) {
-            console.error('Error adding ICE candidate:', e);
+            console.error('[WebRTC] Error adding ICE candidate:', e);
           }
+        } else {
+          console.log('[WebRTC] Skipped ICE candidate - no peer connection for', message.userId);
         }
         break;
       }
