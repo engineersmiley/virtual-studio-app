@@ -2,6 +2,66 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, systemPreferences, scre
 const path = require('path');
 const WebSocket = require('ws');
 const https = require('https');
+const { exec } = require('child_process');
+
+// Use AppleScript for keyboard on macOS (works in fullscreen apps)
+function sendKeyWithAppleScript(key, modifiers = []) {
+  if (process.platform !== 'darwin') return false;
+  
+  const keyCodeMap = {
+    'space': 49, 'return': 36, 'enter': 36, 'escape': 53, 'tab': 48,
+    'backspace': 51, 'delete': 117, 'up': 126, 'down': 125, 'left': 123, 'right': 124,
+    'home': 115, 'end': 119, 'pageup': 116, 'pagedown': 121,
+    'f1': 122, 'f2': 120, 'f3': 99, 'f4': 118, 'f5': 96, 'f6': 97,
+    'f7': 98, 'f8': 100, 'f9': 101, 'f10': 109, 'f11': 103, 'f12': 111,
+  };
+  
+  let script;
+  const keyCode = keyCodeMap[key.toLowerCase()];
+  
+  if (keyCode !== undefined) {
+    const modStr = modifiers.map(m => {
+      if (m === 'command' || m === 'cmd') return 'command down';
+      if (m === 'control' || m === 'ctrl') return 'control down';
+      if (m === 'alt' || m === 'option') return 'option down';
+      if (m === 'shift') return 'shift down';
+      return '';
+    }).filter(m => m).join(', ');
+    
+    script = modStr 
+      ? `tell application "System Events" to key code ${keyCode} using {${modStr}}`
+      : `tell application "System Events" to key code ${keyCode}`;
+  } else if (key.length === 1) {
+    const modStr = modifiers.map(m => {
+      if (m === 'command' || m === 'cmd') return 'command down';
+      if (m === 'control' || m === 'ctrl') return 'control down';
+      if (m === 'alt' || m === 'option') return 'option down';
+      if (m === 'shift') return 'shift down';
+      return '';
+    }).filter(m => m).join(', ');
+    
+    script = modStr
+      ? `tell application "System Events" to keystroke "${key}" using {${modStr}}`
+      : `tell application "System Events" to keystroke "${key}"`;
+  } else {
+    return false;
+  }
+  
+  exec(`osascript -e '${script}'`, (err) => {
+    if (err) console.error('[AppleScript] Error:', err.message);
+  });
+  return true;
+}
+
+function typeTextWithAppleScript(text) {
+  if (process.platform !== 'darwin') return false;
+  const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "'\\''");
+  const script = `tell application "System Events" to keystroke "${escaped}"`;
+  exec(`osascript -e '${script}'`, (err) => {
+    if (err) console.error('[AppleScript] Type error:', err.message);
+  });
+  return true;
+}
 
 // Get the actual screen size for accurate mouse positioning
 function getScreenSize() {
