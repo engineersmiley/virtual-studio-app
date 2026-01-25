@@ -1,11 +1,14 @@
-name: Build Legacy macOS
+name: Build Legacy macOS Agent
 
 on:
+  push:
+    tags:
+      - 'legacy-v*'
   workflow_dispatch:
 
 jobs:
   build-mac-legacy:
-    runs-on: macos-14
+    runs-on: macos-13
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -15,26 +18,54 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Use legacy package.json
+      - name: Setup legacy build
         working-directory: virtual-studio-agent
-        run: cp package-legacy.json package.json
+        run: |
+          cp package-legacy.json package.json
+          npm install
 
-      - name: Install dependencies for x64
+      - name: Build for macOS Legacy
         working-directory: virtual-studio-agent
-        run: npm install
-        env:
-          npm_config_arch: x64
-
-      - name: Rebuild native modules for x64
-        working-directory: virtual-studio-agent
-        run: ./node_modules/.bin/electron-builder install-app-deps --arch x64
-
-      - name: Build for macOS Intel (x64)
-        working-directory: virtual-studio-agent
-        run: npm run build:mac -- --x64
+        run: npm run build:mac
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: virtual-studio-agent-mac-legacy
           path: virtual-studio-agent/dist/*.zip
+
+  release:
+    needs: [build-mac-legacy]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download macOS Legacy artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: virtual-studio-agent-mac-legacy
+          path: ./dist
+
+      - name: Rename file
+        run: |
+          cd dist
+          for f in *.zip; do mv "$f" "Virtual.Studio.Agent.Legacy.zip" 2>/dev/null || true; done
+          ls -la
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Virtual Studio Agent Legacy ${{ github.ref_name }}
+          body: |
+            ## Virtual Studio Agent Legacy ${{ github.ref_name }}
+            
+            For older macOS (10.11 - 10.14):
+            - **macOS Legacy**: Virtual.Studio.Agent.Legacy.zip
+          files: |
+            dist/Virtual.Studio.Agent.Legacy.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
