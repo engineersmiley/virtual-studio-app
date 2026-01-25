@@ -286,13 +286,28 @@ function SessionContent() {
       
       if (isMobile) {
         // Use CSS-based "fullscreen" for mobile - more reliable
-        container.style.position = 'fixed';
-        container.style.top = '0';
-        container.style.left = '0';
-        container.style.width = '100vw';
-        container.style.height = '100vh';
-        container.style.zIndex = '9999';
-        container.style.backgroundColor = 'black';
+        container.style.cssText = `
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          z-index: 99999 !important;
+          background-color: black !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+        `;
+        // Also make video fill the container
+        if (video) {
+          video.style.cssText = `
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain !important;
+          `;
+        }
         setIsFullscreen(true);
         return;
       }
@@ -312,13 +327,27 @@ function SessionContent() {
       }).catch((err: any) => {
         console.log('Fullscreen API not available:', err.message);
         // Fallback: maximize in viewport with CSS (works on all devices)
-        container.style.position = 'fixed';
-        container.style.top = '0';
-        container.style.left = '0';
-        container.style.width = '100vw';
-        container.style.height = '100vh';
-        container.style.zIndex = '9999';
-        container.style.backgroundColor = 'black';
+        container.style.cssText = `
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          z-index: 99999 !important;
+          background-color: black !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+        `;
+        if (video) {
+          video.style.cssText = `
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain !important;
+          `;
+        }
         setIsFullscreen(true);
       });
     } else {
@@ -333,13 +362,10 @@ function SessionContent() {
         setIsFullscreen(false);
       } else {
         // Undo CSS fallback
-        container.style.position = '';
-        container.style.top = '';
-        container.style.left = '';
-        container.style.width = '';
-        container.style.height = '';
-        container.style.zIndex = '';
-        container.style.backgroundColor = '';
+        container.style.cssText = '';
+        if (video) {
+          video.style.cssText = '';
+        }
         setIsFullscreen(false);
       }
     }
