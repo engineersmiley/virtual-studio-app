@@ -76,6 +76,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   // Map of data channels: userId -> RTCDataChannel
   const dataChannelsRef = useRef<Map<string, RTCDataChannel>>(new Map());
+  // Queue for ICE candidates that arrive before remote description is set
+  const iceCandidateQueueRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const onRemoteControlRef = useRef(onRemoteControl);
@@ -513,6 +515,20 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           console.log('[WebRTC] Setting remote description from offer...');
           await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
           
+          // Process any queued ICE candidates for this peer
+          const queuedCandidates = iceCandidateQueueRef.current.get(message.userId) || [];
+          if (queuedCandidates.length > 0) {
+            console.log('[WebRTC] Processing', queuedCandidates.length, 'queued ICE candidates for', message.userId);
+            for (const candidate of queuedCandidates) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+              } catch (e) {
+                console.error('[WebRTC] Error adding queued ICE candidate:', e);
+              }
+            }
+            iceCandidateQueueRef.current.delete(message.userId);
+          }
+          
           console.log('[WebRTC] Creating answer...');
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
@@ -539,6 +555,20 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           console.log('[WebRTC] Setting remote description from answer...');
           await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
           console.log('[WebRTC] Remote description set from answer');
+          
+          // Process any queued ICE candidates
+          const queuedCandidates = iceCandidateQueueRef.current.get(message.userId) || [];
+          if (queuedCandidates.length > 0) {
+            console.log('[WebRTC] Processing', queuedCandidates.length, 'queued ICE candidates for', message.userId);
+            for (const candidate of queuedCandidates) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+              } catch (e) {
+                console.error('[WebRTC] Error adding queued ICE candidate:', e);
+              }
+            }
+            iceCandidateQueueRef.current.delete(message.userId);
+          }
         } else {
           console.log('[WebRTC] No peer connection found for answer from', message.userId);
         }
@@ -549,11 +579,20 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         console.log('[WebRTC] Received ICE candidate from', message.userId);
         const pc = peerConnectionsRef.current.get(message.userId);
         if (pc && message.payload.candidate) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(message.payload.candidate));
-            console.log('[WebRTC] Added ICE candidate from', message.userId);
-          } catch (e) {
-            console.error('[WebRTC] Error adding ICE candidate:', e);
+          // Check if remote description is set
+          if (pc.remoteDescription) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(message.payload.candidate));
+              console.log('[WebRTC] Added ICE candidate from', message.userId);
+            } catch (e) {
+              console.error('[WebRTC] Error adding ICE candidate:', e);
+            }
+          } else {
+            // Queue the candidate for later
+            console.log('[WebRTC] Queuing ICE candidate (no remote description yet) from', message.userId);
+            const queue = iceCandidateQueueRef.current.get(message.userId) || [];
+            queue.push(message.payload.candidate);
+            iceCandidateQueueRef.current.set(message.userId, queue);
           }
         } else {
           console.log('[WebRTC] Skipped ICE candidate - no peer connection for', message.userId);
