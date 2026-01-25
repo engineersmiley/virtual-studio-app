@@ -286,6 +286,12 @@ function SessionContent() {
       
       if (isMobile) {
         // Use CSS-based "fullscreen" for mobile - more reliable
+        // Lock body scroll to prevent participants panel from appearing
+        document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.width = '100%';
+        document.body.style.height = '100%';
+        
         container.style.cssText = `
           position: fixed !important;
           top: 0 !important;
@@ -299,6 +305,7 @@ function SessionContent() {
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
+          overflow: hidden !important;
         `;
         // Also make video fill the container
         if (video) {
@@ -351,7 +358,12 @@ function SessionContent() {
         setIsFullscreen(true);
       });
     } else {
-      // Exit fullscreen
+      // Exit fullscreen - restore body styles for mobile
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
+      
       if (document.exitFullscreen) {
         document.exitFullscreen().then(() => setIsFullscreen(false));
       } else if ((document as any).webkitExitFullscreen) {
