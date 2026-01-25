@@ -5,16 +5,18 @@ import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, 
 import { Link } from "wouter";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 
-const AGENT_VERSION = "1.2.2";
+const AGENT_VERSION = "1.16.0";
 
-// Download URLs - GitHub releases
+// Download URLs - GitHub releases (using specific version for reliability)
 const GITHUB_REPO = "engineersmiley/virtual-studio-app";
+const AGENT_RELEASE_TAG = "v1.15.0";
+const LEGACY_RELEASE_TAG = "legacy-v1.0.24";
 const DOWNLOAD_URLS = {
-  windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
-  mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
-  // Legacy build - works on macOS 10.11+ (El Capitan), hosted on Google Drive
-  macLegacy: `https://drive.google.com/file/d/1hYhSn10ICENwN4om5ZcCXWmi2epI2Zlo/view?usp=drive_link`,
-  linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
+  windows: `https://github.com/${GITHUB_REPO}/releases/download/${AGENT_RELEASE_TAG}/Virtual.Studio.Agent.Setup.exe`,
+  mac: `https://github.com/${GITHUB_REPO}/releases/download/${AGENT_RELEASE_TAG}/Virtual.Studio.Agent.dmg`,
+  linux: `https://github.com/${GITHUB_REPO}/releases/download/${AGENT_RELEASE_TAG}/Virtual.Studio.Agent.AppImage`,
+  // Legacy build - works on macOS 10.11+ (El Capitan)
+  macLegacy: `https://github.com/${GITHUB_REPO}/releases/download/${LEGACY_RELEASE_TAG}/Virtual.Studio.Agent.Legacy.zip`,
 };
 
 export default function RemoteControl() {
