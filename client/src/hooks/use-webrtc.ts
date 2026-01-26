@@ -13,50 +13,44 @@ function getSelectedInputDevice(): string | undefined {
   return saved || undefined;
 }
 
-// Modify SDP to increase audio bitrate for studio-quality audio
-// Sets Opus codec to 256kbps stereo for high-fidelity music transmission
+// Modify SDP to MAXIMUM audio quality - Opus at 510kbps (absolute max)
+// This is the highest quality WebRTC can achieve - near lossless for most audio
 function setHighQualityAudioSDP(sdp: string): string {
-  // Find the audio m= line and add bitrate parameters
   const lines = sdp.split('\r\n');
   const result: string[] = [];
   
   for (let i = 0; i < lines.length; i++) {
     result.push(lines[i]);
     
-    // After audio m= line, add bitrate settings
     if (lines[i].startsWith('m=audio')) {
-      // Look for the a=fmtp line for opus and modify it
-      // Or add bandwidth constraint
-      // Find next line index to insert b=AS line
       const nextLineIndex = result.length;
-      // Continue adding lines until we find the next m= or end
+      
       while (i + 1 < lines.length && !lines[i + 1].startsWith('m=')) {
         i++;
         const line = lines[i];
         
-        // Modify Opus parameters for high quality
+        // Modify Opus parameters for MAXIMUM quality
         if (line.includes('a=fmtp:') && line.includes('opus')) {
-          // Add high quality parameters: maxaveragebitrate=256000, stereo=1, sprop-stereo=1
-          let modifiedLine = line;
-          if (!modifiedLine.includes('maxaveragebitrate')) {
-            modifiedLine += ';maxaveragebitrate=256000';
-          }
-          if (!modifiedLine.includes('stereo=')) {
-            modifiedLine += ';stereo=1';
-          }
-          if (!modifiedLine.includes('sprop-stereo=')) {
-            modifiedLine += ';sprop-stereo=1';
-          }
-          if (!modifiedLine.includes('cbr=')) {
-            modifiedLine += ';cbr=0'; // Variable bitrate for better quality
-          }
-          result.push(modifiedLine);
+          // Extract the payload type number
+          const payloadMatch = line.match(/a=fmtp:(\d+)/);
+          const payloadType = payloadMatch ? payloadMatch[1] : '111';
+          
+          // Build maximum quality Opus parameters:
+          // - maxaveragebitrate=510000: Maximum Opus bitrate (510 kbps)
+          // - maxplaybackrate=48000: Full 48kHz sample rate
+          // - stereo=1: Enable stereo
+          // - sprop-stereo=1: Signal stereo support
+          // - useinbandfec=0: Disable FEC for max quality (prioritize quality over reliability)
+          // - usedtx=0: Disable discontinuous transmission (never reduce quality)
+          // - cbr=0: Variable bitrate for best quality
+          const maxQualityLine = `a=fmtp:${payloadType} minptime=10;useinbandfec=0;usedtx=0;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;maxplaybackrate=48000;cbr=0`;
+          result.push(maxQualityLine);
         } else {
           result.push(line);
         }
       }
-      // Add bandwidth constraint for audio (256 kbps)
-      result.splice(nextLineIndex, 0, 'b=AS:256');
+      // Maximum bandwidth for audio (510 kbps + overhead)
+      result.splice(nextLineIndex, 0, 'b=AS:600');
     }
   }
   
