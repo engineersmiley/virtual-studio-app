@@ -204,7 +204,14 @@ export class PollingTransport implements PollingTransportEvents {
       }
       
       // Deliver messages
-      for (const message of data.messages || []) {
+      const messages = data.messages || [];
+      if (messages.length > 0) {
+        console.log('[Polling] Received', messages.length, 'messages:', messages.map((m: any) => m.type).join(', '));
+      }
+      for (const message of messages) {
+        if (message.type === 'offer') {
+          console.log('[Polling] OFFER received! From:', message.userId, 'payload keys:', Object.keys(message.payload || {}));
+        }
         if (this.onmessage) {
           this.onmessage({ data: JSON.stringify(message) });
         }
