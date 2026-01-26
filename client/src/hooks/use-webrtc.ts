@@ -13,6 +13,56 @@ function getSelectedInputDevice(): string | undefined {
   return saved || undefined;
 }
 
+// Modify SDP to increase audio bitrate for studio-quality audio
+// Sets Opus codec to 256kbps stereo for high-fidelity music transmission
+function setHighQualityAudioSDP(sdp: string): string {
+  // Find the audio m= line and add bitrate parameters
+  const lines = sdp.split('\r\n');
+  const result: string[] = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    result.push(lines[i]);
+    
+    // After audio m= line, add bitrate settings
+    if (lines[i].startsWith('m=audio')) {
+      // Look for the a=fmtp line for opus and modify it
+      // Or add bandwidth constraint
+      // Find next line index to insert b=AS line
+      const nextLineIndex = result.length;
+      // Continue adding lines until we find the next m= or end
+      while (i + 1 < lines.length && !lines[i + 1].startsWith('m=')) {
+        i++;
+        const line = lines[i];
+        
+        // Modify Opus parameters for high quality
+        if (line.includes('a=fmtp:') && line.includes('opus')) {
+          // Add high quality parameters: maxaveragebitrate=256000, stereo=1, sprop-stereo=1
+          let modifiedLine = line;
+          if (!modifiedLine.includes('maxaveragebitrate')) {
+            modifiedLine += ';maxaveragebitrate=256000';
+          }
+          if (!modifiedLine.includes('stereo=')) {
+            modifiedLine += ';stereo=1';
+          }
+          if (!modifiedLine.includes('sprop-stereo=')) {
+            modifiedLine += ';sprop-stereo=1';
+          }
+          if (!modifiedLine.includes('cbr=')) {
+            modifiedLine += ';cbr=0'; // Variable bitrate for better quality
+          }
+          result.push(modifiedLine);
+        } else {
+          result.push(line);
+        }
+      }
+      // Add bandwidth constraint for audio (256 kbps)
+      result.splice(nextLineIndex, 0, 'b=AS:256');
+    }
+  }
+  
+  return result.join('\r\n');
+}
+
 function isTransportOpen(transport: SignalingTransport | null): boolean {
   if (!transport) return false;
   return transport.readyState === WebSocket.OPEN || transport.readyState === PollingTransport.OPEN;
@@ -402,7 +452,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     });
     
     const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    // Apply high quality audio settings to SDP
+    const highQualityOffer = {
+      ...offer,
+      sdp: setHighQualityAudioSDP(offer.sdp || '')
+    };
+    await pc.setLocalDescription(highQualityOffer);
     
     wsRef.current.send(JSON.stringify({
       type: 'offer',
@@ -410,7 +465,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       userId,
       role,
       payload: { 
-        sdp: offer,
+        sdp: highQualityOffer,
         targetUserId: viewerUserId 
       }
     }));
@@ -868,16 +923,17 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         displayStream.getVideoTracks().forEach(t => t.stop());
       }
 
-      // Get microphone with high quality - use selected device if available
+      // Get microphone with HIGH QUALITY settings for music - disable processing
       const selectedInputDevice = getSelectedInputDevice();
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
-          echoCancellation: true,
-          noiseSuppression: true,
+          echoCancellation: false,  // Disable for music quality
+          noiseSuppression: false,  // Disable for music quality
+          autoGainControl: false,   // Disable for consistent levels
           sampleRate: 48000,
-          sampleSize: 16,
-          channelCount: 1,
+          sampleSize: 24,           // Higher bit depth
+          channelCount: 2,          // Stereo
         } as any
       });
 
@@ -931,7 +987,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         });
 
         const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+        // Apply high quality audio settings to SDP
+        const highQualityOffer = {
+          ...offer,
+          sdp: setHighQualityAudioSDP(offer.sdp || '')
+        };
+        await pc.setLocalDescription(highQualityOffer);
         
         wsRef.current?.send(JSON.stringify({
           type: 'offer',
@@ -939,7 +1000,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           userId,
           role,
           payload: { 
-            sdp: offer,
+            sdp: highQualityOffer,
             targetUserId: other.userId 
           }
         }));
@@ -1012,16 +1073,17 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   // Start mic-only streaming (no screen share needed)
   const startMic = useCallback(async () => {
     try {
-      // Get microphone with high quality - use selected device if available
+      // Get microphone with HIGH QUALITY settings for music - disable processing
       const selectedInputDevice = getSelectedInputDevice();
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
-          echoCancellation: true,
-          noiseSuppression: true,
+          echoCancellation: false,  // Disable for music quality
+          noiseSuppression: false,  // Disable for music quality
+          autoGainControl: false,   // Disable for consistent levels
           sampleRate: 48000,
-          sampleSize: 16,
-          channelCount: 1,
+          sampleSize: 24,           // Higher bit depth
+          channelCount: 2,          // Stereo
         } as any
       });
 
@@ -1056,7 +1118,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         // Create and send offer
         try {
           const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
+          // Apply high quality audio settings to SDP
+          const highQualityOffer = {
+            ...offer,
+            sdp: setHighQualityAudioSDP(offer.sdp || '')
+          };
+          await pc.setLocalDescription(highQualityOffer);
           
           if (isTransportOpen(wsRef.current)) {
             wsRef.current!.send(JSON.stringify({
@@ -1065,7 +1132,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
               targetUserId: participant.userId,
               payload: {
                 targetUserId: participant.userId,
-                sdp: offer,
+                sdp: highQualityOffer,
                 hasVideo: false,
                 fromRole: role
               }
