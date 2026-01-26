@@ -1036,10 +1036,20 @@ export async function registerRoutes(
       // For offer/answer/ice-candidate, need cross-transport forwarding
       const isWebRTCMessage = type === 'offer' || type === 'answer' || type === 'ice-candidate';
       
+      // Debug logging for WebRTC messages
+      if (isWebRTCMessage) {
+        const pollingUsers = Array.from(room.keys());
+        const wsUsers = wsRoom ? Array.from(wsRoom.keys()) : [];
+        console.log('[Signal Polling]', type, 'from', userId, 'target:', targetId);
+        console.log('[Signal Polling] Polling room users:', pollingUsers);
+        console.log('[Signal Polling] WS room users:', wsUsers);
+      }
+      
       if (targetId) {
         // Try polling room first
         if (room.has(targetId)) {
           const target = room.get(targetId)!;
+          console.log('[Signal Polling] Queuing', type, 'for polling user:', targetId);
           target.messages.push(message);
         }
         // Also try WebSocket room for cross-transport (critical for WebRTC!)
