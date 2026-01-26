@@ -1877,6 +1877,27 @@ function SessionContent() {
             {/* Engineer Action Buttons */}
             {canRecord && (
               <>
+                {/* Audio Toggle Button for Engineer */}
+                <button
+                  onClick={handleClickWithTouchGuard(handleToggleAudio)}
+                  onTouchEnd={handleAudioTouch}
+                  data-testid="button-engineer-toggle-audio"
+                  className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 transition-all border ${
+                    !hasRemoteStream
+                      ? 'bg-gray-500/20 border-gray-500/50 text-gray-400'
+                      : !hasAudioTracks 
+                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' 
+                        : videoAudioMuted 
+                          ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
+                          : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
+                  }`}
+                  title={!hasRemoteStream ? 'Waiting for stream' : !hasAudioTracks ? 'No audio available' : videoAudioMuted ? 'Tap to enable audio' : 'Tap to mute'}
+                  disabled={!hasRemoteStream}
+                >
+                  {videoAudioMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                  {!hasRemoteStream ? 'No Stream' : !hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
+                </button>
+                
                 {/* Volume Slider */}
                 {!videoAudioMuted && hasRemoteStream && (
                   <div className="flex items-center gap-2 px-2 py-1 rounded bg-black/30 border border-white/10">
