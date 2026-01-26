@@ -447,8 +447,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     
     const offer = await pc.createOffer();
     // Apply high quality audio settings to SDP
+    // Note: Must explicitly copy 'type' as RTCSessionDescriptionInit properties may not spread correctly
     const highQualityOffer = {
-      ...offer,
+      type: offer.type,
       sdp: setHighQualityAudioSDP(offer.sdp || '')
     };
     await pc.setLocalDescription(highQualityOffer);
@@ -1000,8 +1001,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
         const offer = await pc.createOffer();
         // Apply high quality audio settings to SDP
+        // Note: Must explicitly copy 'type' as RTCSessionDescriptionInit properties may not spread correctly
         const highQualityOffer = {
-          ...offer,
+          type: offer.type,
           sdp: setHighQualityAudioSDP(offer.sdp || '')
         };
         await pc.setLocalDescription(highQualityOffer);
