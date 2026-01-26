@@ -1264,12 +1264,11 @@ function SessionContent() {
         </div>
       )}
 
-      {/* Mobile Fullscreen Overlay - always rendered, visibility toggled */}
-      <div 
-        className={`fixed inset-0 z-[99999] bg-black flex items-center justify-center ${
-          isFullscreen ? 'visible' : 'invisible'
-        }`}
-      >
+      {/* Mobile Fullscreen Overlay */}
+      {isFullscreen && (
+        <div 
+          className="fixed inset-0 z-[99999] bg-black flex items-center justify-center"
+        >
           {/* Top controls bar */}
           <div className="absolute top-4 left-4 right-4 z-[100000] flex items-center justify-between">
             {/* Left side controls for engineer */}
@@ -1361,17 +1360,22 @@ function SessionContent() {
           
           {/* Fullscreen video with click handling for remote control */}
           <video
-            ref={fullscreenVideoRef}
+            ref={(el) => {
+              if (el && remoteVideoRef.current?.srcObject) {
+                el.srcObject = remoteVideoRef.current.srcObject;
+                el.play().catch(() => {});
+              }
+            }}
             autoPlay
             playsInline
             muted={videoAudioMuted}
             className="w-full h-full object-contain"
             onTouchEnd={(e) => {
               // Handle touch as click for mobile
-              if (role === 'engineer' && controlEnabled && fullscreenVideoRef.current) {
+              if (role === 'engineer' && controlEnabled) {
                 const touch = e.changedTouches[0];
                 if (!touch) return;
-                const video = fullscreenVideoRef.current;
+                const video = e.currentTarget;
                 const rect = video.getBoundingClientRect();
                 const videoRatio = video.videoWidth / video.videoHeight || 16/9;
                 const containerRatio = rect.width / rect.height;
@@ -1450,6 +1454,7 @@ function SessionContent() {
             </button>
           )}
         </div>
+      )}
 
       {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
