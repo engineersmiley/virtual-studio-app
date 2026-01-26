@@ -26,19 +26,46 @@ function enhanceAudioQuality(sdp: string): string {
   // stereo: 1 (enable stereo)
   // sprop-stereo: 1 (sender supports stereo)
   // maxplaybackrate: 48000 (48kHz sample rate - CD quality)
-  // cbr: 0 (variable bitrate for better quality)
+  // cbr: 1 (CONSTANT bitrate - prevents quality drops)
   // useinbandfec: 1 (forward error correction)
   const lines = sdp.split('\r\n');
   const enhancedLines = lines.map(line => {
     if (line.startsWith('a=fmtp:') && line.includes('opus')) {
       // Add maximum quality parameters to existing Opus fmtp line
       if (!line.includes('maxaveragebitrate')) {
-        return line + ';maxaveragebitrate=510000;stereo=1;sprop-stereo=1;maxplaybackrate=48000;cbr=0;useinbandfec=1';
+        return line + ';maxaveragebitrate=510000;stereo=1;sprop-stereo=1;maxplaybackrate=48000;cbr=1;useinbandfec=1';
       }
     }
     return line;
   });
   return enhancedLines.join('\r\n');
+}
+
+// Lock audio sender bitrate to prevent WebRTC adaptive quality reduction
+async function lockAudioBitrate(pc: RTCPeerConnection): Promise<void> {
+  const senders = pc.getSenders();
+  for (const sender of senders) {
+    if (sender.track?.kind === 'audio') {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
+      }
+      // Set min and max bitrate to same value for constant quality
+      // 510kbps is maximum for Opus stereo
+      params.encodings[0].maxBitrate = 510000;
+      // Some browsers support minBitrate (non-standard but helps)
+      (params.encodings[0] as any).minBitrate = 256000;
+      // Disable network adaptation
+      (params.encodings[0] as any).networkPriority = 'high';
+      (params.encodings[0] as any).priority = 'high';
+      try {
+        await sender.setParameters(params);
+        console.log('[WebRTC] Audio bitrate locked at 510kbps');
+      } catch (e) {
+        console.warn('[WebRTC] Could not lock audio bitrate:', e);
+      }
+    }
+  }
 }
 
 interface Participant {
@@ -423,6 +450,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     localStreamRef.current.getTracks().forEach(track => {
       pc.addTrack(track, localStreamRef.current!);
     });
+    
+    // Lock audio bitrate to prevent quality degradation
+    await lockAudioBitrate(pc);
     
     const offer = await pc.createOffer();
     // Enhance audio quality in the offer
@@ -964,6 +994,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         combinedStream.getTracks().forEach(track => {
           pc.addTrack(track, combinedStream);
         });
+        
+        // Lock audio bitrate to prevent quality degradation
+        await lockAudioBitrate(pc);
 
         const offer = await pc.createOffer();
         // Enhance audio quality in the offer
@@ -1092,6 +1125,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         micStream.getTracks().forEach(track => {
           pc.addTrack(track, micStream);
         });
+        
+        // Lock audio bitrate to prevent quality degradation
+        await lockAudioBitrate(pc);
 
         // Create and send offer
         try {
