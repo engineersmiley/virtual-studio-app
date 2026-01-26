@@ -472,16 +472,6 @@ function SessionContent() {
     }
   }, [hasRemoteStream, isFullscreen]);
 
-  // Center mouse on remote screen when entering fullscreen control mode
-  useEffect(() => {
-    if (isFullscreen && role === 'engineer' && (fullControlActive || wsControlAllowed)) {
-      // Center the mouse on the remote screen
-      const centerX = agentScreenSize.width / 2;
-      const centerY = agentScreenSize.height / 2;
-      sendFullControlCommand({ type: 'mouse-move', x: centerX, y: centerY });
-    }
-  }, [isFullscreen, role, fullControlActive, wsControlAllowed, agentScreenSize]);
-
   // Direct screen touch control - touch on video to control computer
   const controlEnabled = fullControlActive || wsControlAllowed;
   
@@ -1282,7 +1272,10 @@ function SessionContent() {
       {/* Mobile Fullscreen Overlay */}
       {isFullscreen && (
         <div 
-          className="fixed inset-0 z-[99999] bg-black flex items-center justify-center"
+          className={`fixed inset-0 z-[99999] bg-black flex items-center justify-center touch-none ${
+            role === 'engineer' && controlEnabled ? 'cursor-none' : ''
+          }`}
+          style={{ touchAction: 'none' }}
         >
           {/* Top controls bar */}
           <div className="absolute top-4 left-4 right-4 z-[100000] flex items-center justify-between">
