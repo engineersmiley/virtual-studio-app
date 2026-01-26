@@ -93,7 +93,7 @@ export const SignalingMessageType = {
 } as const;
 
 // Session roles
-export const SessionRoles = ['artist', 'engineer', 'producer', 'other'] as const;
+export const SessionRoles = ['artist', 'engineer', 'producer', 'dj', 'other'] as const;
 export type SessionRole = typeof SessionRoles[number];
 
 export type SignalingMessage = {

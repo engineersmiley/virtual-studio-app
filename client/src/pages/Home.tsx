@@ -439,7 +439,7 @@ export default function Home() {
           {/* Session Controls */}
           <div className="glass-panel rounded-2xl p-8 max-w-2xl mx-auto pointer-events-auto">
             {/* Role Selection */}
-            <div className="grid grid-cols-2 gap-3 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
               <button
                 onClick={() => setSelectedRole('artist')}
                 data-testid="button-role-artist"
@@ -472,6 +472,17 @@ export default function Home() {
                 }`}
               >
                 <Eye size={20} /> Producer
+              </button>
+              <button
+                onClick={() => setSelectedRole('dj')}
+                data-testid="button-role-dj"
+                className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
+                  selectedRole === 'dj' 
+                    ? 'bg-pink-600 text-white shadow-[0_0_20px_-5px_rgba(219,39,119,0.5)]' 
+                    : 'bg-white/5 border border-white/10 hover:border-pink-500/50'
+                }`}
+              >
+                <Headphones size={20} /> DJ
               </button>
               <button
                 onClick={() => setSelectedRole('other')}

@@ -14,7 +14,7 @@ import {
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
   Users, Radio, ArrowLeft, CheckCircle, AlertTriangle, X,
   Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move, Maximize, Minimize,
-  Volume2, VolumeX, Music, RefreshCw, Keyboard
+  Volume2, VolumeX, Music, RefreshCw, Keyboard, Headphones
 } from 'lucide-react';
 import type { SessionRole } from '@shared/schema';
 
@@ -1111,6 +1111,7 @@ function SessionContent() {
   const artistCount = participants.filter(p => p.role === 'artist').length + (role === 'artist' ? 1 : 0);
   const engineerCount = participants.filter(p => p.role === 'engineer').length + (role === 'engineer' ? 1 : 0);
   const producerCount = participants.filter(p => p.role === 'producer').length + (role === 'producer' ? 1 : 0);
+  const djCount = participants.filter(p => p.role === 'dj').length + (role === 'dj' ? 1 : 0);
   const otherCount = participants.filter(p => p.role === 'other').length + (role === 'other' ? 1 : 0);
 
   // Helper to get role color
@@ -1119,6 +1120,7 @@ function SessionContent() {
       case 'artist': return 'text-secondary';
       case 'engineer': return 'text-primary';
       case 'producer': return 'text-purple-400';
+      case 'dj': return 'text-pink-400';
       case 'other': return 'text-amber-400';
     }
   };
@@ -1128,6 +1130,7 @@ function SessionContent() {
       case 'artist': return 'bg-secondary/20 border-secondary/30';
       case 'engineer': return 'bg-primary/20 border-primary/30';
       case 'producer': return 'bg-purple-500/20 border-purple-500/30';
+      case 'dj': return 'bg-pink-500/20 border-pink-500/30';
       case 'other': return 'bg-amber-500/20 border-amber-500/30';
     }
   };
@@ -1137,6 +1140,7 @@ function SessionContent() {
       case 'artist': return 'bg-secondary';
       case 'engineer': return 'bg-primary';
       case 'producer': return 'bg-purple-500';
+      case 'dj': return 'bg-pink-500';
       case 'other': return 'bg-amber-500';
     }
   };
@@ -1146,6 +1150,7 @@ function SessionContent() {
       case 'artist': return <Mic size={14} />;
       case 'engineer': return <Zap size={14} />;
       case 'producer': return <Eye size={14} />;
+      case 'dj': return <Headphones size={14} />;
       case 'other': return <PenTool size={14} />;
     }
   };
@@ -1207,7 +1212,7 @@ function SessionContent() {
       </header>
 
       {/* Mac Audio Setup Warning Banner - for artists/producers on Mac */}
-      {isMac && (role === 'artist' || role === 'producer') && !macWarningDismissed && (
+      {isMac && (role === 'artist' || role === 'producer' || role === 'dj') && !macWarningDismissed && (
         <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-xl">🍎</span>
@@ -1593,7 +1598,7 @@ function SessionContent() {
               }
             }}
           >
-            {((role === 'artist' || role === 'engineer' || role === 'producer') && isSharing && localStream?.getVideoTracks().length) ? (
+            {((role === 'artist' || role === 'engineer' || role === 'producer' || role === 'dj') && isSharing && localStream?.getVideoTracks().length) ? (
               // Artist, Engineer, or Producer (broadcasting) - show status instead of video preview to avoid mirror effect
               isSharing ? (
                 <>
@@ -1688,7 +1693,7 @@ function SessionContent() {
                 {!hasRemoteStream && !isSharing && !remoteVideoRef.current?.srcObject && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
                     <Radio size={64} className="opacity-30 animate-pulse" />
-                    {participants.filter(p => p.role === 'artist' || p.role === 'producer' || p.role === 'engineer').length === 0 ? (
+                    {participants.filter(p => p.role === 'artist' || p.role === 'producer' || p.role === 'dj' || p.role === 'engineer').length === 0 ? (
                       <>
                         <p className="font-tech">Waiting for someone to share their screen...</p>
                         <p className="text-sm opacity-50">Room code: <span className="text-primary font-mono">{roomId}</span></p>
@@ -2085,6 +2090,111 @@ function SessionContent() {
               </div>
             )}
             
+            {/* DJ Action Buttons */}
+            {role === 'dj' && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {!isSharing ? (
+                  <>
+                    <button
+                      onClick={() => handleStartSharing(false)}
+                      data-testid="button-dj-share-screen"
+                      className="px-3 py-2 rounded-lg bg-pink-600 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
+                    >
+                      <Monitor size={16} /> Screen
+                    </button>
+                    <button
+                      onClick={() => handleStartSharing(true)}
+                      data-testid="button-dj-share-audio"
+                      className="px-3 py-2 rounded-lg bg-pink-700 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
+                    >
+                      <Volume2 size={16} /> Audio
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleStopSharing}
+                    data-testid="button-dj-stop-sharing"
+                    className="px-3 py-2 rounded-lg bg-destructive text-white font-medium text-sm flex items-center gap-2 hover:bg-destructive/90 transition-all"
+                  >
+                    <VolumeX size={16} /> Stop
+                  </button>
+                )}
+                
+                {/* Audio toggle for DJ */}
+                <button
+                  onClick={handleClickWithTouchGuard(handleToggleAudio)}
+                  onTouchEnd={handleAudioTouch}
+                  data-testid="button-dj-toggle-audio"
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                    !hasRemoteStream
+                      ? 'bg-gray-500/20 border-gray-500/50 text-gray-400'
+                      : !hasAudioTracks 
+                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' 
+                        : videoAudioMuted 
+                          ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
+                          : 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30'
+                  }`}
+                  title={!hasRemoteStream ? 'Waiting for stream' : !hasAudioTracks ? 'No audio available' : videoAudioMuted ? 'Tap to enable audio' : 'Tap to mute'}
+                  disabled={!hasRemoteStream}
+                >
+                  <div className={`w-2 h-2 rounded-full ${
+                    !hasRemoteStream ? 'bg-gray-400' : !hasAudioTracks ? 'bg-yellow-400' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 animate-pulse'
+                  }`} />
+                  {!hasRemoteStream ? 'No Stream' : !hasAudioTracks ? 'No Audio' : videoAudioMuted ? 'Audio Off' : 'Audio On'}
+                </button>
+                
+                {/* Volume Slider for DJs */}
+                {!videoAudioMuted && hasRemoteStream && (
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                    <VolumeX size={14} className="text-muted-foreground" />
+                    <Slider
+                      value={[volume]}
+                      onValueChange={handleVolumeChange}
+                      max={100}
+                      min={0}
+                      step={5}
+                      className="w-20"
+                      data-testid="slider-volume-dj"
+                    />
+                    <Volume2 size={14} className="text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground w-8">{volume}%</span>
+                  </div>
+                )}
+                
+                {/* Mic toggle for DJs */}
+                <button
+                  onClick={handleToggleMic}
+                  data-testid="button-dj-toggle-mic"
+                  className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
+                    isMicActive 
+                      ? 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30' 
+                      : 'bg-gray-500/20 border-gray-500/50 text-gray-400 hover:bg-gray-500/30'
+                  }`}
+                  title={isMicActive ? 'Click to mute your mic' : 'Click to speak'}
+                >
+                  <div className={`w-2 h-2 rounded-full ${isMicActive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+                  {isMicActive ? 'Mic On' : 'Mic Off'}
+                </button>
+
+                {/* Test Audio button for DJs */}
+                <button
+                  onClick={playTestAudio}
+                  data-testid="button-dj-test-audio"
+                  disabled={isTestingAudio}
+                  className="px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border bg-blue-500/20 border-blue-500/50 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50"
+                  title="Play a test tone to confirm audio is working on this device"
+                >
+                  <Volume2 size={16} />
+                  Test Audio
+                </button>
+                
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-pink-500/20 border border-pink-500/50">
+                  <Headphones size={14} className="text-pink-400" />
+                  <span className="text-xs text-pink-300">DJ</span>
+                </div>
+              </div>
+            )}
+            
             {/* Other role Action Buttons */}
             {role === 'other' && (
               <div className="flex gap-2 items-center flex-wrap">
@@ -2208,9 +2318,9 @@ function SessionContent() {
                     </span>
                   )}
                   {/* Show broadcasting status for broadcasters */}
-                  {(role === 'artist' || role === 'producer') && isSharing && (
+                  {(role === 'artist' || role === 'producer' || role === 'dj') && isSharing && (
                     <span className="text-xs text-green-400 flex items-center gap-1">
-                      <Radio size={12} /> {role === 'producer' ? 'Audio' : 'Live'}
+                      <Radio size={12} /> {(role === 'producer' || role === 'dj') ? 'Audio' : 'Live'}
                       {/* Audio sync indicator - green when at least one listener confirmed */}
                       {audioConfirmations.size > 0 && (
                         <span className="ml-1 flex items-center gap-1 text-green-400" title={`${audioConfirmations.size} listener(s) confirmed audio`}>
@@ -2403,6 +2513,39 @@ function SessionContent() {
                     <li>Check your interface AND BlackHole 2ch</li>
                     <li>Set Mac output to Multi-Output Device</li>
                   </ol>
+                  
+                  <p className="text-xs mt-2 text-green-400">
+                    Windows users: Audio sharing works automatically!
+                  </p>
+                </div>
+              </>
+            )}
+            {role === 'dj' && (
+              <>
+                <p><strong>DJ Controls:</strong></p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>Click "Audio" to broadcast your live set</li>
+                  <li>Check "Share audio" checkbox when prompted</li>
+                  <li>Everyone in the session will hear your mix</li>
+                  <li>Click "Stop" when done</li>
+                </ol>
+                
+                {/* Mac Audio Setup for DJs */}
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  <p className="text-xs font-semibold text-amber-400 flex items-center gap-1">
+                    <span>🍎</span> Mac Users - Audio Setup Required
+                  </p>
+                  <p className="text-xs mt-1 opacity-80">
+                    Chrome on Mac cannot capture system audio directly. Install{' '}
+                    <a 
+                      href="https://existential.audio/blackhole/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-cyan-400 hover:underline"
+                    >
+                      BlackHole (free)
+                    </a>
+                  </p>
                   
                   <p className="text-xs mt-2 text-green-400">
                     Windows users: Audio sharing works automatically!
