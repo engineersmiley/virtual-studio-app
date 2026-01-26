@@ -463,8 +463,12 @@ function SessionContent() {
 
   // Sync fullscreen video srcObject when entering fullscreen or stream changes
   useEffect(() => {
-    if (fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
-      fullscreenVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
+    if (isFullscreen && fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
+      // Only set if not already set (prevents flashing)
+      if (fullscreenVideoRef.current.srcObject !== remoteVideoRef.current.srcObject) {
+        fullscreenVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
+        fullscreenVideoRef.current.play().catch(() => {});
+      }
     }
   }, [hasRemoteStream, isFullscreen]);
 
@@ -1361,12 +1365,7 @@ function SessionContent() {
           
           {/* Fullscreen video with click handling for remote control */}
           <video
-            ref={(el) => {
-              if (el && remoteVideoRef.current?.srcObject) {
-                el.srcObject = remoteVideoRef.current.srcObject;
-                el.play().catch(() => {});
-              }
-            }}
+            ref={fullscreenVideoRef}
             autoPlay
             playsInline
             muted={videoAudioMuted}
