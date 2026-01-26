@@ -627,6 +627,20 @@ export async function registerRoutes(
         enabledAt: Date.now()
       });
       
+      // Broadcast to all participants that remote control is now enabled
+      const room = rooms.get(normalizedCode);
+      if (room) {
+        room.forEach((participant, participantId) => {
+          if (participant.ws.readyState === WebSocket.OPEN) {
+            participant.ws.send(JSON.stringify({
+              type: 'remote-control-status',
+              enabled: true,
+              artistUserId: userId
+            }));
+          }
+        });
+      }
+      
       console.log(`Remote control enabled for session ${normalizedCode} by ${userId}`);
       res.json({ enabled: true, sessionCode: normalizedCode });
     } catch (err: any) {
@@ -650,6 +664,19 @@ export async function registerRoutes(
       
       // Disable remote control
       remoteControlEnabled.delete(normalizedCode);
+      
+      // Broadcast to all participants that remote control is now disabled
+      const room = rooms.get(normalizedCode);
+      if (room) {
+        room.forEach((participant, participantId) => {
+          if (participant.ws.readyState === WebSocket.OPEN) {
+            participant.ws.send(JSON.stringify({
+              type: 'remote-control-status',
+              enabled: false
+            }));
+          }
+        });
+      }
       
       console.log(`Remote control disabled for session ${normalizedCode}`);
       res.json({ enabled: false, sessionCode: normalizedCode });

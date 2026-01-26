@@ -719,6 +719,16 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         break;
       }
       
+      case 'remote-control-status': {
+        // Artist toggled remote control on/off - update all participants
+        console.log('[WebRTC] Remote control status:', message.enabled);
+        setControlAllowed(message.enabled === true);
+        if (!message.enabled) {
+          setControlPending(false);
+        }
+        break;
+      }
+      
       case 'audio-confirmed': {
         // Someone confirmed they can hear a broadcaster's audio
         const { confirmerId, confirmerRole, broadcasterId } = message.payload;
