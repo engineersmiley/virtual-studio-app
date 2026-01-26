@@ -268,12 +268,12 @@ function SessionContent() {
     }, 2000);
   }, []);
 
-  // Sync fullscreen video srcObject when entering fullscreen
+  // Sync fullscreen video srcObject continuously (overlay always mounted now)
   useEffect(() => {
-    if (isFullscreen && fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
+    if (fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
       fullscreenVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
     }
-  }, [isFullscreen]);
+  }, [hasRemoteStream, isFullscreen]);
 
   // Fullscreen toggle - iOS requires video element, others use container
   const toggleFullscreen = useCallback(() => {
@@ -1264,11 +1264,12 @@ function SessionContent() {
         </div>
       )}
 
-      {/* Mobile Fullscreen Overlay - renders on top of everything */}
-      {isFullscreen && (
-        <div 
-          className="fixed inset-0 z-[99999] bg-black flex items-center justify-center"
-        >
+      {/* Mobile Fullscreen Overlay - always rendered, visibility toggled */}
+      <div 
+        className={`fixed inset-0 z-[99999] bg-black flex items-center justify-center transition-opacity duration-150 ${
+          isFullscreen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      >
           {/* Top controls bar */}
           <div className="absolute top-4 left-4 right-4 z-[100000] flex items-center justify-between">
             {/* Left side controls for engineer */}
@@ -1449,7 +1450,6 @@ function SessionContent() {
             </button>
           )}
         </div>
-      )}
 
       {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
