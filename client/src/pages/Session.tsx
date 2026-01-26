@@ -1257,7 +1257,7 @@ function SessionContent() {
       {isFullscreen && (
         <div 
           className={`fixed inset-0 z-[99999] bg-black flex items-center justify-center touch-none ${
-            role === 'engineer' && controlEnabled ? 'cursor-none' : ''
+            role === 'engineer' && controlEnabled ? '[&_*]:cursor-none cursor-none' : ''
           }`}
           style={{ touchAction: 'none' }}
         >
@@ -1482,7 +1482,7 @@ function SessionContent() {
           <div 
             ref={videoContainerRef}
             className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${
-              role === 'engineer' && controlEnabled ? 'cursor-none' : ''
+              role === 'engineer' && controlEnabled ? '[&_*]:cursor-none cursor-none' : ''
             }`}
             onClick={(e) => {
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
