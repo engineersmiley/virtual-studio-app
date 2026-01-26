@@ -280,17 +280,18 @@ function SessionContent() {
     const video = remoteVideoRef.current;
     if (!container) return;
     
-    // Check if already in fullscreen (any mode)
-    const isCurrentlyFullscreen = !!(
+    // Check if already in fullscreen - use React state for CSS-based fullscreen on mobile
+    const isNativeFullscreen = !!(
       document.fullscreenElement || 
       (document as any).webkitFullscreenElement ||
       (video as any)?.webkitDisplayingFullscreen
     );
+    const isMobile = /iPad|iPhone|iPod|Android/i.test(navigator.userAgent);
+    
+    // Use React state for mobile CSS fullscreen, native APIs for desktop
+    const isCurrentlyFullscreen = isMobile ? isFullscreen : isNativeFullscreen;
     
     if (!isCurrentlyFullscreen) {
-      // Mobile devices: Use CSS fullscreen (more reliable than native fullscreen APIs)
-      const isMobile = /iPad|iPhone|iPod|Android/i.test(navigator.userAgent);
-      
       if (isMobile) {
         // Use CSS-based "fullscreen" for mobile - more reliable
         // Lock body scroll to prevent participants panel from appearing
@@ -371,7 +372,14 @@ function SessionContent() {
       document.body.style.width = '';
       document.body.style.height = '';
       
-      if (document.exitFullscreen) {
+      if (isMobile) {
+        // Mobile: Just undo CSS and state
+        container.style.cssText = '';
+        if (video) {
+          video.style.cssText = '';
+        }
+        setIsFullscreen(false);
+      } else if (document.exitFullscreen) {
         document.exitFullscreen().then(() => setIsFullscreen(false));
       } else if ((document as any).webkitExitFullscreen) {
         (document as any).webkitExitFullscreen();
@@ -388,7 +396,7 @@ function SessionContent() {
         setIsFullscreen(false);
       }
     }
-  }, []);
+  }, [isFullscreen]);
 
   // Listen for fullscreen changes (including webkit)
   useEffect(() => {
@@ -1274,8 +1282,8 @@ function SessionContent() {
         </div>
       )}
 
-      {/* Mobile Fullscreen Overlay */}
-      {isFullscreen && (
+      {/* Desktop Fullscreen Overlay - NOT for mobile (mobile uses CSS on container) */}
+      {isFullscreen && !/iPad|iPhone|iPod|Android/i.test(navigator.userAgent) && (
         <div 
           className={`fixed inset-0 z-[99999] bg-black flex items-center justify-center touch-none ${
             role === 'engineer' && controlEnabled ? 'cursor-none' : ''
@@ -1625,16 +1633,65 @@ function SessionContent() {
             ) : (
               // Non-broadcasting participants see remote stream or their own placeholder
               <>
-                {/* Mobile fullscreen exit button - only visible in CSS fullscreen mode */}
-                {isFullscreen && (
-                  <button
-                    onClick={handleClickWithTouchGuard(toggleFullscreen)}
-                    onTouchEnd={handleTouchWithGuard(toggleFullscreen)}
-                    className="absolute top-4 right-4 z-50 p-3 rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors"
-                    data-testid="button-exit-fullscreen-mobile"
-                  >
-                    <Minimize size={24} />
-                  </button>
+                {/* Mobile fullscreen controls - only visible in CSS fullscreen mode */}
+                {isFullscreen && /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) && (
+                  <>
+                    {/* Top bar with keyboard and exit */}
+                    <div className="absolute top-4 left-4 right-4 z-50 flex items-center justify-between">
+                      {/* Left side - keyboard and click buttons for engineer */}
+                      {role === 'engineer' && controlEnabled && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setShowFullscreenKeyboard(!showFullscreenKeyboard)}
+                            className={`p-3 rounded-full text-white transition-colors ${
+                              showFullscreenKeyboard ? 'bg-cyan-500/50' : 'bg-black/70 hover:bg-black/90'
+                            }`}
+                            data-testid="button-keyboard-mobile-fullscreen"
+                          >
+                            <Keyboard size={24} />
+                          </button>
+                          <button
+                            onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'left' })}
+                            className="px-3 py-2 rounded-full bg-cyan-500/60 text-white text-sm font-medium"
+                            data-testid="button-leftclick-mobile-fullscreen"
+                          >
+                            L-Click
+                          </button>
+                          <button
+                            onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'right' })}
+                            className="px-3 py-2 rounded-full bg-purple-500/60 text-white text-sm font-medium"
+                            data-testid="button-rightclick-mobile-fullscreen"
+                          >
+                            R-Click
+                          </button>
+                        </div>
+                      )}
+                      {!(role === 'engineer' && controlEnabled) && <div />}
+                      {/* Exit button */}
+                      <button
+                        onClick={handleClickWithTouchGuard(toggleFullscreen)}
+                        onTouchEnd={handleTouchWithGuard(toggleFullscreen)}
+                        className="p-3 rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors"
+                        data-testid="button-exit-fullscreen-mobile"
+                      >
+                        <Minimize size={24} />
+                      </button>
+                    </div>
+                    {/* Virtual keyboard for mobile fullscreen */}
+                    {role === 'engineer' && controlEnabled && showFullscreenKeyboard && (
+                      <div className="absolute top-20 left-2 right-2 z-50">
+                        <VirtualKeyboard
+                          onKeyPress={(key, modifiers) => {
+                            sendFullControlCommand({ type: 'key-press', key, modifiers: modifiers || {} });
+                          }}
+                          onType={(text) => {
+                            sendFullControlCommand({ type: 'key-type', text });
+                          }}
+                          onClose={() => setShowFullscreenKeyboard(false)}
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
                 <video
                   ref={remoteVideoRef}
@@ -1903,7 +1960,7 @@ function SessionContent() {
                       className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1">
                       <MousePointer2 size={12} /> End Control
                     </button>
-                    {/* Keyboard toggle button */}
+                    {/* Keyboard toggle button - desktop only (mobile uses fullscreen controls) */}
                     <button 
                       onClick={() => {
                         setShowKeyboardInput(!showKeyboardInput);
@@ -1912,7 +1969,7 @@ function SessionContent() {
                         }
                       }}
                       data-testid="button-toggle-keyboard"
-                      className={`px-2 py-1 rounded text-xs font-medium border transition-colors flex items-center gap-1 ${
+                      className={`hidden md:flex px-2 py-1 rounded text-xs font-medium border transition-colors items-center gap-1 ${
                         showKeyboardInput 
                           ? 'bg-cyan-500/30 text-cyan-300 border-cyan-500/50' 
                           : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50 hover:bg-cyan-500/30'
@@ -1921,20 +1978,20 @@ function SessionContent() {
                     >
                       <Keyboard size={12} /> Type
                     </button>
-                    {/* Left Click */}
+                    {/* Left Click - desktop only (mobile uses fullscreen controls) */}
                     <button 
                       onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'left' })}
                       data-testid="button-left-click"
-                      className="px-2 py-1 rounded text-xs font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 hover:bg-cyan-500/30 transition-colors flex items-center gap-1"
+                      className="hidden md:flex px-2 py-1 rounded text-xs font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 hover:bg-cyan-500/30 transition-colors items-center gap-1"
                       title="Left click"
                     >
                       L-Click
                     </button>
-                    {/* Right Click */}
+                    {/* Right Click - desktop only (mobile uses fullscreen controls) */}
                     <button 
                       onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'right' })}
                       data-testid="button-right-click"
-                      className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1"
+                      className="hidden md:flex px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors items-center gap-1"
                       title="Right click"
                     >
                       R-Click
@@ -1994,9 +2051,9 @@ function SessionContent() {
               </>
             )}
             
-            {/* Virtual Keyboard for Engineer */}
+            {/* Virtual Keyboard for Engineer - desktop only (mobile uses fullscreen controls) */}
             {canRecord && fullControlActive && showKeyboardInput && (
-              <div className="w-full mt-2">
+              <div className="hidden md:block w-full mt-2">
                 <VirtualKeyboard
                   onKeyPress={(key, modifiers) => {
                     sendFullControlCommand({ type: 'key-press', key, modifiers: modifiers || {} });
