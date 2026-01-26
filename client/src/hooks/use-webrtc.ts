@@ -18,20 +18,22 @@ function isTransportOpen(transport: SignalingTransport | null): boolean {
   return transport.readyState === WebSocket.OPEN || transport.readyState === PollingTransport.OPEN;
 }
 
-// Enhance audio quality in SDP by setting higher Opus bitrate
-// This modifies the SDP to request studio-quality audio (128kbps stereo)
+// Enhance audio quality in SDP by setting maximum Opus bitrate for studio recording
+// This modifies the SDP to request maximum-quality audio
 function enhanceAudioQuality(sdp: string): string {
-  // Find the Opus codec line and add high-quality parameters
-  // maxaveragebitrate: 128000 (128kbps for high quality)
+  // Find the Opus codec line and add maximum quality parameters
+  // maxaveragebitrate: 510000 (510kbps - maximum for Opus stereo)
   // stereo: 1 (enable stereo)
   // sprop-stereo: 1 (sender supports stereo)
-  // maxplaybackrate: 48000 (48kHz sample rate)
+  // maxplaybackrate: 48000 (48kHz sample rate - CD quality)
+  // cbr: 0 (variable bitrate for better quality)
+  // useinbandfec: 1 (forward error correction)
   const lines = sdp.split('\r\n');
   const enhancedLines = lines.map(line => {
     if (line.startsWith('a=fmtp:') && line.includes('opus')) {
-      // Add quality parameters to existing Opus fmtp line
+      // Add maximum quality parameters to existing Opus fmtp line
       if (!line.includes('maxaveragebitrate')) {
-        return line + ';maxaveragebitrate=128000;stereo=1;sprop-stereo=1;maxplaybackrate=48000';
+        return line + ';maxaveragebitrate=510000;stereo=1;sprop-stereo=1;maxplaybackrate=48000;cbr=0;useinbandfec=1';
       }
     }
     return line;

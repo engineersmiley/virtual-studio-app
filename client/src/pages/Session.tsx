@@ -1449,6 +1449,7 @@ function SessionContent() {
                 }, 50);
               }
             }}
+            style={{ cursor: 'none' }}
             onClick={(e) => {
               if (role === 'engineer' && controlEnabled) {
                 const video = e.currentTarget;
@@ -1683,7 +1684,7 @@ function SessionContent() {
                       }, 50);
                     }
                   }}
-                  style={{ cursor: 'default' }}
+                  style={{ cursor: hasRemoteStream ? 'none' : 'default' }}
                 />
                 {!hasRemoteStream && !isSharing && !remoteVideoRef.current?.srcObject && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
