@@ -1256,6 +1256,51 @@ function SessionContent() {
         </div>
       )}
 
+      {/* Mobile Fullscreen Overlay - renders on top of everything */}
+      {isFullscreen && (
+        <div 
+          className="fixed inset-0 z-[99999] bg-black flex items-center justify-center"
+          style={{ touchAction: 'none' }}
+        >
+          {/* Exit button */}
+          <button
+            onClick={handleClickWithTouchGuard(toggleFullscreen)}
+            onTouchEnd={handleTouchWithGuard(toggleFullscreen)}
+            className="absolute top-4 right-4 z-[100000] p-3 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors"
+            data-testid="button-exit-fullscreen-overlay"
+          >
+            <Minimize size={24} />
+          </button>
+          
+          {/* Fullscreen video */}
+          <video
+            ref={(el) => {
+              // Mirror the remote video stream to fullscreen
+              if (el && remoteVideoRef.current?.srcObject) {
+                el.srcObject = remoteVideoRef.current.srcObject;
+              }
+            }}
+            autoPlay
+            playsInline
+            muted={videoAudioMuted}
+            className="w-full h-full object-contain"
+          />
+          
+          {/* Audio enable prompt in fullscreen */}
+          {videoAudioMuted && hasRemoteStream && (
+            <button 
+              onClick={handleClickWithTouchGuard(handleToggleAudio)}
+              onTouchEnd={handleAudioTouch}
+              className="absolute bottom-16 left-1/2 transform -translate-x-1/2 flex items-center gap-3 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 text-white font-bold shadow-lg hover:scale-105 transition-all animate-pulse"
+              data-testid="button-enable-audio-fullscreen"
+            >
+              <Volume2 size={24} />
+              <span className="text-lg">Tap to Enable Audio</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Video/Stream Area */}
