@@ -1264,18 +1264,31 @@ function SessionContent() {
         >
           {/* Top controls bar */}
           <div className="absolute top-4 left-4 right-4 z-[100000] flex items-center justify-between">
-            {/* Keyboard button for engineer */}
+            {/* Left side controls for engineer */}
             {role === 'engineer' && controlEnabled && (
-              <button
-                onClick={() => {
-                  const input = document.getElementById('fullscreen-keyboard-input');
-                  if (input) input.focus();
-                }}
-                className="p-3 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors"
-                data-testid="button-keyboard-fullscreen"
-              >
-                <Keyboard size={24} />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Keyboard button */}
+                <button
+                  onClick={() => {
+                    const input = document.getElementById('fullscreen-keyboard-input');
+                    if (input) input.focus();
+                  }}
+                  className="p-3 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors"
+                  data-testid="button-keyboard-fullscreen"
+                >
+                  <Keyboard size={24} />
+                </button>
+                {/* Right-click button */}
+                <button
+                  onClick={() => {
+                    sendFullControlCommand({ type: 'mouse-click', button: 'right' });
+                  }}
+                  className="px-3 py-2 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors text-sm font-medium"
+                  data-testid="button-rightclick-fullscreen"
+                >
+                  R-Click
+                </button>
+              </div>
             )}
             <div className="flex-1" />
             {/* Exit button */}
