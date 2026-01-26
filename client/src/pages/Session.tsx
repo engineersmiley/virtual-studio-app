@@ -1266,8 +1266,8 @@ function SessionContent() {
 
       {/* Mobile Fullscreen Overlay - always rendered, visibility toggled */}
       <div 
-        className={`fixed inset-0 z-[99999] bg-black flex items-center justify-center transition-opacity duration-150 ${
-          isFullscreen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        className={`fixed inset-0 z-[99999] bg-black flex items-center justify-center ${
+          isFullscreen ? 'visible' : 'invisible'
         }`}
       >
           {/* Top controls bar */}
