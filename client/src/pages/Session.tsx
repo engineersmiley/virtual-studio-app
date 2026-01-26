@@ -6,6 +6,7 @@ import { Visualizer } from '@/components/Visualizer';
 import { AudioDeviceSelector } from '@/components/AudioDeviceSelector';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { PhoneControl } from '@/components/PhoneControl';
+import { VirtualKeyboard } from '@/components/VirtualKeyboard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
@@ -124,6 +125,7 @@ function SessionContent() {
   const [tokenLoading, setTokenLoading] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [showKeyboardInput, setShowKeyboardInput] = useState(false);
+  const [showFullscreenKeyboard, setShowFullscreenKeyboard] = useState(false);
   const keyboardInputRef = useRef<HTMLInputElement>(null);
   
   // Simple remote control toggle (for artists)
@@ -1285,13 +1287,12 @@ function SessionContent() {
             {/* Left side controls for engineer */}
             {role === 'engineer' && controlEnabled && (
               <div className="flex items-center gap-2">
-                {/* Keyboard button */}
+                {/* Keyboard button - toggles virtual keyboard */}
                 <button
-                  onClick={() => {
-                    const input = document.getElementById('fullscreen-keyboard-input');
-                    if (input) input.focus();
-                  }}
-                  className="p-3 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors"
+                  onClick={() => setShowFullscreenKeyboard(!showFullscreenKeyboard)}
+                  className={`p-3 rounded-full text-white transition-colors ${
+                    showFullscreenKeyboard ? 'bg-cyan-500/50' : 'bg-white/20 hover:bg-white/30'
+                  }`}
                   data-testid="button-keyboard-fullscreen"
                 >
                   <Keyboard size={24} />
@@ -1330,43 +1331,19 @@ function SessionContent() {
             </button>
           </div>
           
-          {/* Hidden keyboard input for typing */}
-          {role === 'engineer' && controlEnabled && (
-            <input
-              id="fullscreen-keyboard-input"
-              type="text"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              className="absolute opacity-0 pointer-events-auto"
-              style={{ top: -100, left: 0, width: 1, height: 1 }}
-              onKeyDown={(e) => {
-                e.preventDefault();
-                const modifiers = {
-                  ctrl: e.ctrlKey,
-                  alt: e.altKey,
-                  shift: e.shiftKey,
-                  meta: e.metaKey,
-                };
-                if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-                  sendFullControlCommand({ type: 'key-type', text: e.key });
-                } else {
-                  sendFullControlCommand({ type: 'key-press', key: e.key, modifiers });
-                }
-              }}
-              onInput={(e) => {
-                const input = e.target as HTMLInputElement;
-                const text = input.value;
-                if (text) {
-                  // Send each character
-                  for (const char of text) {
-                    sendFullControlCommand({ type: 'key-type', text: char });
-                  }
-                  input.value = '';
-                }
-              }}
-            />
+          {/* Virtual Keyboard in fullscreen */}
+          {role === 'engineer' && controlEnabled && showFullscreenKeyboard && (
+            <div className="absolute top-20 left-4 right-4 z-[100000] max-w-4xl mx-auto">
+              <VirtualKeyboard
+                onKeyPress={(key, modifiers) => {
+                  sendFullControlCommand({ type: 'key-press', key, modifiers: modifiers || {} });
+                }}
+                onType={(text) => {
+                  sendFullControlCommand({ type: 'key-type', text });
+                }}
+                onClose={() => setShowFullscreenKeyboard(false)}
+              />
+            </div>
           )}
           
           {/* Fullscreen video with click handling for remote control */}
@@ -2017,53 +1994,18 @@ function SessionContent() {
               </>
             )}
             
-            {/* Keyboard Input Panel for Engineer */}
+            {/* Virtual Keyboard for Engineer */}
             {canRecord && fullControlActive && showKeyboardInput && (
-              <div className="w-full flex items-center gap-2 mt-2">
-                <Keyboard size={16} className="text-cyan-400 flex-shrink-0" />
-                <Input
-                  ref={keyboardInputRef}
-                  type="text"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  placeholder="Type here to send to artist's computer..."
-                  className="flex-1"
-                  data-testid="input-keyboard-typing"
-                  onKeyDown={(e) => {
-                    // Send special keys immediately
-                    if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape' || e.key === 'Backspace') {
-                      e.preventDefault();
-                      const modifiers = {
-                        ctrl: e.ctrlKey,
-                        alt: e.altKey,
-                        shift: e.shiftKey,
-                        cmd: e.metaKey
-                      };
-                      sendFullControlCommand({ type: 'key-press', key: e.key, modifiers });
-                    }
+              <div className="w-full mt-2">
+                <VirtualKeyboard
+                  onKeyPress={(key, modifiers) => {
+                    sendFullControlCommand({ type: 'key-press', key, modifiers: modifiers || {} });
                   }}
-                  onInput={(e) => {
-                    const input = e.target as HTMLInputElement;
-                    const text = input.value;
-                    if (text) {
-                      // Send each character
-                      for (const char of text) {
-                        sendFullControlCommand({ type: 'key-type', text: char });
-                      }
-                      input.value = '';
-                    }
+                  onType={(text) => {
+                    sendFullControlCommand({ type: 'key-type', text });
                   }}
+                  onClose={() => setShowKeyboardInput(false)}
                 />
-                <Button 
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowKeyboardInput(false)}
-                  data-testid="button-close-keyboard"
-                >
-                  <X size={14} />
-                </Button>
               </div>
             )}
             
