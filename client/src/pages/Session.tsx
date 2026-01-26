@@ -7,6 +7,7 @@ import { AudioDeviceSelector } from '@/components/AudioDeviceSelector';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { PhoneControl } from '@/components/PhoneControl';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -122,6 +123,8 @@ function SessionContent() {
   const [controlPending, setControlPending] = useState(false);
   const [tokenLoading, setTokenLoading] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [showKeyboardInput, setShowKeyboardInput] = useState(false);
+  const keyboardInputRef = useRef<HTMLInputElement>(null);
   
   // Simple remote control toggle (for artists)
   const [remoteControlAllowed, setRemoteControlAllowed] = useState(false);
@@ -1918,10 +1921,48 @@ function SessionContent() {
                 
                 {/* Remote Control - always show for engineer, but disabled if no agent */}
                 {fullControlActive ? (
-                  <button onClick={endFullControl} data-testid="button-end-control"
-                    className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1">
-                    <MousePointer2 size={12} /> End Control
-                  </button>
+                  <>
+                    <button onClick={endFullControl} data-testid="button-end-control"
+                      className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1">
+                      <MousePointer2 size={12} /> End Control
+                    </button>
+                    {/* Keyboard toggle button */}
+                    <button 
+                      onClick={() => {
+                        setShowKeyboardInput(!showKeyboardInput);
+                        if (!showKeyboardInput) {
+                          setTimeout(() => keyboardInputRef.current?.focus(), 100);
+                        }
+                      }}
+                      data-testid="button-toggle-keyboard"
+                      className={`px-2 py-1 rounded text-xs font-medium border transition-colors flex items-center gap-1 ${
+                        showKeyboardInput 
+                          ? 'bg-cyan-500/30 text-cyan-300 border-cyan-500/50' 
+                          : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50 hover:bg-cyan-500/30'
+                      }`}
+                      title="Type text to send to artist's computer"
+                    >
+                      <Keyboard size={12} /> Type
+                    </button>
+                    {/* Left Click */}
+                    <button 
+                      onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'left' })}
+                      data-testid="button-left-click"
+                      className="px-2 py-1 rounded text-xs font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 hover:bg-cyan-500/30 transition-colors flex items-center gap-1"
+                      title="Left click"
+                    >
+                      L-Click
+                    </button>
+                    {/* Right Click */}
+                    <button 
+                      onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'right' })}
+                      data-testid="button-right-click"
+                      className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1"
+                      title="Right click"
+                    >
+                      R-Click
+                    </button>
+                  </>
                 ) : (
                   <button 
                     onClick={() => agentConnected && requestFullControl('Engineer')} 
@@ -1974,6 +2015,56 @@ function SessionContent() {
                   </>
                 )}
               </>
+            )}
+            
+            {/* Keyboard Input Panel for Engineer */}
+            {canRecord && fullControlActive && showKeyboardInput && (
+              <div className="w-full flex items-center gap-2 mt-2">
+                <Keyboard size={16} className="text-cyan-400 flex-shrink-0" />
+                <Input
+                  ref={keyboardInputRef}
+                  type="text"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  placeholder="Type here to send to artist's computer..."
+                  className="flex-1"
+                  data-testid="input-keyboard-typing"
+                  onKeyDown={(e) => {
+                    // Send special keys immediately
+                    if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape' || e.key === 'Backspace') {
+                      e.preventDefault();
+                      const modifiers = {
+                        ctrl: e.ctrlKey,
+                        alt: e.altKey,
+                        shift: e.shiftKey,
+                        cmd: e.metaKey
+                      };
+                      sendFullControlCommand({ type: 'key-press', key: e.key, modifiers });
+                    }
+                  }}
+                  onInput={(e) => {
+                    const input = e.target as HTMLInputElement;
+                    const text = input.value;
+                    if (text) {
+                      // Send each character
+                      for (const char of text) {
+                        sendFullControlCommand({ type: 'key-type', text: char });
+                      }
+                      input.value = '';
+                    }
+                  }}
+                />
+                <Button 
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowKeyboardInput(false)}
+                  data-testid="button-close-keyboard"
+                >
+                  <X size={14} />
+                </Button>
+              </div>
             )}
             
             {/* Producer Action Buttons */}
