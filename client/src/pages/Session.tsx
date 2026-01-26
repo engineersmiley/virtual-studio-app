@@ -1328,7 +1328,7 @@ function SessionContent() {
             />
           )}
           
-          {/* Fullscreen video */}
+          {/* Fullscreen video with click handling for remote control */}
           <video
             ref={(el) => {
               // Mirror the remote video stream to fullscreen
@@ -1340,6 +1340,39 @@ function SessionContent() {
             playsInline
             muted={videoAudioMuted}
             className="w-full h-full object-contain"
+            onClick={(e) => {
+              if (role === 'engineer' && controlEnabled) {
+                const video = e.currentTarget;
+                const rect = video.getBoundingClientRect();
+                const videoRatio = video.videoWidth / video.videoHeight || 16/9;
+                const containerRatio = rect.width / rect.height;
+                
+                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+                if (videoRatio > containerRatio) {
+                  videoDisplayWidth = rect.width;
+                  videoDisplayHeight = rect.width / videoRatio;
+                  offsetX = 0;
+                  offsetY = (rect.height - videoDisplayHeight) / 2;
+                } else {
+                  videoDisplayHeight = rect.height;
+                  videoDisplayWidth = rect.height * videoRatio;
+                  offsetX = (rect.width - videoDisplayWidth) / 2;
+                  offsetY = 0;
+                }
+                
+                const clickX = e.clientX - rect.left - offsetX;
+                const clickY = e.clientY - rect.top - offsetY;
+                const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
+                const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
+                
+                const x = normX * agentScreenSize.width;
+                const y = normY * agentScreenSize.height;
+                sendFullControlCommand({ type: 'mouse-move', x, y });
+                setTimeout(() => {
+                  sendFullControlCommand({ type: 'mouse-click', button: 'left' });
+                }, 50);
+              }
+            }}
           />
           
           {/* Audio enable prompt in fullscreen */}
