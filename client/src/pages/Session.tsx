@@ -1413,9 +1413,33 @@ function SessionContent() {
                   
                   const moveX = e.clientX - rect.left - offsetX;
                   const moveY = e.clientY - rect.top - offsetY;
-                  const normX = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
-                  const normY = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
+                  // Don't clamp - allow going into letterbox areas to reach screen edges
+                  let normX = moveX / videoDisplayWidth;
+                  let normY = moveY / videoDisplayHeight;
                   
+                  // Edge acceleration - when cursor is near window edges, push coordinates further
+                  const edgeThreshold = 50; // pixels from window edge
+                  const windowWidth = window.innerWidth;
+                  const windowHeight = window.innerHeight;
+                  
+                  // Left edge
+                  if (e.clientX < edgeThreshold) {
+                    normX = -0.05; // Push past left edge
+                  }
+                  // Right edge  
+                  if (e.clientX > windowWidth - edgeThreshold) {
+                    normX = 1.05; // Push past right edge
+                  }
+                  // Top edge
+                  if (e.clientY < edgeThreshold) {
+                    normY = -0.05; // Push past top edge
+                  }
+                  // Bottom edge - critical for dock access
+                  if (e.clientY > windowHeight - edgeThreshold) {
+                    normY = 1.05; // Push past bottom edge to reach dock
+                  }
+                  
+                  // Map to screen coordinates
                   x = normX * agentScreenSize.width;
                   y = normY * agentScreenSize.height;
                 }
