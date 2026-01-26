@@ -444,6 +444,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
   const handleSignalingMessage = useCallback(async (data: string) => {
     const message = JSON.parse(data);
+    console.log('[WebRTC] Received signaling message:', message.type, 'from:', message.userId || 'server');
 
     switch (message.type) {
       case 'room-state': {
@@ -545,7 +546,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
 
       case 'offer': {
-        console.log('[WebRTC] Received offer from', message.userId, '- my role:', role);
+        console.log('[WebRTC] Received offer from', message.userId, '- my role:', role, 'my userId:', userId);
+        console.log('[WebRTC] Offer payload:', message.payload ? 'present' : 'missing', 'sdp type:', message.payload?.sdp?.type);
         if (message.userId !== userId) {
           const pc = createPeerConnection(message.userId);
           
