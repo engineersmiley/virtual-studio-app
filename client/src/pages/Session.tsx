@@ -1382,10 +1382,13 @@ function SessionContent() {
                 if (isPointerLocked) {
                   // Use relative movement when pointer is locked
                   const sensitivity = 1.5; // Adjust cursor speed
-                  virtualCursorRef.current.x = Math.max(0, Math.min(agentScreenSize.width, 
+                  // Allow cursor to go slightly beyond bounds to reach dock/edges
+                  const overreach = 100; // Extra pixels to ensure dock/edge access
+                  virtualCursorRef.current.x = Math.max(-overreach, Math.min(agentScreenSize.width + overreach, 
                     virtualCursorRef.current.x + e.movementX * sensitivity));
-                  virtualCursorRef.current.y = Math.max(0, Math.min(agentScreenSize.height, 
+                  virtualCursorRef.current.y = Math.max(-overreach, Math.min(agentScreenSize.height + overreach, 
                     virtualCursorRef.current.y + e.movementY * sensitivity));
+                  // The agent will clamp to actual screen bounds
                   x = virtualCursorRef.current.x;
                   y = virtualCursorRef.current.y;
                 } else {
