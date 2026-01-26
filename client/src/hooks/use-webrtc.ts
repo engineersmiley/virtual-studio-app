@@ -468,6 +468,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
   const handleSignalingMessage = useCallback(async (data: string) => {
     const message = JSON.parse(data);
+    
+    // Log all incoming signaling messages for debugging
+    if (message.type !== 'agent-status' && message.type !== 'ice-candidate') {
+      console.log('[Signal] Received message type:', message.type, 'from:', message.userId || 'system');
+    }
 
     switch (message.type) {
       case 'room-state': {
@@ -569,7 +574,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
 
       case 'offer': {
-        console.log('[WebRTC] Received offer from', message.userId, '- my role:', role);
+        console.log('[WebRTC] === OFFER RECEIVED ===');
+        console.log('[WebRTC] From:', message.userId, 'My role:', role, 'My ID:', userId);
+        console.log('[WebRTC] Payload SDP type:', message.payload?.sdp?.type, 'SDP length:', message.payload?.sdp?.sdp?.length);
         if (message.userId !== userId) {
           const pc = createPeerConnection(message.userId);
           
@@ -582,7 +589,13 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           }
           
           console.log('[WebRTC] Setting remote description from offer...');
-          await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
+            console.log('[WebRTC] Remote description set successfully!');
+          } catch (err) {
+            console.error('[WebRTC] FAILED to set remote description:', err);
+            break;
+          }
           
           // Process any queued ICE candidates for this peer
           const queuedCandidates = iceCandidateQueueRef.current.get(message.userId) || [];
