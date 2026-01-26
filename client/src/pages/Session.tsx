@@ -2360,9 +2360,6 @@ function SessionContent() {
 }
 
 export default function Session() {
-  return (
-    <SubscriptionGate>
-      <SessionContent />
-    </SubscriptionGate>
-  );
+  // Bypass subscription gate for now to debug black screen issue
+  return <SessionContent />;
 }
