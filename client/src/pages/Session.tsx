@@ -239,6 +239,7 @@ function SessionContent() {
   }, []);
   
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -266,6 +267,13 @@ function SessionContent() {
       setRemotePointer(prev => ({ ...prev, visible: false }));
     }, 2000);
   }, []);
+
+  // Sync fullscreen video srcObject when entering fullscreen
+  useEffect(() => {
+    if (isFullscreen && fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
+      fullscreenVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
+    }
+  }, [isFullscreen]);
 
   // Fullscreen toggle - iOS requires video element, others use container
   const toggleFullscreen = useCallback(() => {
@@ -1260,7 +1268,6 @@ function SessionContent() {
       {isFullscreen && (
         <div 
           className="fixed inset-0 z-[99999] bg-black flex items-center justify-center"
-          style={{ touchAction: 'none' }}
         >
           {/* Top controls bar */}
           <div className="absolute top-4 left-4 right-4 z-[100000] flex items-center justify-between">
@@ -1353,16 +1360,47 @@ function SessionContent() {
           
           {/* Fullscreen video with click handling for remote control */}
           <video
-            ref={(el) => {
-              // Mirror the remote video stream to fullscreen
-              if (el && remoteVideoRef.current?.srcObject) {
-                el.srcObject = remoteVideoRef.current.srcObject;
-              }
-            }}
+            ref={fullscreenVideoRef}
             autoPlay
             playsInline
             muted={videoAudioMuted}
             className="w-full h-full object-contain"
+            onTouchEnd={(e) => {
+              // Handle touch as click for mobile
+              if (role === 'engineer' && controlEnabled && fullscreenVideoRef.current) {
+                const touch = e.changedTouches[0];
+                if (!touch) return;
+                const video = fullscreenVideoRef.current;
+                const rect = video.getBoundingClientRect();
+                const videoRatio = video.videoWidth / video.videoHeight || 16/9;
+                const containerRatio = rect.width / rect.height;
+                
+                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+                if (videoRatio > containerRatio) {
+                  videoDisplayWidth = rect.width;
+                  videoDisplayHeight = rect.width / videoRatio;
+                  offsetX = 0;
+                  offsetY = (rect.height - videoDisplayHeight) / 2;
+                } else {
+                  videoDisplayHeight = rect.height;
+                  videoDisplayWidth = rect.height * videoRatio;
+                  offsetX = (rect.width - videoDisplayWidth) / 2;
+                  offsetY = 0;
+                }
+                
+                const clickX = touch.clientX - rect.left - offsetX;
+                const clickY = touch.clientY - rect.top - offsetY;
+                const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
+                const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
+                
+                const x = normX * agentScreenSize.width;
+                const y = normY * agentScreenSize.height;
+                sendFullControlCommand({ type: 'mouse-move', x, y });
+                setTimeout(() => {
+                  sendFullControlCommand({ type: 'mouse-click', button: 'left' });
+                }, 50);
+              }
+            }}
             onClick={(e) => {
               if (role === 'engineer' && controlEnabled) {
                 const video = e.currentTarget;
