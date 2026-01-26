@@ -18,6 +18,27 @@ function isTransportOpen(transport: SignalingTransport | null): boolean {
   return transport.readyState === WebSocket.OPEN || transport.readyState === PollingTransport.OPEN;
 }
 
+// Enhance audio quality in SDP by setting higher Opus bitrate
+// This modifies the SDP to request studio-quality audio (128kbps stereo)
+function enhanceAudioQuality(sdp: string): string {
+  // Find the Opus codec line and add high-quality parameters
+  // maxaveragebitrate: 128000 (128kbps for high quality)
+  // stereo: 1 (enable stereo)
+  // sprop-stereo: 1 (sender supports stereo)
+  // maxplaybackrate: 48000 (48kHz sample rate)
+  const lines = sdp.split('\r\n');
+  const enhancedLines = lines.map(line => {
+    if (line.startsWith('a=fmtp:') && line.includes('opus')) {
+      // Add quality parameters to existing Opus fmtp line
+      if (!line.includes('maxaveragebitrate')) {
+        return line + ';maxaveragebitrate=128000;stereo=1;sprop-stereo=1;maxplaybackrate=48000';
+      }
+    }
+    return line;
+  });
+  return enhancedLines.join('\r\n');
+}
+
 interface Participant {
   userId: string;
   role: SessionRole;
@@ -402,7 +423,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     });
     
     const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    // Enhance audio quality in the offer
+    const enhancedOffer = new RTCSessionDescription({
+      type: offer.type,
+      sdp: enhanceAudioQuality(offer.sdp || '')
+    });
+    await pc.setLocalDescription(enhancedOffer);
     
     wsRef.current.send(JSON.stringify({
       type: 'offer',
@@ -410,7 +436,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       userId,
       role,
       payload: { 
-        sdp: offer,
+        sdp: enhancedOffer,
         targetUserId: viewerUserId 
       }
     }));
@@ -550,7 +576,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           
           console.log('[WebRTC] Creating answer...');
           const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
+          // Enhance audio quality in the answer
+          const enhancedAnswer = new RTCSessionDescription({
+            type: answer.type,
+            sdp: enhanceAudioQuality(answer.sdp || '')
+          });
+          await pc.setLocalDescription(enhancedAnswer);
           console.log('[WebRTC] Answer created and set as local description');
           
           wsRef.current?.send(JSON.stringify({
@@ -559,7 +590,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
             userId,
             role,
             payload: { 
-              sdp: answer,
+              sdp: enhancedAnswer,
               targetUserId: message.userId 
             }
           }));
@@ -931,7 +962,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         });
 
         const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+        // Enhance audio quality in the offer
+        const enhancedOffer = new RTCSessionDescription({
+          type: offer.type,
+          sdp: enhanceAudioQuality(offer.sdp || '')
+        });
+        await pc.setLocalDescription(enhancedOffer);
         
         wsRef.current?.send(JSON.stringify({
           type: 'offer',
@@ -939,7 +975,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           userId,
           role,
           payload: { 
-            sdp: offer,
+            sdp: enhancedOffer,
             targetUserId: other.userId 
           }
         }));
@@ -1056,7 +1092,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         // Create and send offer
         try {
           const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
+          // Enhance audio quality in the offer
+          const enhancedOffer = new RTCSessionDescription({
+            type: offer.type,
+            sdp: enhanceAudioQuality(offer.sdp || '')
+          });
+          await pc.setLocalDescription(enhancedOffer);
           
           if (isTransportOpen(wsRef.current)) {
             wsRef.current!.send(JSON.stringify({
@@ -1065,7 +1106,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
               targetUserId: participant.userId,
               payload: {
                 targetUserId: participant.userId,
-                sdp: offer,
+                sdp: enhancedOffer,
                 hasVideo: false,
                 fromRole: role
               }
