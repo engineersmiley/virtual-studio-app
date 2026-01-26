@@ -1490,12 +1490,28 @@ function SessionContent() {
             <button 
               onClick={handleClickWithTouchGuard(handleToggleAudio)}
               onTouchEnd={handleAudioTouch}
-              className="absolute bottom-16 left-1/2 transform -translate-x-1/2 flex items-center gap-3 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 text-white font-bold shadow-lg hover:scale-105 transition-all animate-pulse"
+              className="absolute bottom-20 left-1/2 transform -translate-x-1/2 flex items-center gap-3 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 text-white font-bold shadow-lg hover:scale-105 transition-all animate-pulse"
               data-testid="button-enable-audio-fullscreen"
             >
               <Volume2 size={24} />
               <span className="text-lg">Tap to Enable Audio</span>
             </button>
+          )}
+          
+          {/* Prominent Exit Fullscreen button at bottom for mobile - only show when audio prompt is not visible */}
+          {!(videoAudioMuted && hasRemoteStream) && (
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 md:hidden">
+              <Button
+                variant="outline"
+                onClick={handleClickWithTouchGuard(toggleFullscreen)}
+                onTouchEnd={handleTouchWithGuard(toggleFullscreen)}
+                className="gap-2"
+                data-testid="button-exit-fullscreen-bottom"
+              >
+                <Minimize size={18} />
+                Exit Fullscreen
+              </Button>
+            </div>
           )}
         </div>
       )}
