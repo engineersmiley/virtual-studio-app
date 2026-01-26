@@ -1369,7 +1369,47 @@ function SessionContent() {
             autoPlay
             playsInline
             muted={videoAudioMuted}
-            className="w-full h-full object-contain"
+            className="w-full h-full object-contain touch-none"
+            onTouchStart={(e) => {
+              // Prevent scrolling when engineer is controlling
+              if (role === 'engineer' && controlEnabled) {
+                e.preventDefault();
+              }
+            }}
+            onTouchMove={(e) => {
+              // Prevent scrolling and send mouse move commands
+              if (role === 'engineer' && controlEnabled) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                if (!touch) return;
+                const video = e.currentTarget;
+                const rect = video.getBoundingClientRect();
+                const videoRatio = video.videoWidth / video.videoHeight || 16/9;
+                const containerRatio = rect.width / rect.height;
+                
+                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+                if (videoRatio > containerRatio) {
+                  videoDisplayWidth = rect.width;
+                  videoDisplayHeight = rect.width / videoRatio;
+                  offsetX = 0;
+                  offsetY = (rect.height - videoDisplayHeight) / 2;
+                } else {
+                  videoDisplayHeight = rect.height;
+                  videoDisplayWidth = rect.height * videoRatio;
+                  offsetX = (rect.width - videoDisplayWidth) / 2;
+                  offsetY = 0;
+                }
+                
+                const moveX = touch.clientX - rect.left - offsetX;
+                const moveY = touch.clientY - rect.top - offsetY;
+                const normX = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
+                const normY = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
+                
+                const x = normX * agentScreenSize.width;
+                const y = normY * agentScreenSize.height;
+                sendFullControlCommand({ type: 'mouse-move', x, y });
+              }
+            }}
             onTouchEnd={(e) => {
               // Handle touch as click for mobile
               if (role === 'engineer' && controlEnabled) {
