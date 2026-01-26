@@ -600,8 +600,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           
           console.log('[WebRTC] Creating answer...');
           const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          console.log('[WebRTC] Answer created and set as local description');
+          // Must explicitly copy type and sdp as RTCSessionDescriptionInit may not serialize correctly
+          const answerToSend = { type: answer.type, sdp: answer.sdp };
+          await pc.setLocalDescription(answerToSend);
+          console.log('[WebRTC] Answer created and set as local description, type:', answerToSend.type);
           
           wsRef.current?.send(JSON.stringify({
             type: 'answer',
@@ -609,7 +611,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
             userId,
             role,
             payload: { 
-              sdp: answer,
+              sdp: answerToSend,
               targetUserId: message.userId 
             }
           }));
