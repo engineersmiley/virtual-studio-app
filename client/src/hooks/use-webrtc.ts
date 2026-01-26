@@ -16,45 +16,9 @@ function getSelectedInputDevice(): string | undefined {
 // Modify SDP to MAXIMUM audio quality - Opus at 510kbps (absolute max)
 // This is the highest quality WebRTC can achieve - near lossless for most audio
 function setHighQualityAudioSDP(sdp: string): string {
-  const lines = sdp.split('\r\n');
-  const result: string[] = [];
-  
-  for (let i = 0; i < lines.length; i++) {
-    result.push(lines[i]);
-    
-    if (lines[i].startsWith('m=audio')) {
-      const nextLineIndex = result.length;
-      
-      while (i + 1 < lines.length && !lines[i + 1].startsWith('m=')) {
-        i++;
-        const line = lines[i];
-        
-        // Modify Opus parameters for MAXIMUM quality
-        if (line.includes('a=fmtp:') && line.includes('opus')) {
-          // Extract the payload type number
-          const payloadMatch = line.match(/a=fmtp:(\d+)/);
-          const payloadType = payloadMatch ? payloadMatch[1] : '111';
-          
-          // Build maximum quality Opus parameters:
-          // - maxaveragebitrate=510000: Maximum Opus bitrate (510 kbps)
-          // - maxplaybackrate=48000: Full 48kHz sample rate
-          // - stereo=1: Enable stereo
-          // - sprop-stereo=1: Signal stereo support
-          // - useinbandfec=0: Disable FEC for max quality (prioritize quality over reliability)
-          // - usedtx=0: Disable discontinuous transmission (never reduce quality)
-          // - cbr=0: Variable bitrate for best quality
-          const maxQualityLine = `a=fmtp:${payloadType} minptime=10;useinbandfec=0;usedtx=0;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;maxplaybackrate=48000;cbr=0`;
-          result.push(maxQualityLine);
-        } else {
-          result.push(line);
-        }
-      }
-      // Maximum bandwidth for audio (510 kbps + overhead)
-      result.splice(nextLineIndex, 0, 'b=AS:600');
-    }
-  }
-  
-  return result.join('\r\n');
+  // Temporarily bypassed to debug WebRTC connection issues
+  // TODO: Re-enable once basic streaming is working
+  return sdp;
 }
 
 function isTransportOpen(transport: SignalingTransport | null): boolean {
