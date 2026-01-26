@@ -984,6 +984,14 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       // Use participantsRef.current to get the latest participants (avoid stale closure)
       const others = participantsRef.current.filter(p => p.userId !== userId);
       console.log('[WebRTC] Sending offers to', others.length, 'participants:', others.map(p => p.userId));
+      console.log('[WebRTC] Transport open:', isTransportOpen(wsRef.current), 'Transport type:', wsRef.current?.constructor?.name);
+      
+      if (!isTransportOpen(wsRef.current)) {
+        console.error('[WebRTC] Cannot send offers - transport not open!');
+        setError('Connection lost - please refresh the page');
+        return { hasSystemAudio: false, hasMicAudio: false };
+      }
+      
       for (const other of others) {
         const pc = createPeerConnection(other.userId);
         combinedStream.getTracks().forEach(track => {
@@ -998,7 +1006,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         };
         await pc.setLocalDescription(highQualityOffer);
         
-        wsRef.current?.send(JSON.stringify({
+        console.log('[WebRTC] Sending offer to', other.userId);
+        wsRef.current!.send(JSON.stringify({
           type: 'offer',
           roomId,
           userId,
