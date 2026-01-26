@@ -1278,12 +1278,22 @@ function SessionContent() {
                 >
                   <Keyboard size={24} />
                 </button>
+                {/* Left-click button */}
+                <button
+                  onClick={() => {
+                    sendFullControlCommand({ type: 'mouse-click', button: 'left' });
+                  }}
+                  className="px-3 py-2 rounded-full bg-cyan-500/40 text-white hover:bg-cyan-500/60 transition-colors text-sm font-medium"
+                  data-testid="button-leftclick-fullscreen"
+                >
+                  L-Click
+                </button>
                 {/* Right-click button */}
                 <button
                   onClick={() => {
                     sendFullControlCommand({ type: 'mouse-click', button: 'right' });
                   }}
-                  className="px-3 py-2 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors text-sm font-medium"
+                  className="px-3 py-2 rounded-full bg-purple-500/40 text-white hover:bg-purple-500/60 transition-colors text-sm font-medium"
                   data-testid="button-rightclick-fullscreen"
                 >
                   R-Click
