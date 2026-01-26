@@ -72,7 +72,9 @@ export default function Home() {
     }
   };
 
-  const isSubscribed = subscriptionData?.hasSubscription;
+  // In development mode, bypass subscription check for testing
+  const isDev = import.meta.env.DEV;
+  const isSubscribed = isDev || subscriptionData?.hasSubscription;
 
   const justSubscribed = searchString.includes('subscribed=true');
   const cancelled = searchString.includes('cancelled=true');
