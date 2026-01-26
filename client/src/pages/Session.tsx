@@ -293,36 +293,8 @@ function SessionContent() {
     
     if (!isCurrentlyFullscreen) {
       if (isMobile) {
-        // Use CSS-based "fullscreen" for mobile - more reliable
-        // Lock body scroll to prevent participants panel from appearing
+        // Mobile: Just set state - the overlay component handles the fullscreen UI
         document.body.style.overflow = 'hidden';
-        document.body.style.position = 'fixed';
-        document.body.style.width = '100%';
-        document.body.style.height = '100%';
-        
-        container.style.cssText = `
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: 0 !important;
-          width: 100vw !important;
-          height: 100vh !important;
-          z-index: 99999 !important;
-          background-color: black !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          overflow: hidden !important;
-        `;
-        // Also make video fill the container
-        if (video) {
-          video.style.cssText = `
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: contain !important;
-          `;
-        }
         setIsFullscreen(true);
         return;
       }
@@ -366,18 +338,11 @@ function SessionContent() {
         setIsFullscreen(true);
       });
     } else {
-      // Exit fullscreen - restore body styles for mobile
+      // Exit fullscreen - restore body styles
       document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
-      document.body.style.height = '';
       
       if (isMobile) {
-        // Mobile: Just undo CSS and state
-        container.style.cssText = '';
-        if (video) {
-          video.style.cssText = '';
-        }
+        // Mobile: Just reset state - overlay will unmount
         setIsFullscreen(false);
       } else if (document.exitFullscreen) {
         document.exitFullscreen().then(() => setIsFullscreen(false));
@@ -476,14 +441,20 @@ function SessionContent() {
 
   // Sync fullscreen video srcObject when entering fullscreen or stream changes
   useEffect(() => {
-    if (isFullscreen && fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
-      // Only set if not already set (prevents flashing)
-      if (fullscreenVideoRef.current.srcObject !== remoteVideoRef.current.srcObject) {
-        fullscreenVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
-        fullscreenVideoRef.current.play().catch(() => {});
-      }
+    if (isFullscreen && remoteVideoRef.current?.srcObject) {
+      // Use requestAnimationFrame to ensure the fullscreen video element is mounted
+      const syncVideo = () => {
+        if (fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
+          fullscreenVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
+          fullscreenVideoRef.current.play().catch(() => {});
+        }
+      };
+      // Try immediately and after a short delay to handle React render timing
+      syncVideo();
+      const timer = setTimeout(syncVideo, 50);
+      return () => clearTimeout(timer);
     }
-  }, [hasRemoteStream, isFullscreen]);
+  }, [isFullscreen, hasRemoteStream]);
 
   // Direct screen touch control - touch on video to control computer
   const controlEnabled = fullControlActive || wsControlAllowed;
@@ -1282,8 +1253,8 @@ function SessionContent() {
         </div>
       )}
 
-      {/* Desktop Fullscreen Overlay - NOT for mobile (mobile uses CSS on container) */}
-      {isFullscreen && !/iPad|iPhone|iPod|Android/i.test(navigator.userAgent) && (
+      {/* Fullscreen Overlay - works for both mobile and desktop */}
+      {isFullscreen && (
         <div 
           className={`fixed inset-0 z-[99999] bg-black flex items-center justify-center touch-none ${
             role === 'engineer' && controlEnabled ? 'cursor-none' : ''
@@ -1633,66 +1604,6 @@ function SessionContent() {
             ) : (
               // Non-broadcasting participants see remote stream or their own placeholder
               <>
-                {/* Mobile fullscreen controls - only visible in CSS fullscreen mode */}
-                {isFullscreen && /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) && (
-                  <>
-                    {/* Top bar with keyboard and exit */}
-                    <div className="absolute top-4 left-4 right-4 z-50 flex items-center justify-between">
-                      {/* Left side - keyboard and click buttons for engineer */}
-                      {role === 'engineer' && controlEnabled && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setShowFullscreenKeyboard(!showFullscreenKeyboard)}
-                            className={`p-3 rounded-full text-white transition-colors ${
-                              showFullscreenKeyboard ? 'bg-cyan-500/50' : 'bg-black/70 hover:bg-black/90'
-                            }`}
-                            data-testid="button-keyboard-mobile-fullscreen"
-                          >
-                            <Keyboard size={24} />
-                          </button>
-                          <button
-                            onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'left' })}
-                            className="px-3 py-2 rounded-full bg-cyan-500/60 text-white text-sm font-medium"
-                            data-testid="button-leftclick-mobile-fullscreen"
-                          >
-                            L-Click
-                          </button>
-                          <button
-                            onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'right' })}
-                            className="px-3 py-2 rounded-full bg-purple-500/60 text-white text-sm font-medium"
-                            data-testid="button-rightclick-mobile-fullscreen"
-                          >
-                            R-Click
-                          </button>
-                        </div>
-                      )}
-                      {!(role === 'engineer' && controlEnabled) && <div />}
-                      {/* Exit button */}
-                      <button
-                        onClick={handleClickWithTouchGuard(toggleFullscreen)}
-                        onTouchEnd={handleTouchWithGuard(toggleFullscreen)}
-                        className="p-3 rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors"
-                        data-testid="button-exit-fullscreen-mobile"
-                      >
-                        <Minimize size={24} />
-                      </button>
-                    </div>
-                    {/* Virtual keyboard for mobile fullscreen */}
-                    {role === 'engineer' && controlEnabled && showFullscreenKeyboard && (
-                      <div className="absolute top-20 left-2 right-2 z-50">
-                        <VirtualKeyboard
-                          onKeyPress={(key, modifiers) => {
-                            sendFullControlCommand({ type: 'key-press', key, modifiers: modifiers || {} });
-                          }}
-                          onType={(text) => {
-                            sendFullControlCommand({ type: 'key-type', text });
-                          }}
-                          onClose={() => setShowFullscreenKeyboard(false)}
-                        />
-                      </div>
-                    )}
-                  </>
-                )}
                 <video
                   ref={remoteVideoRef}
                   autoPlay
