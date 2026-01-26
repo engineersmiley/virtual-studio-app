@@ -14,7 +14,7 @@ import {
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
   Users, Radio, ArrowLeft, CheckCircle, AlertTriangle, X,
   Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move, Maximize, Minimize,
-  Volume2, VolumeX, Music, RefreshCw
+  Volume2, VolumeX, Music, RefreshCw, Keyboard
 } from 'lucide-react';
 import type { SessionRole } from '@shared/schema';
 
@@ -268,12 +268,6 @@ function SessionContent() {
     }, 2000);
   }, []);
 
-  // Sync fullscreen video srcObject continuously (overlay always mounted now)
-  useEffect(() => {
-    if (fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
-      fullscreenVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
-    }
-  }, [hasRemoteStream, isFullscreen]);
 
   // Fullscreen toggle - iOS requires video element, others use container
   const toggleFullscreen = useCallback(() => {
@@ -466,6 +460,13 @@ function SessionContent() {
     }, 1000);
     return () => clearInterval(interval);
   }, [sessionStartTime]);
+
+  // Sync fullscreen video srcObject when entering fullscreen or stream changes
+  useEffect(() => {
+    if (fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
+      fullscreenVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
+    }
+  }, [hasRemoteStream, isFullscreen]);
 
   // Direct screen touch control - touch on video to control computer
   const controlEnabled = fullControlActive || wsControlAllowed;
