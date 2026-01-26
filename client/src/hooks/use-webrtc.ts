@@ -436,7 +436,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       userId,
       role,
       payload: { 
-        sdp: enhancedOffer,
+        sdp: { type: enhancedOffer.type, sdp: enhancedOffer.sdp },
         targetUserId: viewerUserId 
       }
     }));
@@ -592,7 +592,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
             userId,
             role,
             payload: { 
-              sdp: enhancedAnswer,
+              sdp: { type: enhancedAnswer.type, sdp: enhancedAnswer.sdp },
               targetUserId: message.userId 
             }
           }));
@@ -977,7 +977,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           userId,
           role,
           payload: { 
-            sdp: enhancedOffer,
+            sdp: { type: enhancedOffer.type, sdp: enhancedOffer.sdp },
             targetUserId: other.userId 
           }
         }));
@@ -1108,7 +1108,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
               targetUserId: participant.userId,
               payload: {
                 targetUserId: participant.userId,
-                sdp: enhancedOffer,
+                sdp: { type: enhancedOffer.type, sdp: enhancedOffer.sdp },
                 hasVideo: false,
                 fromRole: role
               }
