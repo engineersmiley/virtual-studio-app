@@ -41,6 +41,42 @@ function enhanceAudioQuality(sdp: string): string {
   return enhancedLines.join('\r\n');
 }
 
+// Optimize senders for low latency streaming
+async function optimizeSendersForLowLatency(pc: RTCPeerConnection): Promise<void> {
+  const senders = pc.getSenders();
+  for (const sender of senders) {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}];
+    }
+    
+    if (sender.track?.kind === 'video') {
+      // Video optimizations for low latency
+      params.encodings[0].maxBitrate = 8000000; // 8 Mbps max for quality
+      (params.encodings[0] as any).priority = 'high';
+      (params.encodings[0] as any).networkPriority = 'high';
+      try {
+        await sender.setParameters(params);
+        console.log('[WebRTC] Video sender optimized for low latency');
+      } catch (e) {
+        console.warn('[WebRTC] Could not optimize video sender:', e);
+      }
+    } else if (sender.track?.kind === 'audio') {
+      // Audio optimizations
+      params.encodings[0].maxBitrate = 510000;
+      (params.encodings[0] as any).minBitrate = 256000;
+      (params.encodings[0] as any).priority = 'high';
+      (params.encodings[0] as any).networkPriority = 'high';
+      try {
+        await sender.setParameters(params);
+        console.log('[WebRTC] Audio sender optimized for low latency');
+      } catch (e) {
+        console.warn('[WebRTC] Could not optimize audio sender:', e);
+      }
+    }
+  }
+}
+
 // Lock audio sender bitrate to prevent WebRTC adaptive quality reduction
 async function lockAudioBitrate(pc: RTCPeerConnection): Promise<void> {
   const senders = pc.getSenders();
@@ -203,6 +239,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     const pc = new RTCPeerConnection({ 
       iceServers,
       iceCandidatePoolSize: 10,
+      // Bundle all media onto a single connection for faster setup
+      bundlePolicy: 'max-bundle',
+      // Require RTCP multiplexing to reduce ports and connection time
+      rtcpMuxPolicy: 'require',
     });
 
     // Monitor ICE connection state for stability
@@ -451,8 +491,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       pc.addTrack(track, localStreamRef.current!);
     });
     
-    // Lock audio bitrate to prevent quality degradation
-    await lockAudioBitrate(pc);
+    // Optimize for low latency (both audio and video)
+    await optimizeSendersForLowLatency(pc);
     
     const offer = await pc.createOffer();
     // Enhance audio quality in the offer
@@ -995,8 +1035,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           pc.addTrack(track, combinedStream);
         });
         
-        // Lock audio bitrate to prevent quality degradation
-        await lockAudioBitrate(pc);
+        // Optimize for low latency (both audio and video)
+        await optimizeSendersForLowLatency(pc);
 
         const offer = await pc.createOffer();
         // Enhance audio quality in the offer
@@ -1126,8 +1166,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           pc.addTrack(track, micStream);
         });
         
-        // Lock audio bitrate to prevent quality degradation
-        await lockAudioBitrate(pc);
+        // Optimize for low latency
+        await optimizeSendersForLowLatency(pc);
 
         // Create and send offer
         try {
