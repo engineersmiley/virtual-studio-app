@@ -13,14 +13,6 @@ function getSelectedInputDevice(): string | undefined {
   return saved || undefined;
 }
 
-// Modify SDP to MAXIMUM audio quality - Opus at 510kbps (absolute max)
-// This is the highest quality WebRTC can achieve - near lossless for most audio
-function setHighQualityAudioSDP(sdp: string): string {
-  // Temporarily bypassed to debug WebRTC connection issues
-  // TODO: Re-enable once basic streaming is working
-  return sdp;
-}
-
 function isTransportOpen(transport: SignalingTransport | null): boolean {
   if (!transport) return false;
   return transport.readyState === WebSocket.OPEN || transport.readyState === PollingTransport.OPEN;
@@ -410,13 +402,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     });
     
     const offer = await pc.createOffer();
-    // Apply high quality audio settings to SDP
-    // Note: Must explicitly copy 'type' as RTCSessionDescriptionInit properties may not spread correctly
-    const highQualityOffer = {
-      type: offer.type,
-      sdp: setHighQualityAudioSDP(offer.sdp || '')
-    };
-    await pc.setLocalDescription(highQualityOffer);
+    await pc.setLocalDescription(offer);
     
     wsRef.current.send(JSON.stringify({
       type: 'offer',
@@ -424,7 +410,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       userId,
       role,
       payload: { 
-        sdp: highQualityOffer,
+        sdp: offer,
         targetUserId: viewerUserId 
       }
     }));
@@ -432,11 +418,6 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
   const handleSignalingMessage = useCallback(async (data: string) => {
     const message = JSON.parse(data);
-    
-    // Log all incoming signaling messages for debugging
-    if (message.type !== 'agent-status' && message.type !== 'ice-candidate') {
-      console.log('[Signal] Received message type:', message.type, 'from:', message.userId || 'system');
-    }
 
     switch (message.type) {
       case 'room-state': {
@@ -450,7 +431,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           setControlAllowed(message.controlActive);
         }
         
-        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer' || role === 'dj';
+        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
         if (canBroadcast && localStreamRef.current) {
           const viewers = (message.participants || []).filter((p: Participant) => p.userId !== userId);
           for (const viewer of viewers) {
@@ -466,7 +447,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           return [...prev, { userId: message.userId, role: message.role }];
         });
         
-        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer' || role === 'dj';
+        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
         if (canBroadcast && message.userId !== userId && localStreamRef.current) {
           await sendOfferToViewer(message.userId);
         }
@@ -538,13 +519,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
 
       case 'offer': {
-        console.log('[WebRTC] === OFFER RECEIVED ===');
-        console.log('[WebRTC] From:', message.userId, 'My role:', role, 'My ID:', userId);
-        console.log('[WebRTC] Payload SDP type:', message.payload?.sdp?.type, 'SDP length:', message.payload?.sdp?.sdp?.length);
+        console.log('[WebRTC] Received offer from', message.userId, '- my role:', role);
         if (message.userId !== userId) {
           const pc = createPeerConnection(message.userId);
           
-          if (role === 'engineer' || role === 'producer' || role === 'dj' || role === 'other') {
+          if (role === 'engineer' || role === 'producer' || role === 'other') {
             const dataChannel = pc.createDataChannel('control', { ordered: true });
             dataChannel.onopen = () => {
               console.log('[WebRTC] Control data channel opened');
@@ -553,13 +532,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           }
           
           console.log('[WebRTC] Setting remote description from offer...');
-          try {
-            await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
-            console.log('[WebRTC] Remote description set successfully!');
-          } catch (err) {
-            console.error('[WebRTC] FAILED to set remote description:', err);
-            break;
-          }
+          await pc.setRemoteDescription(new RTCSessionDescription(message.payload.sdp));
           
           // Process any queued ICE candidates for this peer
           const queuedCandidates = iceCandidateQueueRef.current.get(message.userId) || [];
@@ -577,10 +550,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           
           console.log('[WebRTC] Creating answer...');
           const answer = await pc.createAnswer();
-          // Must explicitly copy type and sdp as RTCSessionDescriptionInit may not serialize correctly
-          const answerToSend = { type: answer.type, sdp: answer.sdp };
-          await pc.setLocalDescription(answerToSend);
-          console.log('[WebRTC] Answer created and set as local description, type:', answerToSend.type);
+          await pc.setLocalDescription(answer);
+          console.log('[WebRTC] Answer created and set as local description');
           
           wsRef.current?.send(JSON.stringify({
             type: 'answer',
@@ -588,7 +559,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
             userId,
             role,
             payload: { 
-              sdp: answerToSend,
+              sdp: answer,
               targetUserId: message.userId 
             }
           }));
@@ -696,16 +667,6 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       
       case 'control-stopped': {
         setControlAllowed(false);
-        break;
-      }
-      
-      case 'remote-control-status': {
-        // Artist toggled remote control on/off - update all participants
-        console.log('[WebRTC] Remote control status:', message.enabled);
-        setControlAllowed(message.enabled === true);
-        if (!message.enabled) {
-          setControlPending(false);
-        }
         break;
       }
       
@@ -860,13 +821,13 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     };
   }, [roomId, userId, role, createPeerConnection, closePeerConnection, closeAllPeerConnections, connectWithPolling, handleSignalingMessage]);
 
-  // Check if role can broadcast (artist, engineer, producer, or dj)
-  const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer' || role === 'dj';
+  // Check if role can broadcast (artist, engineer, or producer)
+  const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
 
   const startSharing = useCallback(async (audioOnly: boolean = false): Promise<{ hasSystemAudio: boolean; hasMicAudio: boolean }> => {
     // Only artist, engineer, and producer can share
     if (!canBroadcast) {
-      setError('Only artists, engineers, producers, and DJs can share');
+      setError('Only artists, engineers, and producers can share');
       return { hasSystemAudio: false, hasMicAudio: false };
     }
 
@@ -907,17 +868,16 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         displayStream.getVideoTracks().forEach(t => t.stop());
       }
 
-      // Get microphone with HIGH QUALITY settings for music - disable processing
+      // Get microphone with high quality - use selected device if available
       const selectedInputDevice = getSelectedInputDevice();
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
-          echoCancellation: false,  // Disable for music quality
-          noiseSuppression: false,  // Disable for music quality
-          autoGainControl: false,   // Disable for consistent levels
+          echoCancellation: true,
+          noiseSuppression: true,
           sampleRate: 48000,
-          sampleSize: 24,           // Higher bit depth
-          channelCount: 2,          // Stereo
+          sampleSize: 16,
+          channelCount: 1,
         } as any
       });
 
@@ -964,14 +924,6 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       // Use participantsRef.current to get the latest participants (avoid stale closure)
       const others = participantsRef.current.filter(p => p.userId !== userId);
       console.log('[WebRTC] Sending offers to', others.length, 'participants:', others.map(p => p.userId));
-      console.log('[WebRTC] Transport open:', isTransportOpen(wsRef.current), 'Transport type:', wsRef.current?.constructor?.name);
-      
-      if (!isTransportOpen(wsRef.current)) {
-        console.error('[WebRTC] Cannot send offers - transport not open!');
-        setError('Connection lost - please refresh the page');
-        return { hasSystemAudio: false, hasMicAudio: false };
-      }
-      
       for (const other of others) {
         const pc = createPeerConnection(other.userId);
         combinedStream.getTracks().forEach(track => {
@@ -979,22 +931,15 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         });
 
         const offer = await pc.createOffer();
-        // Apply high quality audio settings to SDP
-        // Note: Must explicitly copy 'type' as RTCSessionDescriptionInit properties may not spread correctly
-        const highQualityOffer = {
-          type: offer.type,
-          sdp: setHighQualityAudioSDP(offer.sdp || '')
-        };
-        await pc.setLocalDescription(highQualityOffer);
+        await pc.setLocalDescription(offer);
         
-        console.log('[WebRTC] Sending offer to', other.userId);
-        wsRef.current!.send(JSON.stringify({
+        wsRef.current?.send(JSON.stringify({
           type: 'offer',
           roomId,
           userId,
           role,
           payload: { 
-            sdp: highQualityOffer,
+            sdp: offer,
             targetUserId: other.userId 
           }
         }));
@@ -1067,17 +1012,16 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   // Start mic-only streaming (no screen share needed)
   const startMic = useCallback(async () => {
     try {
-      // Get microphone with HIGH QUALITY settings for music - disable processing
+      // Get microphone with high quality - use selected device if available
       const selectedInputDevice = getSelectedInputDevice();
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
-          echoCancellation: false,  // Disable for music quality
-          noiseSuppression: false,  // Disable for music quality
-          autoGainControl: false,   // Disable for consistent levels
+          echoCancellation: true,
+          noiseSuppression: true,
           sampleRate: 48000,
-          sampleSize: 24,           // Higher bit depth
-          channelCount: 2,          // Stereo
+          sampleSize: 16,
+          channelCount: 1,
         } as any
       });
 
@@ -1112,13 +1056,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         // Create and send offer
         try {
           const offer = await pc.createOffer();
-          // Apply high quality audio settings to SDP
-          // Must explicitly copy type - RTCSessionDescriptionInit doesn't spread correctly
-          const highQualityOffer = {
-            type: offer.type,
-            sdp: setHighQualityAudioSDP(offer.sdp || '')
-          };
-          await pc.setLocalDescription(highQualityOffer);
+          await pc.setLocalDescription(offer);
           
           if (isTransportOpen(wsRef.current)) {
             wsRef.current!.send(JSON.stringify({
@@ -1127,7 +1065,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
               targetUserId: participant.userId,
               payload: {
                 targetUserId: participant.userId,
-                sdp: highQualityOffer,
+                sdp: offer,
                 hasVideo: false,
                 fromRole: role
               }

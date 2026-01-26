@@ -627,20 +627,6 @@ export async function registerRoutes(
         enabledAt: Date.now()
       });
       
-      // Broadcast to all participants that remote control is now enabled
-      const room = rooms.get(normalizedCode);
-      if (room) {
-        room.forEach((participant, participantId) => {
-          if (participant.ws.readyState === WebSocket.OPEN) {
-            participant.ws.send(JSON.stringify({
-              type: 'remote-control-status',
-              enabled: true,
-              artistUserId: userId
-            }));
-          }
-        });
-      }
-      
       console.log(`Remote control enabled for session ${normalizedCode} by ${userId}`);
       res.json({ enabled: true, sessionCode: normalizedCode });
     } catch (err: any) {
@@ -664,19 +650,6 @@ export async function registerRoutes(
       
       // Disable remote control
       remoteControlEnabled.delete(normalizedCode);
-      
-      // Broadcast to all participants that remote control is now disabled
-      const room = rooms.get(normalizedCode);
-      if (room) {
-        room.forEach((participant, participantId) => {
-          if (participant.ws.readyState === WebSocket.OPEN) {
-            participant.ws.send(JSON.stringify({
-              type: 'remote-control-status',
-              enabled: false
-            }));
-          }
-        });
-      }
       
       console.log(`Remote control disabled for session ${normalizedCode}`);
       res.json({ enabled: false, sessionCode: normalizedCode });
@@ -1027,62 +1000,18 @@ export async function registerRoutes(
       
       const message = { type, userId, role, payload };
       
-      // Get WebSocket room for cross-transport forwarding
-      const wsRoom = rooms.get(normalizedRoom);
-      
       // Forward to target user or broadcast
       const targetId = payload?.targetUserId;
-      
-      // For offer/answer/ice-candidate, need cross-transport forwarding
-      const isWebRTCMessage = type === 'offer' || type === 'answer' || type === 'ice-candidate';
-      
-      // Debug logging for WebRTC messages
-      if (isWebRTCMessage) {
-        const pollingUsers = Array.from(room.keys());
-        const wsUsers = wsRoom ? Array.from(wsRoom.keys()) : [];
-        console.log('[Signal Polling]', type, 'from', userId, 'target:', targetId);
-        console.log('[Signal Polling] Polling room users:', pollingUsers);
-        console.log('[Signal Polling] WS room users:', wsUsers);
-      }
-      
-      if (targetId) {
-        // Try polling room first
-        if (room.has(targetId)) {
-          const target = room.get(targetId)!;
-          console.log('[Signal Polling] Queuing', type, 'for polling user:', targetId);
-          target.messages.push(message);
-        }
-        // Also try WebSocket room for cross-transport (critical for WebRTC!)
-        if (isWebRTCMessage && wsRoom?.has(targetId)) {
-          const target = wsRoom.get(targetId)!;
-          if (target.ws.readyState === WebSocket.OPEN) {
-            console.log('[Signal Polling] Cross-transport forwarding', type, 'to WS user:', targetId);
-            target.ws.send(JSON.stringify({
-              type,
-              userId,
-              payload
-            }));
-          }
-        }
+      if (targetId && room.has(targetId)) {
+        const target = room.get(targetId)!;
+        target.messages.push(message);
       } else {
-        // Broadcast to all others in polling room
+        // Broadcast to all others
         room.forEach((p, pId) => {
           if (pId !== userId) {
             p.messages.push(message);
           }
         });
-        // Also broadcast to WebSocket room for cross-transport
-        if (isWebRTCMessage && wsRoom) {
-          wsRoom.forEach((participant, pId) => {
-            if (pId !== userId && participant.ws.readyState === WebSocket.OPEN) {
-              participant.ws.send(JSON.stringify({
-                type,
-                userId,
-                payload
-              }));
-            }
-          });
-        }
       }
       
       res.json({ success: true });
@@ -1432,37 +1361,28 @@ export async function registerRoutes(
           case 'ice-candidate': {
             if (!currentRoom) return;
             const room = rooms.get(currentRoom);
-            const pollingRoom = pollingRooms.get(currentRoom);
+            if (!room) return;
             
             // Forward to target user or broadcast
             const targetId = payload?.targetUserId;
-            const messageToSend = { type, userId: currentUserId, payload };
-            
-            if (targetId) {
-              // Try WebSocket room first
-              if (room?.has(targetId)) {
-                const target = room.get(targetId)!;
-                if (target.ws.readyState === WebSocket.OPEN) {
-                  console.log('[Signal] Forwarding', type, 'to WS user:', targetId);
-                  target.ws.send(JSON.stringify(messageToSend));
-                }
-              }
-              // Also try polling room (cross-transport)
-              if (pollingRoom?.has(targetId)) {
-                const target = pollingRoom.get(targetId)!;
-                console.log('[Signal] Forwarding', type, 'to polling user:', targetId);
-                target.messages.push(messageToSend);
+            if (targetId && room.has(targetId)) {
+              const target = room.get(targetId)!;
+              if (target.ws.readyState === WebSocket.OPEN) {
+                target.ws.send(JSON.stringify({
+                  type,
+                  userId: currentUserId,
+                  payload
+                }));
               }
             } else {
-              // Broadcast to all others in both transports
-              room?.forEach((participant, pId) => {
+              // Broadcast to all others
+              room.forEach((participant, pId) => {
                 if (pId !== currentUserId && participant.ws.readyState === WebSocket.OPEN) {
-                  participant.ws.send(JSON.stringify(messageToSend));
-                }
-              });
-              pollingRoom?.forEach((participant, pId) => {
-                if (pId !== currentUserId) {
-                  participant.messages.push(messageToSend);
+                  participant.ws.send(JSON.stringify({
+                    type,
+                    userId: currentUserId,
+                    payload
+                  }));
                 }
               });
             }
