@@ -149,6 +149,10 @@ function SessionContent() {
   // Agent screen dimensions for accurate mouse positioning
   const [agentScreenSize, setAgentScreenSize] = useState({ width: 1920, height: 1080 });
   
+  // Pointer lock for fullscreen cursor confinement
+  const [isPointerLocked, setIsPointerLocked] = useState(false);
+  const virtualCursorRef = useRef({ x: 960, y: 540 }); // Virtual cursor position when pointer is locked
+  
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
   const producerAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -311,6 +315,12 @@ function SessionContent() {
       
       enterFullscreen(container).then(() => {
         setIsFullscreen(true);
+        // Request pointer lock for engineers with control enabled to confine cursor
+        if (role === 'engineer' && controlEnabled && fullscreenVideoRef.current) {
+          setTimeout(() => {
+            fullscreenVideoRef.current?.requestPointerLock();
+          }, 100); // Small delay to ensure fullscreen is ready
+        }
       }).catch((err: any) => {
         console.log('Fullscreen API not available:', err.message);
         // Fallback: maximize in viewport with CSS (works on all devices)
@@ -341,6 +351,11 @@ function SessionContent() {
       // Exit fullscreen - restore body styles
       document.body.style.overflow = '';
       
+      // Exit pointer lock first
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+      
       if (isMobile) {
         // Mobile: Just reset state - overlay will unmount
         setIsFullscreen(false);
@@ -366,7 +381,12 @@ function SessionContent() {
   // Listen for fullscreen changes (including webkit)
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement || !!(document as any).webkitFullscreenElement);
+      const inFullscreen = !!document.fullscreenElement || !!(document as any).webkitFullscreenElement;
+      setIsFullscreen(inFullscreen);
+      // Exit pointer lock when exiting fullscreen
+      if (!inFullscreen && document.pointerLockElement) {
+        document.exitPointerLock();
+      }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
@@ -375,6 +395,22 @@ function SessionContent() {
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
   }, []);
+  
+  // Listen for pointer lock changes
+  useEffect(() => {
+    const handlePointerLockChange = () => {
+      const locked = !!document.pointerLockElement;
+      setIsPointerLocked(locked);
+      if (locked) {
+        // Initialize virtual cursor to center of screen
+        virtualCursorRef.current = { x: agentScreenSize.width / 2, y: agentScreenSize.height / 2 };
+      }
+    };
+    document.addEventListener('pointerlockchange', handlePointerLockChange);
+    return () => {
+      document.removeEventListener('pointerlockchange', handlePointerLockChange);
+    };
+  }, [agentScreenSize]);
 
   const {
     connected,
@@ -1332,34 +1368,55 @@ function SessionContent() {
             playsInline
             muted={videoAudioMuted}
             className="w-full h-full object-contain touch-none"
+            onClick={(e) => {
+              // Re-engage pointer lock if lost but still in fullscreen with control enabled
+              if (role === 'engineer' && controlEnabled && !document.pointerLockElement) {
+                e.currentTarget.requestPointerLock();
+              }
+            }}
             onMouseMove={(e) => {
               // Send mouse position on desktop
               if (role === 'engineer' && controlEnabled) {
-                const video = e.currentTarget;
-                const rect = video.getBoundingClientRect();
-                const videoRatio = video.videoWidth / video.videoHeight || 16/9;
-                const containerRatio = rect.width / rect.height;
+                let x: number, y: number;
                 
-                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                if (videoRatio > containerRatio) {
-                  videoDisplayWidth = rect.width;
-                  videoDisplayHeight = rect.width / videoRatio;
-                  offsetX = 0;
-                  offsetY = (rect.height - videoDisplayHeight) / 2;
+                if (isPointerLocked) {
+                  // Use relative movement when pointer is locked
+                  const sensitivity = 1.5; // Adjust cursor speed
+                  virtualCursorRef.current.x = Math.max(0, Math.min(agentScreenSize.width, 
+                    virtualCursorRef.current.x + e.movementX * sensitivity));
+                  virtualCursorRef.current.y = Math.max(0, Math.min(agentScreenSize.height, 
+                    virtualCursorRef.current.y + e.movementY * sensitivity));
+                  x = virtualCursorRef.current.x;
+                  y = virtualCursorRef.current.y;
                 } else {
-                  videoDisplayHeight = rect.height;
-                  videoDisplayWidth = rect.height * videoRatio;
-                  offsetX = (rect.width - videoDisplayWidth) / 2;
-                  offsetY = 0;
+                  // Use absolute position when not locked
+                  const video = e.currentTarget;
+                  const rect = video.getBoundingClientRect();
+                  const videoRatio = video.videoWidth / video.videoHeight || 16/9;
+                  const containerRatio = rect.width / rect.height;
+                  
+                  let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+                  if (videoRatio > containerRatio) {
+                    videoDisplayWidth = rect.width;
+                    videoDisplayHeight = rect.width / videoRatio;
+                    offsetX = 0;
+                    offsetY = (rect.height - videoDisplayHeight) / 2;
+                  } else {
+                    videoDisplayHeight = rect.height;
+                    videoDisplayWidth = rect.height * videoRatio;
+                    offsetX = (rect.width - videoDisplayWidth) / 2;
+                    offsetY = 0;
+                  }
+                  
+                  const moveX = e.clientX - rect.left - offsetX;
+                  const moveY = e.clientY - rect.top - offsetY;
+                  const normX = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
+                  const normY = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
+                  
+                  x = normX * agentScreenSize.width;
+                  y = normY * agentScreenSize.height;
                 }
                 
-                const moveX = e.clientX - rect.left - offsetX;
-                const moveY = e.clientY - rect.top - offsetY;
-                const normX = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
-                const normY = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
-                
-                const x = normX * agentScreenSize.width;
-                const y = normY * agentScreenSize.height;
                 sendFullControlCommand({ type: 'mouse-move', x, y });
               }
             }}
