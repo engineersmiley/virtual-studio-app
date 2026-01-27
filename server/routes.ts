@@ -478,6 +478,27 @@ export async function registerRoutes(
     }
   });
 
+  // List all subscribers (admin)
+  app.get('/api/admin/subscribers', async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const subscribers = users.filter(u => 
+        u.subscriptionStatus === 'active' || 
+        u.subscriptionStatus === 'trialing' || 
+        u.promoCode
+      ).map(u => ({
+        email: u.email,
+        status: u.promoCode ? 'promo' : u.subscriptionStatus,
+        promoCode: u.promoCode || null,
+        createdAt: u.createdAt
+      }));
+      res.json(subscribers);
+    } catch (err: any) {
+      console.error('Subscribers list error:', err);
+      res.status(500).json({ error: 'Failed to list subscribers' });
+    }
+  });
+
   app.get('/api/stripe/prices', async (req, res) => {
     try {
       let prices = await storage.listPrices(true);
