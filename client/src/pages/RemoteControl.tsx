@@ -9,7 +9,7 @@ const AGENT_VERSION = "1.16.0";
 
 // Download URLs - GitHub releases (using specific version for reliability)
 const GITHUB_REPO = "engineersmiley/virtual-studio-app";
-const AGENT_RELEASE_TAG = "v1.15.0";
+const AGENT_RELEASE_TAG = "v1.16.0";
 const LEGACY_RELEASE_TAG = "legacy-v1.0.24";
 const DOWNLOAD_URLS = {
   windows: `https://github.com/${GITHUB_REPO}/releases/download/${AGENT_RELEASE_TAG}/Virtual.Studio.Agent.Setup.exe`,
