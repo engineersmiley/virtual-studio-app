@@ -975,7 +975,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
       // Get microphone with high quality - use selected device if available
       const selectedInputDevice = getSelectedInputDevice();
-      let micStream: MediaStream;
+      let micStream: MediaStream | null = null;
       try {
         micStream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -990,12 +990,17 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       } catch (micErr) {
         console.log('[WebRTC] Selected mic failed, trying default:', micErr);
         // Fallback to any available mic
-        micStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-          }
-        });
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+            }
+          });
+        } catch (fallbackErr) {
+          console.log('[WebRTC] All mic access failed - continuing without mic:', fallbackErr);
+          // Continue without mic - video still works
+        }
       }
 
       // Mix audio using Web Audio API with high quality settings
@@ -1005,7 +1010,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
       // Track what audio sources we have
       const hasSystemAudio = displayStream && displayStream.getAudioTracks().length > 0;
-      const hasMicAudio = micStream.getAudioTracks().length > 0;
+      const hasMicAudio = micStream ? micStream.getAudioTracks().length > 0 : false;
       
       console.log('[WebRTC] Audio sources - System:', hasSystemAudio, 'Mic:', hasMicAudio);
 
@@ -1017,7 +1022,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
 
       // Add mic audio
-      if (hasMicAudio) {
+      if (hasMicAudio && micStream) {
         const micSource = audioContext.createMediaStreamSource(micStream);
         micSource.connect(dest);
         console.log('[WebRTC] Mic audio connected to mix');
