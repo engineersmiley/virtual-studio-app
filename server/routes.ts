@@ -66,9 +66,17 @@ export async function registerRoutes(
 
   // ============ SUBSCRIPTION VERIFICATION HELPER ============
   
+  // Emails with permanent unlimited access (founders/admins)
+  const UNLIMITED_ACCESS_EMAILS = [
+    'engineersmiley@gmail.com',
+    'washhousestudios@gmail.com'
+  ];
+  
   async function verifySubscription(emailHeader: string | string[] | undefined): Promise<boolean> {
     const email = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader;
     if (!email) return false;
+    // Check unlimited access whitelist first
+    if (UNLIMITED_ACCESS_EMAILS.includes(email.toLowerCase())) return true;
     const user = await storage.getUserByEmail(email);
     if (!user) return false;
     // Check promo code first
@@ -285,6 +293,15 @@ export async function registerRoutes(
       const email = req.query.email as string;
       if (!email) {
         return res.json({ hasSubscription: false });
+      }
+
+      // Check unlimited access whitelist first
+      if (UNLIMITED_ACCESS_EMAILS.includes(email.toLowerCase())) {
+        return res.json({ 
+          hasSubscription: true, 
+          status: 'unlimited',
+          email 
+        });
       }
 
       // First check our database
