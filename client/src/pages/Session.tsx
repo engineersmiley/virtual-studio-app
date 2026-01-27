@@ -717,10 +717,10 @@ function SessionContent() {
             description: sources.join(" + ") 
           });
         } else {
+          // Still works - just no audio detected
           toast({ 
-            title: "No Audio Sources", 
-            description: "Check your audio device settings",
-            variant: "destructive"
+            title: "Sharing Started (Video Only)", 
+            description: "No audio captured - check mic permissions"
           });
         }
       }

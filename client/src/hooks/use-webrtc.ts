@@ -975,16 +975,28 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
       // Get microphone with high quality - use selected device if available
       const selectedInputDevice = getSelectedInputDevice();
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 48000,
-          sampleSize: 16,
-          channelCount: 1,
-        } as any
-      });
+      let micStream: MediaStream;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 48000,
+            sampleSize: 16,
+            channelCount: 1,
+          } as any
+        });
+      } catch (micErr) {
+        console.log('[WebRTC] Selected mic failed, trying default:', micErr);
+        // Fallback to any available mic
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          }
+        });
+      }
 
       // Mix audio using Web Audio API with high quality settings
       const audioContext = new AudioContext({ sampleRate: 48000 });
@@ -1127,16 +1139,28 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     try {
       // Get microphone with high quality - use selected device if available
       const selectedInputDevice = getSelectedInputDevice();
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 48000,
-          sampleSize: 16,
-          channelCount: 1,
-        } as any
-      });
+      let micStream: MediaStream;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: selectedInputDevice ? { exact: selectedInputDevice } : undefined,
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 48000,
+            sampleSize: 16,
+            channelCount: 1,
+          } as any
+        });
+      } catch (micErr) {
+        console.log('[WebRTC] Selected mic failed, trying default:', micErr);
+        // Fallback to any available mic
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          }
+        });
+      }
 
       micStreamRef.current = micStream;
       setIsMicActive(true);
