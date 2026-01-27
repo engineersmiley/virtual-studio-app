@@ -1033,10 +1033,17 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       let combinedStream: MediaStream;
       
       if (videoTrack && !audioOnly) {
-        combinedStream = new MediaStream([videoTrack, audioTrack]);
-      } else {
+        // Video + audio (audio may be empty but that's ok)
+        const tracks = [videoTrack];
+        if (audioTrack) tracks.push(audioTrack);
+        combinedStream = new MediaStream(tracks);
+      } else if (audioTrack) {
         // Audio-only stream
         combinedStream = new MediaStream([audioTrack]);
+      } else {
+        // No audio and no video - this shouldn't happen but handle gracefully
+        console.error('[WebRTC] No tracks available for stream');
+        return { hasSystemAudio: false, hasMicAudio: false };
       }
 
       localStreamRef.current = combinedStream;
