@@ -169,7 +169,7 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
             <Crown className="w-16 h-16 text-secondary mx-auto mb-4" />
             <h1 className="font-display font-bold text-2xl mb-2">Subscription Required</h1>
             <p className="text-muted-foreground">
-              Join Virtual Studio Pro to create and join recording sessions
+              Join Remote Studio Pro to create and join recording sessions
             </p>
           </div>
 

@@ -85,7 +85,7 @@ export async function sendWelcomeEmail(toEmail: string, paymentDetails?: Payment
     const amountStr = paymentDetails ? formatCurrency(paymentDetails.amount, paymentDetails.currency) : '$9.99';
     const nextBillingStr = paymentDetails?.nextBillingDate ? formatDate(paymentDetails.nextBillingDate) : 'Monthly (see account for details)';
     
-    const subject = 'Welcome to Virtual Studio Pro - Payment Confirmed!';
+    const subject = 'Welcome to Remote Studio Pro - Payment Confirmed!';
     const body = `
 <!DOCTYPE html>
 <html>
@@ -110,18 +110,18 @@ export async function sendWelcomeEmail(toEmail: string, paymentDetails?: Payment
 <body>
   <div class="container">
     <div class="logo">
-      <h1>Virtual Studio</h1>
+      <h1>Remote Studio</h1>
     </div>
     <div class="content">
       <h2>Payment Confirmed - Welcome to Pro!</h2>
-      <p>Thank you for subscribing! Your payment has been processed and you now have full access to Virtual Studio Pro.</p>
+      <p>Thank you for subscribing! Your payment has been processed and you now have full access to Remote Studio Pro.</p>
       
       <div class="payment-box">
         <p style="margin: 0 0 15px 0; font-weight: bold; color: #fff;">Payment Details:</p>
         <table style="width: 100%; border-collapse: collapse;">
           <tr>
             <td style="color: #888; padding: 5px 0;">Plan:</td>
-            <td style="color: #00f0ff; font-weight: bold; text-align: right;">Virtual Studio Pro (Monthly)</td>
+            <td style="color: #00f0ff; font-weight: bold; text-align: right;">Remote Studio Pro (Monthly)</td>
           </tr>
           <tr>
             <td style="color: #888; padding: 5px 0;">Amount Paid:</td>
@@ -145,11 +145,11 @@ export async function sendWelcomeEmail(toEmail: string, paymentDetails?: Payment
       </div>
       
       <p>Ready to start your first session?</p>
-      <a href="https://virtualstudio.sale" class="button">Open Virtual Studio</a>
+      <a href="https://virtualstudio.sale" class="button">Open Remote Studio</a>
       
       <div class="features" style="margin-top: 30px;">
         <p><strong>Install the App:</strong></p>
-        <p>Add Virtual Studio to your desktop or phone for quick access:</p>
+        <p>Add Remote Studio to your desktop or phone for quick access:</p>
         <ul>
           <li><strong>Desktop (Chrome/Edge):</strong> Click the install icon in your browser's address bar</li>
           <li><strong>iPhone/iPad:</strong> Tap Share, then "Add to Home Screen"</li>
@@ -159,21 +159,21 @@ export async function sendWelcomeEmail(toEmail: string, paymentDetails?: Payment
       
       <div class="features" style="margin-top: 20px; background: rgba(255,0,255,0.1);">
         <p><strong>Enable Remote Control (Optional):</strong></p>
-        <p>Want your engineer to control your screen remotely during sessions? Download and install Virtual Studio Agent:</p>
-        <a href="https://virtualstudio.sale/remote-control" style="display: inline-block; background: linear-gradient(90deg, #ff00ff, #00f0ff); color: #000; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 10px 0;">Download Virtual Studio Agent</a>
-        <p style="font-size: 12px; color: #888; margin-top: 10px;">After installing, connect to your session and your engineer can control your DAW directly from Virtual Studio.</p>
+        <p>Want your engineer to control your screen remotely during sessions? Download and install Remote Studio Agent:</p>
+        <a href="https://virtualstudio.sale/remote-control" style="display: inline-block; background: linear-gradient(90deg, #ff00ff, #00f0ff); color: #000; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 10px 0;">Download Remote Studio Agent</a>
+        <p style="font-size: 12px; color: #888; margin-top: 10px;">After installing, connect to your session and your engineer can control your DAW directly from Remote Studio.</p>
       </div>
       
-      <p style="margin-top: 30px;">Need to manage your subscription? <a href="https://virtualstudio.sale" style="color: #00f0ff;">Visit Virtual Studio</a> and click "Manage Subscription" in your account.</p>
+      <p style="margin-top: 30px;">Need to manage your subscription? <a href="https://virtualstudio.sale" style="color: #00f0ff;">Visit Remote Studio</a> and click "Manage Subscription" in your account.</p>
       
       <p>If you have any questions, just reply to this email.</p>
       
       <p>Happy creating!</p>
-      <p class="highlight">- The Virtual Studio Team</p>
+      <p class="highlight">- The Remote Studio Team</p>
     </div>
     <div class="footer">
-      <p>Virtual Studio | Remote Music Recording Collaboration</p>
-      <p style="margin-top: 10px;">You're receiving this email because you subscribed to Virtual Studio Pro.</p>
+      <p>Remote Studio | Remote Music Recording Collaboration</p>
+      <p style="margin-top: 10px;">You're receiving this email because you subscribed to Remote Studio Pro.</p>
     </div>
   </div>
 </body>

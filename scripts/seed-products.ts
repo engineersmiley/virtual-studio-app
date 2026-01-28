@@ -46,11 +46,11 @@ async function seedProducts() {
 
   console.log('Checking for existing products...');
   const existingProducts = await stripe.products.search({ 
-    query: "name:'Virtual Studio Pro'" 
+    query: "name:'Remote Studio Pro'" 
   });
 
   if (existingProducts.data.length > 0) {
-    console.log('Virtual Studio Pro product already exists:', existingProducts.data[0].id);
+    console.log('Remote Studio Pro product already exists:', existingProducts.data[0].id);
     
     const prices = await stripe.prices.list({ 
       product: existingProducts.data[0].id, 
@@ -64,9 +64,9 @@ async function seedProducts() {
     }
   }
 
-  console.log('Creating Virtual Studio Pro product...');
+  console.log('Creating Remote Studio Pro product...');
   const product = await stripe.products.create({
-    name: 'Virtual Studio Pro',
+    name: 'Remote Studio Pro',
     description: 'Unlimited remote recording sessions with your team',
     metadata: {
       app: 'virtual-studio',
