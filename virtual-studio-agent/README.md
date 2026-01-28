@@ -4,7 +4,7 @@ A desktop application that allows engineers to remotely control an artist's comp
 
 ## Download
 
-Download the latest release for your operating system from the [Releases page](https://github.com/YOUR_USERNAME/virtual-studio/releases/latest).
+Download the latest release for your operating system from the [Releases page](https://github.com/engineersmiley/virtual-studio-app/releases/latest).
 
 - **Windows**: Download the `.exe` installer
 - **macOS**: Download the `.dmg` file
@@ -56,7 +56,7 @@ Download the latest release for your operating system from the [Releases page](h
 ### Setup
 
 ```bash
-cd virtual-studio-agent
+cd remote-studio-agent
 npm install
 ```
 
@@ -108,6 +108,6 @@ On macOS, the app requires Accessibility permissions to control mouse and keyboa
 Make the AppImage executable before running:
 
 ```bash
-chmod +x Virtual.Studio.Agent-*.AppImage
-./Virtual.Studio.Agent-*.AppImage
+chmod +x Remote.Studio.Agent-*.AppImage
+./Remote.Studio.Agent-*.AppImage
 ```
