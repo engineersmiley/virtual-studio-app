@@ -31,7 +31,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: virtual-studio-agent-mac-legacy
+          name: remote-studio-agent-mac-legacy
           path: virtual-studio-agent/dist/*.zip
 
   release:
@@ -45,26 +45,26 @@ jobs:
       - name: Download macOS Legacy artifact
         uses: actions/download-artifact@v4
         with:
-          name: virtual-studio-agent-mac-legacy
+          name: remote-studio-agent-mac-legacy
           path: ./dist
 
       - name: Rename file
         run: |
           cd dist
-          for f in *.zip; do mv "$f" "Virtual.Studio.Agent.Legacy.zip" 2>/dev/null || true; done
+          for f in *.zip; do mv "$f" "Remote.Studio.Agent.Legacy.zip" 2>/dev/null || true; done
           ls -la
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Virtual Studio Agent Legacy ${{ github.ref_name }}
+          name: Remote Studio Agent Legacy ${{ github.ref_name }}
           body: |
-            ## Virtual Studio Agent Legacy ${{ github.ref_name }}
+            ## Remote Studio Agent Legacy ${{ github.ref_name }}
             
             For older macOS (10.11 - 10.14):
-            - **macOS Legacy**: Virtual.Studio.Agent.Legacy.zip
+            - **macOS Legacy**: Remote.Studio.Agent.Legacy.zip
           files: |
-            dist/Virtual.Studio.Agent.Legacy.zip
+            dist/Remote.Studio.Agent.Legacy.zip
           draft: false
           prerelease: false
         env:
