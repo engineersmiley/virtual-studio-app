@@ -300,7 +300,7 @@ export default function Home() {
                       className="bg-gradient-to-r from-secondary to-primary"
                     >
                       <Download className="w-4 h-4 mr-2" />
-                      Remote Control Agent
+                      Remote Studio Agent
                     </Button>
                   </Link>
                   <Button 
