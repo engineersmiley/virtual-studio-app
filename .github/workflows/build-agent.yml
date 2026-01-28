@@ -1,4 +1,4 @@
-name: Build Virtual Studio Agent
+name: Build Remote Studio Agent
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: virtual-studio-agent-win
+          name: remote-studio-agent-win
           path: virtual-studio-agent/dist/*.exe
 
   build-mac:
@@ -54,7 +54,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: virtual-studio-agent-mac
+          name: remote-studio-agent-mac
           path: virtual-studio-agent/dist/*.dmg
 
   build-linux:
@@ -84,38 +84,11 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: virtual-studio-agent-linux
+          name: remote-studio-agent-linux
           path: virtual-studio-agent/dist/*.AppImage
 
-  build-mac-legacy:
-    runs-on: macos-13
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Setup legacy build
-        working-directory: virtual-studio-agent
-        run: |
-          cp package-legacy.json package.json
-          npm install
-
-      - name: Build for macOS Legacy
-        working-directory: virtual-studio-agent
-        run: npm run build:mac
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: virtual-studio-agent-mac-legacy
-          path: virtual-studio-agent/dist/*.zip
-
   release:
-    needs: [build-windows, build-mac, build-linux, build-mac-legacy]
+    needs: [build-windows, build-mac, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -125,60 +98,47 @@ jobs:
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: virtual-studio-agent-win
+          name: remote-studio-agent-win
           path: ./dist
 
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: virtual-studio-agent-mac
+          name: remote-studio-agent-mac
           path: ./dist
 
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
-          name: virtual-studio-agent-linux
+          name: remote-studio-agent-linux
           path: ./dist
 
-      - name: Download macOS Legacy artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: virtual-studio-agent-mac-legacy
-          path: ./dist-legacy
-
       - name: List all artifacts
-        run: |
-          ls -la dist/
-          ls -la dist-legacy/
+        run: ls -la dist/
 
       - name: Rename files for consistent download URLs
         run: |
           cd dist
-          for f in *.exe; do mv "$f" "Virtual.Studio.Agent.Setup.exe" 2>/dev/null || true; done
-          for f in *.dmg; do mv "$f" "Virtual.Studio.Agent.dmg" 2>/dev/null || true; done
-          for f in *.AppImage; do mv "$f" "Virtual.Studio.Agent.AppImage" 2>/dev/null || true; done
-          ls -la
-          cd ../dist-legacy
-          for f in *.zip; do mv "$f" "Virtual.Studio.Agent.Legacy.zip" 2>/dev/null || true; done
+          for f in *.exe; do mv "$f" "Remote.Studio.Agent.Setup.exe" 2>/dev/null || true; done
+          for f in *.dmg; do mv "$f" "Remote.Studio.Agent.dmg" 2>/dev/null || true; done
+          for f in *.AppImage; do mv "$f" "Remote.Studio.Agent.AppImage" 2>/dev/null || true; done
           ls -la
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Virtual Studio Agent ${{ github.ref_name }}
+          name: Remote Studio Agent ${{ github.ref_name }}
           body: |
-            ## Virtual Studio Agent ${{ github.ref_name }}
+            ## Remote Studio Agent ${{ github.ref_name }}
             
             Download the installer for your operating system:
-            - **Windows**: Virtual.Studio.Agent.Setup.exe
-            - **macOS** (10.15+): Virtual.Studio.Agent.dmg
-            - **macOS Legacy** (10.11-10.14): Virtual.Studio.Agent.Legacy.zip
-            - **Linux**: Virtual.Studio.Agent.AppImage
+            - **Windows**: Remote.Studio.Agent.Setup.exe
+            - **macOS** (10.15+): Remote.Studio.Agent.dmg
+            - **Linux**: Remote.Studio.Agent.AppImage
           files: |
-            dist/Virtual.Studio.Agent.Setup.exe
-            dist/Virtual.Studio.Agent.dmg
-            dist/Virtual.Studio.Agent.AppImage
-            dist-legacy/Virtual.Studio.Agent.Legacy.zip
+            dist/Remote.Studio.Agent.Setup.exe
+            dist/Remote.Studio.Agent.dmg
+            dist/Remote.Studio.Agent.AppImage
           draft: false
           prerelease: false
         env:
