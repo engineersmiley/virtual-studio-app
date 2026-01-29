@@ -212,10 +212,8 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           className="relative z-10 text-center max-w-4xl mx-auto"
         >
-          <div className="flex items-center justify-center gap-4 mb-6">
-            <span className="text-5xl md:text-7xl lg:text-8xl font-bold font-tech text-white">Remote</span>
-            <img src={logoImage} alt="Remote Studio" className="h-24 md:h-32 lg:h-40 w-auto" />
-            <span className="text-5xl md:text-7xl lg:text-8xl font-bold font-tech text-white">Studio</span>
+          <div className="flex items-center justify-center mb-6">
+            <img src={logoImage} alt="Remote Studio" className="h-48 md:h-64 lg:h-80 w-auto" />
           </div>
           
           <p className="text-xl text-muted-foreground font-tech uppercase tracking-widest mb-12">
