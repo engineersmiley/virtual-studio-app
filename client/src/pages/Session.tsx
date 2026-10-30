@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
+import { isSyntheticClickAfterTouch, mapVideoPointToScreen } from '@/lib/remote-control-video.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
@@ -159,6 +160,7 @@ function SessionContent() {
   
   // Touch guard to prevent double triggers (touch + synthetic click)
   const lastTouchTimeRef = useRef<number>(0);
+  const lastRemoteVideoTouchTimeRef = useRef<number>(0);
   const TOUCH_DELAY_MS = 500; // Ignore clicks within 500ms of touch
   
   const { toast } = useToast();
@@ -532,6 +534,7 @@ function SessionContent() {
     if (!video) return;
     
     const touch = e.changedTouches[0];
+    lastRemoteVideoTouchTimeRef.current = Date.now();
     const rect = video.getBoundingClientRect();
     const touchDuration = Date.now() - touchStartRef.current.time;
     const moveDistance = Math.sqrt(
@@ -541,8 +544,14 @@ function SessionContent() {
     
     // If it was a tap (not much movement), click at that position
     if (moveDistance < 15 && touchDuration < 400) {
-      const x = ((touch.clientX - rect.left) / rect.width) * agentScreenSize.width;
-      const y = ((touch.clientY - rect.top) / rect.height) * agentScreenSize.height;
+      const { x, y } = mapVideoPointToScreen(
+        touch.clientX,
+        touch.clientY,
+        rect,
+        video.videoWidth,
+        video.videoHeight,
+        agentScreenSize,
+      );
       
       // Move to position then click
       sendFullControlCommand({ type: 'mouse-move', x, y });
@@ -1370,6 +1379,14 @@ function SessionContent() {
             className="w-full h-full object-contain touch-none"
             onClick={(e) => {
               if (role === 'engineer' && controlEnabled) {
+                if (isSyntheticClickAfterTouch(
+                  lastRemoteVideoTouchTimeRef.current,
+                  Date.now(),
+                  TOUCH_DELAY_MS,
+                )) {
+                  return;
+                }
+
                 // Re-engage pointer lock if it was lost while fullscreen control is active.
                 if (!document.pointerLockElement) {
                   e.currentTarget.requestPointerLock();
@@ -1377,31 +1394,14 @@ function SessionContent() {
 
                 const video = e.currentTarget;
                 const rect = video.getBoundingClientRect();
-                const videoRatio = video.videoWidth / video.videoHeight || 16 / 9;
-                const containerRatio = rect.width / rect.height;
-
-                let videoDisplayWidth: number;
-                let videoDisplayHeight: number;
-                let offsetX: number;
-                let offsetY: number;
-                if (videoRatio > containerRatio) {
-                  videoDisplayWidth = rect.width;
-                  videoDisplayHeight = rect.width / videoRatio;
-                  offsetX = 0;
-                  offsetY = (rect.height - videoDisplayHeight) / 2;
-                } else {
-                  videoDisplayHeight = rect.height;
-                  videoDisplayWidth = rect.height * videoRatio;
-                  offsetX = (rect.width - videoDisplayWidth) / 2;
-                  offsetY = 0;
-                }
-
-                const clickX = e.clientX - rect.left - offsetX;
-                const clickY = e.clientY - rect.top - offsetY;
-                const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
-                const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
-                const x = normX * agentScreenSize.width;
-                const y = normY * agentScreenSize.height;
+                const { x, y } = mapVideoPointToScreen(
+                  e.clientX,
+                  e.clientY,
+                  rect,
+                  video.videoWidth,
+                  video.videoHeight,
+                  agentScreenSize,
+                );
 
                 sendFullControlCommand({ type: 'mouse-move', x, y });
                 setTimeout(() => {
@@ -1527,31 +1527,17 @@ function SessionContent() {
               if (role === 'engineer' && controlEnabled) {
                 const touch = e.changedTouches[0];
                 if (!touch) return;
+                lastRemoteVideoTouchTimeRef.current = Date.now();
                 const video = e.currentTarget;
                 const rect = video.getBoundingClientRect();
-                const videoRatio = video.videoWidth / video.videoHeight || 16/9;
-                const containerRatio = rect.width / rect.height;
-                
-                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                if (videoRatio > containerRatio) {
-                  videoDisplayWidth = rect.width;
-                  videoDisplayHeight = rect.width / videoRatio;
-                  offsetX = 0;
-                  offsetY = (rect.height - videoDisplayHeight) / 2;
-                } else {
-                  videoDisplayHeight = rect.height;
-                  videoDisplayWidth = rect.height * videoRatio;
-                  offsetX = (rect.width - videoDisplayWidth) / 2;
-                  offsetY = 0;
-                }
-                
-                const clickX = touch.clientX - rect.left - offsetX;
-                const clickY = touch.clientY - rect.top - offsetY;
-                const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
-                const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
-                
-                const x = normX * agentScreenSize.width;
-                const y = normY * agentScreenSize.height;
+                const { x, y } = mapVideoPointToScreen(
+                  touch.clientX,
+                  touch.clientY,
+                  rect,
+                  video.videoWidth,
+                  video.videoHeight,
+                  agentScreenSize,
+                );
                 sendFullControlCommand({ type: 'mouse-move', x, y });
                 setTimeout(() => {
                   sendFullControlCommand({ type: 'mouse-click', button: 'left' });
@@ -1735,32 +1721,25 @@ function SessionContent() {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (isSyntheticClickAfterTouch(
+                      lastRemoteVideoTouchTimeRef.current,
+                      Date.now(),
+                      TOUCH_DELAY_MS,
+                    )) {
+                      return;
+                    }
+
                     if (role === 'engineer' && controlEnabled && remoteVideoRef.current) {
                       const video = remoteVideoRef.current;
                       const rect = video.getBoundingClientRect();
-                      const videoRatio = video.videoWidth / video.videoHeight || 16/9;
-                      const containerRatio = rect.width / rect.height;
-                      
-                      let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                      if (videoRatio > containerRatio) {
-                        videoDisplayWidth = rect.width;
-                        videoDisplayHeight = rect.width / videoRatio;
-                        offsetX = 0;
-                        offsetY = (rect.height - videoDisplayHeight) / 2;
-                      } else {
-                        videoDisplayHeight = rect.height;
-                        videoDisplayWidth = rect.height * videoRatio;
-                        offsetX = (rect.width - videoDisplayWidth) / 2;
-                        offsetY = 0;
-                      }
-                      
-                      const clickX = e.clientX - rect.left - offsetX;
-                      const clickY = e.clientY - rect.top - offsetY;
-                      const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
-                      const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
-                      
-                      const x = normX * agentScreenSize.width;
-                      const y = normY * agentScreenSize.height;
+                      const { x, y } = mapVideoPointToScreen(
+                        e.clientX,
+                        e.clientY,
+                        rect,
+                        video.videoWidth,
+                        video.videoHeight,
+                        agentScreenSize,
+                      );
                       sendFullControlCommand({ type: 'mouse-move', x, y });
                       setTimeout(() => {
                         sendFullControlCommand({ type: 'mouse-click', button: 'left' });
