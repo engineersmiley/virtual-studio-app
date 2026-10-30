@@ -133,7 +133,7 @@ jobs:
             
             Download the installer for your operating system:
             - **Windows**: Virtual.Studio.Agent.Setup.exe
-            - **macOS** (10.15+): Virtual.Studio.Agent.dmg
+            - **macOS** (11+): Virtual.Studio.Agent.dmg
             - **Linux**: Virtual.Studio.Agent.AppImage
           files: |
             dist/Virtual.Studio.Agent.Setup.exe

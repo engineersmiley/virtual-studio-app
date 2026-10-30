@@ -5,15 +5,16 @@ import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, 
 import { Link } from "wouter";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 
-const AGENT_VERSION = "1.19.0";
+const AGENT_VERSION = "1.20.0";
 
-// Download URLs - Google Drive (v1.19.0)
+// Download URLs - GitHub release assets
+const RELEASE_DOWNLOAD_BASE = "https://github.com/engineersmiley/virtual-studio-app/releases/download";
 const DOWNLOAD_URLS = {
-  windows: "https://drive.google.com/file/d/1KpB2CP2adRf2nrA0NL4kFiXZ_BOBhbbx/view?usp=drive_link",
-  mac: "https://drive.google.com/file/d/19j2818TKnaCjo8WJj5hBwqRaXpeFHYTK/view?usp=drive_link",
-  linux: "https://drive.google.com/file/d/1aZw1IBwAAm1VxpbQkP2yMqlv88Gduy2F/view?usp=drive_link",
+  windows: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Remote.Studio.Agent.Setup.exe`,
+  mac: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Remote.Studio.Agent.dmg`,
+  linux: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Remote.Studio.Agent.AppImage`,
   // Legacy build - works on macOS 10.11+ (El Capitan)
-  macLegacy: "https://drive.google.com/file/d/1KLiblwEu1CL30AB8wV1v7fYBLPeeqCrn/view?usp=sharing",
+  macLegacy: `${RELEASE_DOWNLOAD_BASE}/legacy-v${AGENT_VERSION}/Remote.Studio.Agent.Legacy.zip`,
 };
 
 export default function RemoteControl() {

@@ -1,2 +1,3 @@
 - [Agent updater identity](agent-updater-identity.md) — keep Electron app IDs stable during rebrands so existing installations can still receive updates.
 - [Admin subscriber data](admin-subscriber-access.md) — do not expose user emails or subscription records through unprotected admin routes.
+- [GitHub workflow push permission](github-workflow-push-scope.md) — workflow changes in release tags require the GitHub connection's `workflow` scope.
