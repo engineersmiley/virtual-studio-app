@@ -259,6 +259,7 @@ function SessionContent() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const lastTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const fullscreenTouchRef = useRef<{ x: number; y: number; time: number; moved: boolean } | null>(null);
   const lastMouseMoveRef = useRef<number>(0);
   const MOUSE_THROTTLE_MS = 16; // ~60fps for smooth movement
   
@@ -1484,8 +1485,14 @@ function SessionContent() {
             }}
             onTouchStart={(e) => {
               // Prevent scrolling when engineer is controlling
+              fullscreenTouchRef.current = null;
               if (role === 'engineer' && controlEnabled) {
                 e.preventDefault();
+                const touch = e.touches[0];
+                if (e.touches.length !== 1 || !touch) return;
+                fullscreenTouchRef.current = {
+                  x: touch.clientX, y: touch.clientY, time: Date.now(), moved: false,
+                };
               }
             }}
             onTouchMove={(e) => {
@@ -1494,6 +1501,11 @@ function SessionContent() {
                 e.preventDefault();
                 const touch = e.touches[0];
                 if (!touch) return;
+                const gesture = fullscreenTouchRef.current;
+                if (gesture && (e.touches.length !== 1 ||
+                    Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= 15)) {
+                  gesture.moved = true;
+                }
                 const video = e.currentTarget;
                 const rect = video.getBoundingClientRect();
                 const videoRatio = video.videoWidth / video.videoHeight || 16/9;
@@ -1523,11 +1535,16 @@ function SessionContent() {
               }
             }}
             onTouchEnd={(e) => {
-              // Handle touch as click for mobile
+              const gesture = fullscreenTouchRef.current;
+              fullscreenTouchRef.current = null;
               if (role === 'engineer' && controlEnabled) {
-                const touch = e.changedTouches[0];
-                if (!touch) return;
+                e.preventDefault();
+                // Suppress the browser's synthetic click after taps AND drags.
                 lastRemoteVideoTouchTimeRef.current = Date.now();
+                const touch = e.changedTouches[0];
+                if (!touch || !gesture || gesture.moved || e.touches.length !== 0 ||
+                    Date.now() - gesture.time >= 400 ||
+                    Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= 15) return;
                 const video = e.currentTarget;
                 const rect = video.getBoundingClientRect();
                 const { x, y } = mapVideoPointToScreen(
@@ -1543,6 +1560,10 @@ function SessionContent() {
                   sendFullControlCommand({ type: 'mouse-click', button: 'left' });
                 }, 50);
               }
+            }}
+            onTouchCancel={() => {
+              fullscreenTouchRef.current = null;
+              lastRemoteVideoTouchTimeRef.current = Date.now();
             }}
             style={{ cursor: 'none' }}
           />
