@@ -478,25 +478,9 @@ export async function registerRoutes(
     }
   });
 
-  // List all subscribers (admin)
-  app.get('/api/admin/subscribers', async (req, res) => {
-    try {
-      const users = await storage.getAllUsers();
-      const subscribers = users.filter(u => 
-        u.subscriptionStatus === 'active' || 
-        u.subscriptionStatus === 'trialing' || 
-        u.promoCode
-      ).map(u => ({
-        email: u.email,
-        status: u.promoCode ? 'promo' : u.subscriptionStatus,
-        promoCode: u.promoCode || null,
-        createdAt: u.createdAt
-      }));
-      res.json(subscribers);
-    } catch (err: any) {
-      console.error('Subscribers list error:', err);
-      res.status(500).json({ error: 'Failed to list subscribers' });
-    }
+  // Do not expose subscriber records until a real admin-authentication boundary exists.
+  app.get('/api/admin/subscribers', (_req, res) => {
+    res.status(503).json({ error: 'Subscriber listing requires authenticated admin access' });
   });
 
   app.get('/api/stripe/prices', async (req, res) => {
@@ -855,7 +839,7 @@ export async function registerRoutes(
         if (now - participant.lastPoll > POLL_TIMEOUT) {
           // Check if user is still connected via WebSocket before marking as left
           const wsRoom = rooms.get(roomId);
-          const stillConnectedViaWS = wsRoom && Array.from(wsRoom.values()).some(p => p.odId === participant.userId);
+          const stillConnectedViaWS = wsRoom && Array.from(wsRoom.values()).some(p => p.userId === participant.userId);
           
           if (stillConnectedViaWS) {
             // User switched to WebSocket, just clean up polling entry silently

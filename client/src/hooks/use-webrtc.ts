@@ -121,6 +121,9 @@ interface AgentStatus {
   connected: boolean;
   controlAllowed: boolean;
   controlPending: boolean;
+  screenWidth?: number;
+  screenHeight?: number;
+  scaleFactor?: number;
 }
 
 interface RemoteStreamInfo {
@@ -739,6 +742,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         if (onAgentStatusRef.current) {
           onAgentStatusRef.current({ 
             connected: true, 
+            controlAllowed,
+            controlPending,
             screenWidth: message.screenWidth,
             screenHeight: message.screenHeight,
             scaleFactor: message.scaleFactor
