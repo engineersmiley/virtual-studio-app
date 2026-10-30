@@ -25,6 +25,9 @@ jobs:
       - name: Check TypeScript
         run: npm run check
 
+      - name: Build root web app
+        run: npm run build
+
   build-windows:
     needs: [typecheck]
     runs-on: windows-latest
