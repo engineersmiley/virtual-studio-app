@@ -7,7 +7,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Check TypeScript
+        run: npm run check
+
   build-windows:
+    needs: [typecheck]
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -33,6 +52,7 @@ jobs:
           path: virtual-studio-agent/dist/*.exe
 
   build-mac:
+    needs: [typecheck]
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -58,6 +78,7 @@ jobs:
           path: virtual-studio-agent/dist/*.dmg
 
   build-linux:
+    needs: [typecheck]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
