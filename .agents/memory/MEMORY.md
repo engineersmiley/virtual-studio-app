@@ -3,3 +3,4 @@
 - [GitHub workflow push permission](github-workflow-push-scope.md) — workflow changes in release tags require the GitHub connection's `workflow` scope.
 - [CSS dependency patching](css-dependency-patching.md) — retain the patched selector-parser override until Tailwind's dependencies stop requiring the vulnerable major.
 - [Portable npm lockfiles](portable-npm-lockfiles.md) — registry-proxy installs can serialize private hosts; normalize URLs without removing integrity hashes.
+- [Remote input geometry](remote-input-geometry.md) — absolute movement must match clicks; keep relative pointer-lock behavior separate.

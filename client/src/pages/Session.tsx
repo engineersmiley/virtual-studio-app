@@ -520,9 +520,14 @@ function SessionContent() {
     const touch = e.touches[0];
     const rect = video.getBoundingClientRect();
     
-    // Calculate position relative to video
-    const x = Math.max(0, Math.min(agentScreenSize.width, ((touch.clientX - rect.left) / rect.width) * agentScreenSize.width));
-    const y = Math.max(0, Math.min(agentScreenSize.height, ((touch.clientY - rect.top) / rect.height) * agentScreenSize.height));
+    const { x, y } = mapVideoPointToScreen(
+      touch.clientX,
+      touch.clientY,
+      rect,
+      video.videoWidth,
+      video.videoHeight,
+      agentScreenSize,
+    );
     
     sendFullControlCommand({ type: 'mouse-move', x, y });
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
@@ -1431,53 +1436,14 @@ function SessionContent() {
                   // Use absolute position when not locked
                   const video = e.currentTarget;
                   const rect = video.getBoundingClientRect();
-                  const videoRatio = video.videoWidth / video.videoHeight || 16/9;
-                  const containerRatio = rect.width / rect.height;
-                  
-                  let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                  if (videoRatio > containerRatio) {
-                    videoDisplayWidth = rect.width;
-                    videoDisplayHeight = rect.width / videoRatio;
-                    offsetX = 0;
-                    offsetY = (rect.height - videoDisplayHeight) / 2;
-                  } else {
-                    videoDisplayHeight = rect.height;
-                    videoDisplayWidth = rect.height * videoRatio;
-                    offsetX = (rect.width - videoDisplayWidth) / 2;
-                    offsetY = 0;
-                  }
-                  
-                  const moveX = e.clientX - rect.left - offsetX;
-                  const moveY = e.clientY - rect.top - offsetY;
-                  // Don't clamp - allow going into letterbox areas to reach screen edges
-                  let normX = moveX / videoDisplayWidth;
-                  let normY = moveY / videoDisplayHeight;
-                  
-                  // Edge acceleration - when cursor is near window edges, push coordinates further
-                  const edgeThreshold = 50; // pixels from window edge
-                  const windowWidth = window.innerWidth;
-                  const windowHeight = window.innerHeight;
-                  
-                  // Left edge
-                  if (e.clientX < edgeThreshold) {
-                    normX = -0.05; // Push past left edge
-                  }
-                  // Right edge  
-                  if (e.clientX > windowWidth - edgeThreshold) {
-                    normX = 1.05; // Push past right edge
-                  }
-                  // Top edge
-                  if (e.clientY < edgeThreshold) {
-                    normY = -0.05; // Push past top edge
-                  }
-                  // Bottom edge - critical for dock access
-                  if (e.clientY > windowHeight - edgeThreshold) {
-                    normY = 1.05; // Push past bottom edge to reach dock
-                  }
-                  
-                  // Map to screen coordinates
-                  x = normX * agentScreenSize.width;
-                  y = normY * agentScreenSize.height;
+                  ({ x, y } = mapVideoPointToScreen(
+                    e.clientX,
+                    e.clientY,
+                    rect,
+                    video.videoWidth,
+                    video.videoHeight,
+                    agentScreenSize,
+                  ));
                 }
                 
                 sendFullControlCommand({ type: 'mouse-move', x, y });
@@ -1508,29 +1474,14 @@ function SessionContent() {
                 }
                 const video = e.currentTarget;
                 const rect = video.getBoundingClientRect();
-                const videoRatio = video.videoWidth / video.videoHeight || 16/9;
-                const containerRatio = rect.width / rect.height;
-                
-                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                if (videoRatio > containerRatio) {
-                  videoDisplayWidth = rect.width;
-                  videoDisplayHeight = rect.width / videoRatio;
-                  offsetX = 0;
-                  offsetY = (rect.height - videoDisplayHeight) / 2;
-                } else {
-                  videoDisplayHeight = rect.height;
-                  videoDisplayWidth = rect.height * videoRatio;
-                  offsetX = (rect.width - videoDisplayWidth) / 2;
-                  offsetY = 0;
-                }
-                
-                const moveX = touch.clientX - rect.left - offsetX;
-                const moveY = touch.clientY - rect.top - offsetY;
-                const normX = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
-                const normY = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
-                
-                const x = normX * agentScreenSize.width;
-                const y = normY * agentScreenSize.height;
+                const { x, y } = mapVideoPointToScreen(
+                  touch.clientX,
+                  touch.clientY,
+                  rect,
+                  video.videoWidth,
+                  video.videoHeight,
+                  agentScreenSize,
+                );
                 sendFullControlCommand({ type: 'mouse-move', x, y });
               }
             }}
@@ -1611,42 +1562,24 @@ function SessionContent() {
             onClick={(e) => {
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
-                const container = e.currentTarget.getBoundingClientRect();
-                
-                const videoRatio = video.videoWidth / video.videoHeight;
-                const containerRatio = container.width / container.height;
-                
-                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                
-                if (videoRatio > containerRatio) {
-                  videoDisplayWidth = container.width;
-                  videoDisplayHeight = container.width / videoRatio;
-                  offsetX = 0;
-                  offsetY = (container.height - videoDisplayHeight) / 2;
-                } else {
-                  videoDisplayHeight = container.height;
-                  videoDisplayWidth = container.height * videoRatio;
-                  offsetX = (container.width - videoDisplayWidth) / 2;
-                  offsetY = 0;
-                }
-                
-                const clickX = e.clientX - container.left - offsetX;
-                const clickY = e.clientY - container.top - offsetY;
-                
-                const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
-                const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
+                const { x, y } = mapVideoPointToScreen(
+                  e.clientX,
+                  e.clientY,
+                  video.getBoundingClientRect(),
+                  video.videoWidth,
+                  video.videoHeight,
+                  agentScreenSize,
+                );
                 
                 // Full control mode - send mouse commands to agent
                 if (controlEnabled) {
-                  const x = normX * agentScreenSize.width;
-                  const y = normY * agentScreenSize.height;
                   sendFullControlCommand({ type: 'mouse-move', x, y });
                   setTimeout(() => {
                     sendFullControlCommand({ type: 'mouse-click', button: 'left' });
                   }, 50);
                 } else if (controlMode) {
                   // Pointer mode - show pointer on artist's screen
-                  sendControlEvent('click', normX, normY);
+                  sendControlEvent('click', x / agentScreenSize.width, y / agentScreenSize.height);
                 }
               }
             }}
@@ -1658,39 +1591,21 @@ function SessionContent() {
                 lastMouseMoveRef.current = now;
                 
                 const video = remoteVideoRef.current;
-                const container = e.currentTarget.getBoundingClientRect();
-                
-                const videoRatio = video.videoWidth / video.videoHeight;
-                const containerRatio = container.width / container.height;
-                
-                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                
-                if (videoRatio > containerRatio) {
-                  videoDisplayWidth = container.width;
-                  videoDisplayHeight = container.width / videoRatio;
-                  offsetX = 0;
-                  offsetY = (container.height - videoDisplayHeight) / 2;
-                } else {
-                  videoDisplayHeight = container.height;
-                  videoDisplayWidth = container.height * videoRatio;
-                  offsetX = (container.width - videoDisplayWidth) / 2;
-                  offsetY = 0;
-                }
-                
-                const moveX = e.clientX - container.left - offsetX;
-                const moveY = e.clientY - container.top - offsetY;
-                
-                const normX = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
-                const normY = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
+                const { x, y } = mapVideoPointToScreen(
+                  e.clientX,
+                  e.clientY,
+                  video.getBoundingClientRect(),
+                  video.videoWidth,
+                  video.videoHeight,
+                  agentScreenSize,
+                );
                 
                 // Full control mode - send mouse move to agent
                 if (controlEnabled) {
-                  const x = normX * agentScreenSize.width;
-                  const y = normY * agentScreenSize.height;
                   sendFullControlCommand({ type: 'mouse-move', x, y });
                 } else if (controlMode) {
                   // Pointer mode - show pointer on artist's screen
-                  sendControlEvent('pointer', normX, normY);
+                  sendControlEvent('pointer', x / agentScreenSize.width, y / agentScreenSize.height);
                 }
               }
             }}
