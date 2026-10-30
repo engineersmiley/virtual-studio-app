@@ -257,8 +257,7 @@ function SessionContent() {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const lastTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number; identifier: number; moved: boolean } | null>(null);
   const fullscreenTouchRef = useRef<{ x: number; y: number; time: number; moved: boolean } | null>(null);
   const lastMouseMoveRef = useRef<number>(0);
   const MOUSE_THROTTLE_MS = 16; // ~60fps for smooth movement
@@ -499,15 +498,31 @@ function SessionContent() {
   const controlEnabled = fullControlActive || wsControlAllowed;
   
   const handleVideoTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartRef.current = null;
     if (!controlEnabled) return;
     const touch = e.touches[0];
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    if (e.touches.length !== 1 || !touch) return;
+    touchStartRef.current = {
+      x: touch.clientX, y: touch.clientY, time: Date.now(),
+      identifier: touch.identifier, moved: false,
+    };
   }, [controlEnabled]);
   
   const handleVideoTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!controlEnabled || !lastTouchRef.current) return;
+    const gesture = touchStartRef.current;
+    const touch = e.touches[0];
+    if (!controlEnabled || e.touches.length !== 1 || !touch ||
+        touch.identifier !== gesture?.identifier) {
+      touchStartRef.current = null;
+      return;
+    }
+    if (!gesture) return;
     e.preventDefault();
+
+    // Track the entire gesture, including moves skipped by the command throttle.
+    if (Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= 15) {
+      gesture.moved = true;
+    }
     
     // Throttle touch move to reduce lag (~60fps)
     const now = Date.now();
@@ -517,7 +532,6 @@ function SessionContent() {
     const video = remoteVideoRef.current;
     if (!video) return;
     
-    const touch = e.touches[0];
     const rect = video.getBoundingClientRect();
     
     const { x, y } = mapVideoPointToScreen(
@@ -530,23 +544,25 @@ function SessionContent() {
     );
     
     sendFullControlCommand({ type: 'mouse-move', x, y });
-    lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
   }, [controlEnabled, sendFullControlCommand, agentScreenSize]);
   
   const handleVideoTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (!controlEnabled || !touchStartRef.current) return;
+    const gesture = touchStartRef.current;
+    touchStartRef.current = null;
+    // Suppress synthetic clicks for taps, drags, and rejected multi-touch gestures.
+    lastRemoteVideoTouchTimeRef.current = Date.now();
+    if (!controlEnabled) return;
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    if (!gesture || gesture.moved || e.touches.length !== 0 ||
+        e.changedTouches.length !== 1 || !touch || touch.identifier !== gesture.identifier) return;
     
     const video = remoteVideoRef.current;
     if (!video) return;
     
-    const touch = e.changedTouches[0];
-    lastRemoteVideoTouchTimeRef.current = Date.now();
     const rect = video.getBoundingClientRect();
-    const touchDuration = Date.now() - touchStartRef.current.time;
-    const moveDistance = Math.sqrt(
-      Math.pow(touch.clientX - touchStartRef.current.x, 2) +
-      Math.pow(touch.clientY - touchStartRef.current.y, 2)
-    );
+    const touchDuration = Date.now() - gesture.time;
+    const moveDistance = Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y);
     
     // If it was a tap (not much movement), click at that position
     if (moveDistance < 15 && touchDuration < 400) {
@@ -565,10 +581,12 @@ function SessionContent() {
         sendFullControlCommand({ type: 'mouse-click', button: 'left' });
       }, 50);
     }
-    
-    touchStartRef.current = null;
-    lastTouchRef.current = null;
   }, [controlEnabled, sendFullControlCommand, agentScreenSize]);
+
+  const handleVideoTouchCancel = useCallback(() => {
+    touchStartRef.current = null;
+    lastRemoteVideoTouchTimeRef.current = Date.now();
+  }, []);
 
   // Get ALL audio-only streams (no video) - from any role (producers, engineers teaching, etc.)
   const audioOnlyStreams = Array.from(remoteStreams.values()).filter(
@@ -1560,6 +1578,14 @@ function SessionContent() {
               role === 'engineer' && controlEnabled ? '[&_*]:cursor-none cursor-none' : ''
             }`}
             onClick={(e) => {
+              // A touch ending outside the video can target this shared ancestor.
+              if (isSyntheticClickAfterTouch(
+                lastRemoteVideoTouchTimeRef.current,
+                Date.now(),
+                TOUCH_DELAY_MS,
+              )) {
+                return;
+              }
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
                 const { x, y } = mapVideoPointToScreen(
@@ -1654,6 +1680,7 @@ function SessionContent() {
                   onTouchStart={handleVideoTouchStart}
                   onTouchMove={handleVideoTouchMove}
                   onTouchEnd={handleVideoTouchEnd}
+                  onTouchCancel={handleVideoTouchCancel}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();

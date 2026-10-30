@@ -45,7 +45,8 @@ function setup() {
     isPointerLocked: false,
     remoteVideoRef: { current: video }, fullscreenTouchRef: { current: null },
     virtualCursorRef: { current: { x: 960, y: 540 } },
-    lastTouchRef: { current: {} }, lastMouseMoveRef: { current: 0 },
+    touchStartRef: { current: { x: 0, y: 0, time: 1000, identifier: 1, moved: false } },
+    lastMouseMoveRef: { current: 0 },
     lastRemoteVideoTouchTimeRef: { current: 0 },
     agentScreenSize: { width: 1920, height: 1080 },
     MOUSE_THROTTLE_MS: 16, TOUCH_DELAY_MS: 500,
@@ -68,7 +69,7 @@ function setup() {
       : video;
     handler({
       clientX, clientY, currentTarget, movementX: 10, movementY: -20,
-      touches: [{ clientX, clientY }], preventDefault() {}, stopPropagation() {},
+      touches: [{ clientX, clientY, identifier: 1 }], preventDefault() {}, stopPropagation() {},
     });
     return commands.at(-1);
   }
