@@ -1,6 +1,6 @@
 {
-  "name": "Remote Studio",
-  "short_name": "Remote Studio",
+  "name": "Virtual Studio",
+  "short_name": "Virtual Studio",
   "description": "Remote music collaboration tool for real-time screen and audio sharing",
   "start_url": "/",
   "display": "standalone",

@@ -24,7 +24,7 @@ export default function RemoteControl() {
         <Link href="/">
           <Button variant="ghost" className="mb-6" data-testid="button-back-home">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Remote Studio
+            Back to Virtual Studio
           </Button>
         </Link>
 
@@ -43,17 +43,17 @@ export default function RemoteControl() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
-              Remote Studio Agent
+              Virtual Studio Agent
               <Badge variant="outline" className="ml-2">v{AGENT_VERSION}</Badge>
             </CardTitle>
             <CardDescription>
-              Control your artist's computer directly from Remote Studio with audio streaming included - all in one integrated experience.
+              Control your artist's computer directly from Virtual Studio with audio streaming included - all in one integrated experience.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="p-4 bg-muted/50 rounded-lg mb-4">
               <p className="text-sm text-muted-foreground">
-                Download the Remote Studio Agent for your operating system. After installation, enter your session code to connect with your collaborators.
+                Download the Virtual Studio Agent for your operating system. After installation, enter your session code to connect with your collaborators.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -210,7 +210,7 @@ export default function RemoteControl() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <ol className="list-decimal list-inside space-y-2">
-                <li>Download Remote Studio Agent above</li>
+                <li>Download Virtual Studio Agent above</li>
                 <li>Install and open the app</li>
                 <li>Enter your session code and email</li>
                 <li>Click "Connect" to link with your session</li>
@@ -234,7 +234,7 @@ export default function RemoteControl() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <ol className="list-decimal list-inside space-y-2">
-                <li>Join the Remote Studio session as usual</li>
+                <li>Join the Virtual Studio session as usual</li>
                 <li>Wait for the artist to connect their Agent app</li>
                 <li>You'll see "Agent Connected" in the session</li>
                 <li>Click "Full Control" to request control</li>
@@ -258,7 +258,7 @@ export default function RemoteControl() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <ol className="list-decimal list-inside space-y-2">
-                <li>Join the Remote Studio session as usual</li>
+                <li>Join the Virtual Studio session as usual</li>
                 <li>Watch the artist's screen and listen to audio</li>
                 <li>Communicate via the built-in chat or voice</li>
                 <li>The engineer handles all recording controls</li>
@@ -295,7 +295,7 @@ export default function RemoteControl() {
               <Laptop className="w-5 h-5 text-muted-foreground mt-0.5" />
               <div>
                 <p className="font-medium">macOS</p>
-                <p className="text-muted-foreground">Go to System Preferences &gt; Security & Privacy &gt; Privacy &gt; Accessibility, and add Remote Studio Agent to the allowed apps.</p>
+                <p className="text-muted-foreground">Go to System Preferences &gt; Security & Privacy &gt; Privacy &gt; Accessibility, and add Virtual Studio Agent to the allowed apps.</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -315,39 +315,39 @@ export default function RemoteControl() {
               Create Desktop Icons
             </CardTitle>
             <CardDescription>
-              Add Remote Studio and the Agent to your desktop for quick access
+              Add Virtual Studio and the Agent to your desktop for quick access
             </CardDescription>
           </CardHeader>
           <CardContent className="text-sm space-y-6">
             <div>
-              <h3 className="font-semibold mb-3">Remote Studio (Web App)</h3>
+              <h3 className="font-semibold mb-3">Virtual Studio (Web App)</h3>
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
                   <AppWindow className="w-5 h-5 text-muted-foreground mt-0.5" />
                   <div>
                     <p className="font-medium">Windows (Chrome/Edge)</p>
-                    <p className="text-muted-foreground">Open Remote Studio in your browser, click the menu (3 dots) in the top right, select "Install Remote Studio" or "Create shortcut". Check "Open as window" for an app-like experience.</p>
+                    <p className="text-muted-foreground">Open Virtual Studio in your browser, click the menu (3 dots) in the top right, select "Install Virtual Studio" or "Create shortcut". Check "Open as window" for an app-like experience.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <Apple className="w-5 h-5 text-muted-foreground mt-0.5" />
                   <div>
                     <p className="font-medium">macOS (Safari)</p>
-                    <p className="text-muted-foreground">Open Remote Studio in Safari, click File menu, select "Add to Dock". For Chrome: click menu (3 dots), "Save and Share", then "Create Shortcut".</p>
+                    <p className="text-muted-foreground">Open Virtual Studio in Safari, click File menu, select "Add to Dock". For Chrome: click menu (3 dots), "Save and Share", then "Create Shortcut".</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <Terminal className="w-5 h-5 text-muted-foreground mt-0.5" />
                   <div>
                     <p className="font-medium">Linux (Chrome/Firefox)</p>
-                    <p className="text-muted-foreground">In Chrome: click menu (3 dots), select "Install Remote Studio". In Firefox: bookmark the page, then drag the bookmark to your desktop.</p>
+                    <p className="text-muted-foreground">In Chrome: click menu (3 dots), select "Install Virtual Studio". In Firefox: bookmark the page, then drag the bookmark to your desktop.</p>
                   </div>
                 </div>
               </div>
             </div>
             
             <div className="border-t pt-4">
-              <h3 className="font-semibold mb-3">Remote Studio Agent (Desktop App)</h3>
+              <h3 className="font-semibold mb-3">Virtual Studio Agent (Desktop App)</h3>
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
                   <AppWindow className="w-5 h-5 text-muted-foreground mt-0.5" />
@@ -360,7 +360,7 @@ export default function RemoteControl() {
                   <Apple className="w-5 h-5 text-muted-foreground mt-0.5" />
                   <div>
                     <p className="font-medium">macOS</p>
-                    <p className="text-muted-foreground">Open the .dmg file, drag "Remote Studio Agent" to your Applications folder. Then drag it from Applications to your Dock for quick access.</p>
+                    <p className="text-muted-foreground">Open the .dmg file, drag "Virtual Studio Agent" to your Applications folder. Then drag it from Applications to your Dock for quick access.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -389,7 +389,7 @@ export default function RemoteControl() {
             </div>
             <div className="flex items-start gap-2">
               <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-              <p><strong>Session-bound</strong> - Control only works within your active Remote Studio session</p>
+              <p><strong>Session-bound</strong> - Control only works within your active Virtual Studio session</p>
             </div>
             <div className="flex items-start gap-2">
               <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
@@ -408,7 +408,7 @@ export default function RemoteControl() {
           </p>
           <Link href="/">
             <Button data-testid="button-return-studio">
-              Return to Remote Studio
+              Return to Virtual Studio
             </Button>
           </Link>
         </div>

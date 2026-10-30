@@ -1,0 +1,1 @@
+- [Agent updater identity](agent-updater-identity.md) — keep Electron app IDs stable during rebrands so existing installations can still receive updates.

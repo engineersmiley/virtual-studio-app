@@ -1066,7 +1066,7 @@ function SessionContent() {
         title: 'Token Copied!',
         description: role === 'artist' 
           ? 'Share this token with your engineer.'
-          : 'Paste it in the Remote Studio Agent app.',
+          : 'Paste it in the Virtual Studio Agent app.',
       });
     } catch (err) {
       toast({
@@ -2035,7 +2035,7 @@ function SessionContent() {
                         ? 'bg-purple-500/20 text-purple-400 border-purple-500/50 hover:bg-purple-500/30'
                         : 'bg-gray-500/20 text-gray-400 border-gray-500/50 cursor-not-allowed'
                     }`}
-                    title={agentConnected ? "Request to control artist's screen" : "Artist must run Remote Studio Agent first"}>
+                    title={agentConnected ? "Request to control artist's screen" : "Artist must run Virtual Studio Agent first"}>
                     <MousePointer2 size={12} /> {controlPending ? 'Waiting...' : agentConnected ? 'Control' : 'No Agent'}
                   </button>
                 )}
@@ -2472,7 +2472,7 @@ function SessionContent() {
                   <p className="text-xs text-muted-foreground">
                     <strong>Need full remote control?</strong> Ask the artist to download{' '}
                     <a href="/remote-control" className="text-primary hover:underline">
-                      Remote Studio Agent
+                      Virtual Studio Agent
                     </a>{' '}
                     and connect to this session.
                   </p>

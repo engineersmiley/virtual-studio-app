@@ -268,7 +268,7 @@ function createTray() {
   
   const contextMenu = Menu.buildFromTemplate([
     { 
-      label: 'Open Remote Studio Agent', 
+      label: 'Open Virtual Studio Agent',
       click: () => mainWindow.show() 
     },
     { type: 'separator' },
@@ -288,7 +288,7 @@ function createTray() {
     }
   ]);
   
-  tray.setToolTip('Remote Studio Agent');
+  tray.setToolTip('Virtual Studio Agent');
   tray.setContextMenu(contextMenu);
   
   tray.on('click', () => {
@@ -303,7 +303,7 @@ async function checkAccessibilityPermissions() {
       const result = await dialog.showMessageBox({
         type: 'warning',
         title: 'Accessibility Permission Required',
-        message: 'Remote Studio Agent needs Accessibility permissions to control your mouse and keyboard.',
+        message: 'Virtual Studio Agent needs Accessibility permissions to control your mouse and keyboard.',
         detail: 'Please grant Accessibility access in System Preferences > Security & Privacy > Privacy > Accessibility',
         buttons: ['Open System Preferences', 'Cancel']
       });
@@ -703,7 +703,7 @@ function updateTrayMenu() {
   if (tray) {
     const contextMenu = Menu.buildFromTemplate([
       { 
-        label: 'Open Remote Studio Agent', 
+        label: 'Open Virtual Studio Agent',
         click: () => mainWindow.show() 
       },
       { type: 'separator' },

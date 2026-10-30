@@ -7,7 +7,7 @@ import {
   Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download,
   Crown, Check, CreditCard, Loader2
 } from "lucide-react";
-import logoImage from "@assets/generated_images/large_remote_studio_globe_logo.png";
+import logoImage from "@assets/generated_images/large_virtual_studio_globe_logo.png";
 import { motion } from "framer-motion";
 import { api } from "@shared/routes";
 import type { SessionRole } from "@shared/schema";
@@ -82,7 +82,7 @@ export default function Home() {
   useEffect(() => {
     if (justSubscribed) {
       toast({
-        title: "Welcome to Remote Studio Pro!",
+        title: "Welcome to Virtual Studio Pro!",
         description: "Thank you for subscribing. Enjoy unlimited sessions!",
       });
     }
@@ -213,7 +213,7 @@ export default function Home() {
           className="relative z-10 text-center max-w-4xl mx-auto"
         >
           <div className="flex items-center justify-center mb-6">
-            <img src={logoImage} alt="Remote Studio" className="h-48 md:h-64 lg:h-80 w-auto" />
+            <img src={logoImage} alt="Virtual Studio" className="h-48 md:h-64 lg:h-80 w-auto" />
           </div>
           
           <p className="text-xl text-muted-foreground font-tech uppercase tracking-widest mb-12">
@@ -300,7 +300,7 @@ export default function Home() {
                       className="bg-gradient-to-r from-secondary to-primary"
                     >
                       <Download className="w-4 h-4 mr-2" />
-                      Remote Studio Agent
+                      Virtual Studio Agent
                     </Button>
                   </Link>
                   <Button 
@@ -322,7 +322,7 @@ export default function Home() {
             >
               <div className="text-center mb-4">
                 <Crown className="w-10 h-10 text-secondary mx-auto mb-2" />
-                <h3 className="font-display font-bold text-lg">Remote Studio Pro</h3>
+                <h3 className="font-display font-bold text-lg">Virtual Studio Pro</h3>
                 <p className="text-sm text-muted-foreground">
                   Unlimited sessions for ${priceAmount}/month
                 </p>
@@ -378,7 +378,7 @@ export default function Home() {
             >
               <div className="text-center mb-6">
                 <Crown className="w-12 h-12 text-secondary mx-auto mb-3" />
-                <h3 className="font-display font-bold text-2xl mb-2">Remote Studio Pro</h3>
+                <h3 className="font-display font-bold text-2xl mb-2">Virtual Studio Pro</h3>
                 <p className="text-3xl font-bold">
                   ${priceAmount}
                   <span className="text-sm font-normal text-muted-foreground">/month</span>

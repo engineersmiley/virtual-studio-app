@@ -1,6 +1,6 @@
-# Remote Studio Agent
+# Virtual Studio Agent
 
-A desktop application that allows engineers to remotely control an artist's computer during Remote Studio sessions.
+A desktop application that allows engineers to remotely control an artist's computer during Virtual Studio sessions.
 
 ## Download
 
@@ -12,7 +12,7 @@ Download the latest release for your operating system from the [Releases page](h
 
 ## Features
 
-- Secure WebSocket connection to Remote Studio
+- Secure WebSocket connection to Virtual Studio
 - Mouse control (move, click, double-click, scroll)
 - Keyboard control (key presses, typing)
 - Explicit consent required from artist before control is enabled
@@ -27,8 +27,8 @@ Download the latest release for your operating system from the [Releases page](h
 
 ## How It Works
 
-1. Artist opens Remote Studio Agent and enters their session code + token
-2. Agent connects to Remote Studio's WebSocket server
+1. Artist opens Virtual Studio Agent and enters their session code + token
+2. Agent connects to Virtual Studio's WebSocket server
 3. When the engineer clicks "Request Control" in the browser, the artist sees a prompt
 4. If the artist approves, the engineer can control the artist's mouse and keyboard
 5. Artist can stop control at any time by pressing Escape or clicking "Stop Control"
@@ -56,7 +56,7 @@ Download the latest release for your operating system from the [Releases page](h
 ### Setup
 
 ```bash
-cd remote-studio-agent
+cd virtual-studio-agent
 npm install
 ```
 
@@ -100,7 +100,7 @@ npm run build:all
 On macOS, the app requires Accessibility permissions to control mouse and keyboard:
 
 1. Go to System Preferences > Security & Privacy > Privacy > Accessibility
-2. Add Remote Studio Agent to the list
+2. Add Virtual Studio Agent to the list
 3. Restart the app
 
 ### Linux AppImage
