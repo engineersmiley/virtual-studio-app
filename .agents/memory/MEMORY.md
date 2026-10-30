@@ -4,3 +4,4 @@
 - [CSS dependency patching](css-dependency-patching.md) — retain the patched selector-parser override until Tailwind's dependencies stop requiring the vulnerable major.
 - [Portable npm lockfiles](portable-npm-lockfiles.md) — registry-proxy installs can serialize private hosts; normalize URLs without removing integrity hashes.
 - [Remote input geometry](remote-input-geometry.md) — absolute movement must match clicks; keep relative pointer-lock behavior separate.
+- [Required PR check](required-pr-check.md) — GitHub merge protection is external state; keep the required status synchronized with workflow job names.
