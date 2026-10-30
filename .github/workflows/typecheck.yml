@@ -35,5 +35,8 @@ jobs:
       - name: Check TypeScript
         run: npm run check
 
+      - name: Test remote video input
+        run: npm test
+
       - name: Build root web app
         run: npm run build
