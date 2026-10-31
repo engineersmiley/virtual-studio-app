@@ -15,7 +15,7 @@
     "test:production": "node scripts/production-smoke.mjs",
     "test:production:runner": "node --test scripts/production-smoke.test.mjs",
     "check": "tsc",
-    "test": "node --test client/src/lib/*.test.mjs",
+    "test": "node --test client/src/lib/*.test.mjs scripts/normalize-lockfile.test.mjs",
     "test:mobile": "playwright test --config playwright.mobile.config.mjs",
     "test:workflows": "node --test scripts/workflow-contract.test.mjs scripts/release-workflow-contract.test.mjs scripts/audit-repository-protection.test.mjs scripts/production-smoke-workflow.test.mjs",
     "audit:protection": "node scripts/audit-repository-protection.mjs",
