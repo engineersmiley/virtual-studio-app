@@ -37,6 +37,8 @@ test('tagged macOS releases require code signing and notarization credentials', 
 test('release version and Mac download links match the published artifacts', () => {
   assert.match(downloadConfig, new RegExp(`AGENT_VERSION = "${agent.version}"`));
   assert.match(downloadConfig, /CURRENT_AGENT_VERSION = "1\.20\.0"/);
+  assert.match(downloadConfig, /macos-v\$\{AGENT_VERSION\}/);
+  assert.match(downloadConfig, /Virtual\.Studio\.Agent-arm64\.dmg/);
   const renameStep = releaseJob.steps.find(step => step.name === 'Rename files for consistent download URLs');
   for (const filename of ['Virtual.Studio.Agent-arm64.dmg', 'Virtual.Studio.Agent-x64.dmg']) {
     assert.ok(downloadConfig.includes(filename), `shared download config must link ${filename}`);
@@ -48,7 +50,10 @@ test('release version and Mac download links match the published artifacts', () 
   assert.match(downloadPage, /AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS/);
   assert.match(downloadPage, /DOWNLOAD_URLS\.macCurrent/);
   assert.match(downloadPage, /section-mac-apple-silicon-download/);
-  assert.match(downloadPage, /button-download-agent-mac-apple-silicon-pending/);
+  assert.match(downloadPage, /href=\{DOWNLOAD_URLS\.macAppleSilicon\}/);
+  assert.match(downloadPage, /button-download-agent-mac-apple-silicon/);
+  assert.doesNotMatch(downloadPage, /button-download-agent-mac-apple-silicon-pending|This installer is not published yet/);
+  assert.match(downloadPage, /unsigned and not notarized/i);
   assert.doesNotMatch(homePage, /section-apple-silicon-download/);
   assert.match(releaseText, /If this release was manually built without Apple signing/);
 });

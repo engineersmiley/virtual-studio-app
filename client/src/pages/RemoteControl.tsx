@@ -98,20 +98,23 @@ export default function RemoteControl() {
                 className="flex flex-col gap-2"
                 data-testid="section-mac-apple-silicon-download"
               >
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="w-full h-auto py-4 flex-col gap-2"
-                  disabled
-                  data-testid="button-download-agent-mac-apple-silicon-pending"
+                <a
+                  href={DOWNLOAD_URLS.macAppleSilicon}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full"
                 >
-                  <Apple className="w-8 h-8" />
-                  <span className="font-semibold">Newer Mac · Apple Silicon</span>
-                  <span className="text-xs opacity-70">M1 / M2 / M3 / M4 · native .dmg</span>
-                </Button>
-                <p className="text-xs text-muted-foreground text-center">
-                  This installer is not published yet. Use the current macOS download while it is being prepared.
-                </p>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full h-auto py-4 flex-col gap-2"
+                    data-testid="button-download-agent-mac-apple-silicon"
+                  >
+                    <Apple className="w-8 h-8" />
+                    <span className="w-full text-center whitespace-normal break-words font-semibold">Newer Mac · Apple Silicon</span>
+                    <span className="w-full text-xs text-center opacity-70 whitespace-normal break-words">M1 and newer · native DMG · v1.20.1</span>
+                  </Button>
+                </a>
               </div>
               <a 
                 href={DOWNLOAD_URLS.linux}
@@ -130,6 +133,10 @@ export default function RemoteControl() {
                 </Button>
               </a>
             </div>
+            <p className="mt-3 text-xs text-muted-foreground text-center">
+              Apple Silicon installer is unsigned and not notarized. If you trust this download and macOS blocks it,
+              Control-click the app and choose Open. If needed, check System Settings → Privacy &amp; Security → Open Anyway.
+            </p>
             <p className="text-xs text-muted-foreground mt-4 text-center">
               Current version {CURRENT_AGENT_VERSION} - Download the installer for your operating system above
             </p>
