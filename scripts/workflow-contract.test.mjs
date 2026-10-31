@@ -2,11 +2,74 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dump, load } from 'js-yaml';
-import { assertWorkflowContract } from './workflow-contract.mjs';
+import { assertPackageScriptContract, assertWorkflowContract } from './workflow-contract.mjs';
 
 const source = readFileSync(new URL('../.github/workflows/typecheck.yml', import.meta.url), 'utf8');
+const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const requiredJob = workflow =>
   Object.values(workflow.jobs).find(job => job.name === 'PR TypeScript check');
+
+test('package scripts preserve the compiler and all workflow regression tests', () => {
+  assertPackageScriptContract(manifest);
+});
+
+function rejectsPackage(title, mutate, message) {
+  test(`package contract rejects ${title}`, () => {
+    const mutated = structuredClone(manifest);
+    mutate(mutated);
+    assert.throws(() => assertPackageScriptContract(mutated), message);
+  });
+}
+
+rejectsPackage('removing scripts', pkg => delete pkg.scripts, /must define scripts/);
+for (const script of ['check', 'test:workflows']) {
+  for (const value of [undefined, null, false, '', 'true', 'exit 0']) {
+    rejectsPackage(`${script} set to ${JSON.stringify(value)}`, pkg => {
+      if (value === undefined) delete pkg.scripts[script];
+      else pkg.scripts[script] = value;
+    }, script === 'check' ? /TypeScript compiler/ : /test:workflows/);
+  }
+}
+
+for (const command of [
+  'echo tsc', '# tsc', 'tsc --version', 'tsc --help',
+  'tsc || true', 'tsc; exit 0', 'tsc &', 'if false; then tsc; fi',
+  'true && echo tsc', 'tsc --noCheck',
+]) {
+  rejectsPackage(`compiler bypass ${JSON.stringify(command)}`, pkg => {
+    pkg.scripts.check = command;
+  }, /TypeScript compiler/);
+}
+
+// Each existing suite is required, including the audit and monitor regressions.
+for (const file of manifest.scripts['test:workflows'].split(/\s+/).slice(2)) {
+  rejectsPackage(`removing ${file} from test:workflows`, pkg => {
+    pkg.scripts['test:workflows'] = pkg.scripts['test:workflows']
+      .split(/\s+/).filter(token => token !== file).join(' ');
+  }, /all required workflow regression tests/);
+}
+for (const replace of [
+  command => `echo "${command}"`,
+  command => `# ${command}`,
+  command => `${command} || true`,
+  command => `${command}; exit 0`,
+  command => `if false; then ${command}; fi`,
+  command => command.replace('node --test', 'node --test --test-name-pattern=nonexistent'),
+  command => command.replace('node --test', 'node --test --test-only'),
+  command => command.replace('node --test', 'node --check'),
+]) {
+  const command = replace(manifest.scripts['test:workflows']);
+  rejectsPackage(`workflow test bypass ${JSON.stringify(command)}`, pkg => {
+    pkg.scripts['test:workflows'] = command;
+  }, /test:workflows/);
+}
+
+test('package contract accepts workflow test reordering and whitespace', () => {
+  const reordered = structuredClone(manifest);
+  const files = reordered.scripts['test:workflows'].split(/\s+/).slice(2).reverse();
+  reordered.scripts['test:workflows'] = `  node  --test\t${files.join('  ')}\n`;
+  assertPackageScriptContract(reordered);
+});
 
 test('PR workflow preserves the required, unconditional TypeScript check', () => {
   assertWorkflowContract(source);

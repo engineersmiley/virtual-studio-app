@@ -4,6 +4,41 @@ import { load } from 'js-yaml';
 const owns = (object, key) => Object.hasOwn(object, key);
 const isMapping = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+const requiredWorkflowTests = [
+  'scripts/workflow-contract.test.mjs',
+  'scripts/release-workflow-contract.test.mjs',
+  'scripts/audit-repository-protection.test.mjs',
+  'scripts/protection-monitor-workflow.test.mjs',
+  'scripts/production-smoke-workflow.test.mjs',
+];
+
+// Keep these commands deliberately narrow, like the workflow steps below.
+// A substring match would also accept echoes, comments, filters, or "|| true".
+export function assertPackageScriptContract(manifest) {
+  assert.ok(isMapping(manifest?.scripts), 'package.json must define scripts');
+  assert.equal(
+    manifest.scripts.check,
+    'tsc',
+    'check must execute the TypeScript compiler directly as tsc',
+  );
+  assert.equal(
+    typeof manifest.scripts['test:workflows'],
+    'string',
+    'test:workflows must execute the required workflow regression tests',
+  );
+  const command = manifest.scripts['test:workflows'].trim().split(/\s+/);
+  assert.deepEqual(
+    command.slice(0, 2),
+    ['node', '--test'],
+    'test:workflows must execute node --test directly',
+  );
+  assert.deepEqual(
+    command.slice(2).sort(),
+    [...requiredWorkflowTests].sort(),
+    'test:workflows must execute all required workflow regression tests without filters or failure suppression',
+  );
+}
+
 function assertUnconditional(target, label) {
   assert.ok(!owns(target, 'if'), `${label} must not have an if condition`);
   assert.ok(
