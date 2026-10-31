@@ -7,7 +7,7 @@ import {
   Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download,
   Crown, Check, CreditCard, Loader2
 } from "lucide-react";
-import logoImage from "@assets/generated_images/large_virtual_studio_globe_logo.png";
+import logoImage from "@assets/generated_images/large_virtual_studio_globe_logo.webp";
 import { motion } from "framer-motion";
 import { api } from "@shared/routes";
 import type { SessionRole } from "@shared/schema";

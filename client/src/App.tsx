@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -5,9 +6,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
-import Library from "@/pages/Library";
-import Session from "@/pages/Session";
-import RemoteControl from "@/pages/RemoteControl";
+
+// Keep the landing page eager; download the other pages only when visited.
+const Library = lazy(() => import("@/pages/Library"));
+const Session = lazy(() => import("@/pages/Session"));
+const RemoteControl = lazy(() => import("@/pages/RemoteControl"));
 
 function Router() {
   return (
@@ -26,7 +29,13 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        <Suspense fallback={
+          <div role="status" className="min-h-screen flex items-center justify-center text-muted-foreground">
+            Loading page…
+          </div>
+        }>
+          <Router />
+        </Suspense>
       </TooltipProvider>
     </QueryClientProvider>
   );
