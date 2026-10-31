@@ -546,7 +546,7 @@ export default function Home() {
             <ListMusic size={20} /> Recording Library
           </Link>
           <Link href="/remote-control" className="flex items-center gap-2 hover:text-primary transition-colors" data-testid="link-remote-control">
-            <Monitor size={20} /> Remote Control
+            <Download size={20} /> Download Desktop App
           </Link>
           {isInstallable && !isInstalled && !isIOSDevice && (
             <button

@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand } from "lucide-react";
 import { Link } from "wouter";
-import { SubscriptionGate } from "@/components/SubscriptionGate";
 
 const AGENT_VERSION = "1.20.0";
 
@@ -19,7 +18,6 @@ const DOWNLOAD_URLS = {
 
 export default function RemoteControl() {
   return (
-    <SubscriptionGate>
     <div className="min-h-screen bg-background">
       <div className="container max-w-4xl mx-auto px-4 py-8">
         <Link href="/">
@@ -415,6 +413,5 @@ export default function RemoteControl() {
         </div>
       </div>
     </div>
-    </SubscriptionGate>
   );
 }
