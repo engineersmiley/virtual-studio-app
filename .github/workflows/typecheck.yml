@@ -58,3 +58,6 @@ jobs:
 
       - name: Smoke test production startup
         run: npm run test:production
+
+      - name: Check application schema compatibility
+        run: npm run test:schema

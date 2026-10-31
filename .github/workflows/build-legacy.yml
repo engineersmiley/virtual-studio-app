@@ -40,6 +40,9 @@ jobs:
       - name: Smoke test production startup
         run: npm run test:production
 
+      - name: Check application schema compatibility
+        run: npm run test:schema
+
   build-mac-legacy:
     needs: [typecheck]
     runs-on: macos-latest

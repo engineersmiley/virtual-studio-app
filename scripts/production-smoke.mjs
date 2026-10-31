@@ -92,9 +92,8 @@ export async function checkServer({ cwd = root, env, port, timeoutMs = 30_000 })
   }
 }
 
-async function main() {
-  await access(path.join(root, 'dist/index.cjs'));
-  await access(path.join(root, 'dist/public/index.html'));
+// Shared with schema validation; callers never supply a database URL.
+export async function withDisposableDatabase(run) {
   const env = isolatedEnvironment();
   // Nix puts server binaries directly on PATH without pg_config. Ubuntu puts
   // them in a versioned directory exposed by pg_config instead.
@@ -112,7 +111,6 @@ async function main() {
   const directory = await mkdtemp(path.join(tmpdir(), 'production-smoke-'));
   const data = path.join(directory, 'data');
   const dbPort = await freePort();
-  const port = await freePort();
   const pg = (command, args) => execFileSync(path.join(bindir, command), args, {
     env, encoding: 'utf8', stdio: 'pipe', timeout: 30_000,
   });
@@ -123,15 +121,9 @@ async function main() {
     pg('pg_ctl', ['-D', data, '-l', path.join(directory, 'postgres.log'),
       '-o', `-h 127.0.0.1 -p ${dbPort} -k ${directory}`, '-w', 'start']);
     pg('createdb', ['-h', '127.0.0.1', '-p', String(dbPort), '-U', 'smoke', 'smoke']);
-    await checkServer({
-      port,
-      env: {
-        ...env,
-        PORT: String(port),
-        DATABASE_URL: `postgresql://smoke@127.0.0.1:${dbPort}/smoke`,
-        SESSION_SECRET: 'disposable-production-smoke-only',
-        STRIPE_SYNC_ENABLED: 'false',
-      },
+    await run({
+      ...env,
+      DATABASE_URL: `postgresql://smoke@127.0.0.1:${dbPort}/smoke`,
     });
   } catch (error) {
     const log = await readFile(path.join(directory, 'postgres.log'), 'utf8').catch(() => '');
@@ -147,6 +139,23 @@ async function main() {
     }
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+async function main() {
+  await access(path.join(root, 'dist/index.cjs'));
+  await access(path.join(root, 'dist/public/index.html'));
+  await withDisposableDatabase(async env => {
+    const port = await freePort();
+    await checkServer({
+      port,
+      env: {
+        ...env,
+        PORT: String(port),
+        SESSION_SECRET: 'disposable-production-smoke-only',
+        STRIPE_SYNC_ENABLED: 'false',
+      },
+    });
+  });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

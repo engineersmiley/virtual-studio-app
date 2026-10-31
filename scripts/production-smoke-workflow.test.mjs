@@ -17,6 +17,11 @@ for (const file of ['typecheck.yml', 'build-agent.yml', 'build-legacy.yml']) {
     assert.equal(step.if, undefined);
     assert.equal(step['continue-on-error'], undefined);
     assert.equal(step.env, undefined, 'Smoke must not receive workflow credentials');
+    const schema = commands.indexOf('npm run test:schema');
+    assert.ok(schema > smoke, 'Schema compatibility must also gate release builds');
+    assert.equal(job.steps[schema].if, undefined);
+    assert.equal(job.steps[schema]['continue-on-error'], undefined);
+    assert.equal(job.steps[schema].env, undefined, 'Schema check must not receive credentials');
     if (file !== 'typecheck.yml') {
       for (const [name, releaseJob] of Object.entries(workflow.jobs)) {
         if (name.startsWith('build-')) {
