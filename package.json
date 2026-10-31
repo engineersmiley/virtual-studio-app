@@ -14,6 +14,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test": "node --test client/src/lib/*.test.mjs",
+    "test:workflows": "node --test scripts/workflow-contract.test.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
@@ -108,6 +109,7 @@
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.8",
     "esbuild": "^0.25.0",
+    "js-yaml": "^4.3.2",
     "postcss": "^8.5.32",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.5",

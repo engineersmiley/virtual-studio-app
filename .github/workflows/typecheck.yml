@@ -35,6 +35,9 @@ jobs:
       - name: Check TypeScript
         run: npm run check
 
+      - name: Test workflow contracts
+        run: npm run test:workflows
+
       - name: Test remote video input
         run: npm test
 
