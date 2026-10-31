@@ -44,7 +44,7 @@ export default function RemoteControl() {
                 Download the Virtual Studio Agent for your operating system. After installation, enter your session code to connect with your collaborators.
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <a 
                 href={DOWNLOAD_URLS.windows}
                 target="_blank"
@@ -78,9 +78,6 @@ export default function RemoteControl() {
                     <span className="text-xs opacity-70">Current .dmg installer</span>
                   </Button>
                 </a>
-                <p className="text-xs text-muted-foreground text-center">
-                  A separate native Apple Silicon installer is being prepared.
-                </p>
                 <a
                   href={DOWNLOAD_URLS.macLegacy}
                   target="_blank"
@@ -96,6 +93,25 @@ export default function RemoteControl() {
                     <span>macOS 10.11-10.14 (Legacy .zip)</span>
                   </Button>
                 </a>
+              </div>
+              <div
+                className="flex flex-col gap-2"
+                data-testid="section-mac-apple-silicon-download"
+              >
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full h-auto py-4 flex-col gap-2"
+                  disabled
+                  data-testid="button-download-agent-mac-apple-silicon-pending"
+                >
+                  <Apple className="w-8 h-8" />
+                  <span className="font-semibold">Newer Mac · Apple Silicon</span>
+                  <span className="text-xs opacity-70">M1 / M2 / M3 / M4 · native .dmg</span>
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  This installer is not published yet. Use the current macOS download while it is being prepared.
+                </p>
               </div>
               <a 
                 href={DOWNLOAD_URLS.linux}

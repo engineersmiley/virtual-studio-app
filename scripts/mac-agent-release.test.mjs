@@ -47,7 +47,8 @@ test('release version and Mac download links match the published artifacts', () 
   assert.match(downloadConfig, /Remote\.Studio\.Agent\.dmg/);
   assert.match(downloadPage, /AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS/);
   assert.match(downloadPage, /DOWNLOAD_URLS\.macCurrent/);
-  assert.match(homePage, /AGENT_DOWNLOAD_URLS\.macCurrent/);
-  assert.match(homePage, /button-download-agent-apple-silicon-home/);
+  assert.match(downloadPage, /section-mac-apple-silicon-download/);
+  assert.match(downloadPage, /button-download-agent-mac-apple-silicon-pending/);
+  assert.doesNotMatch(homePage, /section-apple-silicon-download/);
   assert.match(releaseText, /If this release was manually built without Apple signing/);
 });
