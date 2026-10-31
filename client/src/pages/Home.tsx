@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { 
   Monitor, Mic, Users, ArrowRight, 
-  Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download,
+  Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download, Apple,
   Crown, Check, CreditCard, Loader2
 } from "lucide-react";
 import logoImage from "@assets/generated_images/large_virtual_studio_globe_logo.webp";
@@ -15,6 +15,7 @@ import { usePwaInstall } from "@/hooks/use-pwa-install";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { AGENT_DOWNLOAD_URLS } from "@/lib/agent-downloads";
 
 const STORAGE_KEY = "studiolink_subscriber_email";
 
@@ -275,6 +276,41 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          {/* Apple Silicon desktop agent download */}
+          <section
+            aria-labelledby="apple-silicon-download-title"
+            className="glass-panel rounded-2xl p-5 mb-8 max-w-2xl mx-auto text-left border border-primary/30 bg-primary/5"
+            data-testid="section-apple-silicon-download"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <Apple className="w-7 h-7 text-primary shrink-0 mt-1" aria-hidden="true" />
+                <div>
+                  <h2 id="apple-silicon-download-title" className="font-display font-bold text-lg">
+                    Newer Mac Download
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Separate Apple Silicon installer for M1, M2, M3, and M4 Macs.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Choose Intel Mac or Linux from the full downloads page.
+                  </p>
+                </div>
+              </div>
+              <a
+                href={AGENT_DOWNLOAD_URLS.macAppleSilicon}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto"
+              >
+                <Button className="w-full sm:w-auto" data-testid="button-download-agent-apple-silicon-home">
+                  <Download className="w-4 h-4 mr-2" />
+                  Download for Apple Silicon
+                </Button>
+              </a>
+            </div>
+          </section>
 
           {/* Pro Subscription / Access Check Banner */}
           {isSubscribed ? (

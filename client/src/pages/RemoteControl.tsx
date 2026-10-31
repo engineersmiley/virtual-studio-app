@@ -3,20 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand } from "lucide-react";
 import { Link } from "wouter";
-
-const AGENT_VERSION = "1.20.1";
-const LEGACY_AGENT_VERSION = "1.20.0";
-
-// Download URLs - GitHub release assets
-const RELEASE_DOWNLOAD_BASE = "https://github.com/engineersmiley/virtual-studio-app/releases/download";
-const DOWNLOAD_URLS = {
-  windows: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Virtual.Studio.Agent.Setup.exe`,
-  macAppleSilicon: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Virtual.Studio.Agent-arm64.dmg`,
-  macIntel: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Virtual.Studio.Agent-x64.dmg`,
-  linux: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Virtual.Studio.Agent.AppImage`,
-  // Legacy build - works on macOS 10.11+ (El Capitan)
-  macLegacy: `${RELEASE_DOWNLOAD_BASE}/legacy-v${LEGACY_AGENT_VERSION}/Remote.Studio.Agent.Legacy.zip`,
-};
+import { AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS, AGENT_VERSION } from "@/lib/agent-downloads";
 
 export default function RemoteControl() {
   return (

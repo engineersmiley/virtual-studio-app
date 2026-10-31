@@ -5,6 +5,8 @@ import { load } from 'js-yaml';
 
 const agent = JSON.parse(readFileSync(new URL('../virtual-studio-agent/package.json', import.meta.url), 'utf8'));
 const downloadPage = readFileSync(new URL('../client/src/pages/RemoteControl.tsx', import.meta.url), 'utf8');
+const homePage = readFileSync(new URL('../client/src/pages/Home.tsx', import.meta.url), 'utf8');
+const downloadConfig = readFileSync(new URL('../client/src/lib/agent-downloads.ts', import.meta.url), 'utf8');
 const workflow = load(readFileSync(new URL('../.github/workflows/build-agent.yml', import.meta.url), 'utf8'));
 const macJob = workflow.jobs['build-mac'];
 const releaseJob = workflow.jobs.release;
@@ -30,12 +32,17 @@ test('tagged macOS releases require code signing and notarization credentials', 
 });
 
 test('release version and Mac download links match the published artifacts', () => {
-  assert.match(downloadPage, new RegExp(`const AGENT_VERSION = "${agent.version}"`));
+  assert.match(downloadConfig, new RegExp(`AGENT_VERSION = "${agent.version}"`));
   const renameStep = releaseJob.steps.find(step => step.name === 'Rename files for consistent download URLs');
   for (const filename of ['Virtual.Studio.Agent-arm64.dmg', 'Virtual.Studio.Agent-x64.dmg']) {
-    assert.ok(downloadPage.includes(filename), `download page must link ${filename}`);
+    assert.ok(downloadConfig.includes(filename), `shared download config must link ${filename}`);
     assert.ok(releaseText.includes(filename), `release notes must list ${filename}`);
     assert.ok(releaseFiles.includes(`dist/${filename}`), `release must upload ${filename}`);
     assert.ok(renameStep.run.includes(filename), `release workflow must produce ${filename}`);
   }
+  assert.match(downloadPage, /AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS/);
+  assert.match(downloadPage, /DOWNLOAD_URLS\.macAppleSilicon/);
+  assert.match(downloadPage, /DOWNLOAD_URLS\.macIntel/);
+  assert.match(homePage, /AGENT_DOWNLOAD_URLS\.macAppleSilicon/);
+  assert.match(homePage, /button-download-agent-apple-silicon-home/);
 });
