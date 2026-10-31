@@ -14,7 +14,8 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test": "node --test client/src/lib/*.test.mjs",
-    "test:workflows": "node --test scripts/workflow-contract.test.mjs",
+    "test:workflows": "node --test scripts/workflow-contract.test.mjs scripts/audit-repository-protection.test.mjs",
+    "audit:protection": "node scripts/audit-repository-protection.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
