@@ -4,6 +4,36 @@ const WebSocket = require('ws');
 const https = require('https');
 const { exec } = require('child_process');
 const { monitorScreenInfo } = require('./screen-info');
+const { getDisplayControlState, canControlCapture } = require('./display-control');
+
+let approvedDisplaySignature = null;
+let approvedCaptureId = null;
+let displayControlGeneration = 0;
+const inputMessageTypes = new Set([
+  'mouse-move', 'mouse-click', 'mouse-double-click', 'mouse-scroll', 'key-press', 'key-type',
+]);
+
+function revokeDisplayControl() {
+  const wasEnabled = controlEnabled;
+  controlEnabled = false;
+  approvedDisplaySignature = null;
+  approvedCaptureId = null;
+  mainWindow?.webContents.send('control-status', { enabled: false });
+  if (wasEnabled && currentSession) {
+    if (usePolling) {
+      void httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionCode: currentSession, token: currentToken,
+          message: { type: 'control-response', allowed: false },
+        }),
+      }).catch(error => console.error('[Agent] Failed to report stopped control:', error.message));
+    } else if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'control-response', allowed: false, sessionCode: currentSession }));
+    }
+  }
+}
 
 // Use AppleScript for keyboard on macOS (works in fullscreen apps)
 function sendKeyWithAppleScript(key, modifiers = []) {
@@ -350,6 +380,12 @@ async function connectViaPolling(sessionCode, generation) {
     // Publish initial geometry and keep it current without reconnecting.
     stopScreenInfoMonitor = monitorScreenInfo({
       screen,
+      onChange: (state) => {
+        ++displayControlGeneration;
+        if (approvedDisplaySignature && approvedDisplaySignature !== state.signature) {
+          revokeDisplayControl();
+        }
+      },
       publish: (info, signal) => httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/screen-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -438,6 +474,19 @@ function connectToServer(sessionCode) {
 }
 
 async function handleControlMessage(message) {
+  if (inputMessageTypes.has(message.type)) {
+    const display = getDisplayControlState(screen);
+    if (!controlEnabled || !display.supported || display.signature !== approvedDisplaySignature ||
+        !canControlCapture(message) || message.captureId !== approvedCaptureId) {
+      revokeDisplayControl();
+      return;
+    }
+    if (message.type === 'mouse-move') {
+      if (!Number.isFinite(message.x) || !Number.isFinite(message.y)) return;
+      message.x = Math.max(0, Math.min(display.width - 1, Math.round(message.x)));
+      message.y = Math.max(0, Math.min(display.height - 1, Math.round(message.y)));
+    }
+  }
   // Log received control commands (skip mouse-move to avoid spam)
   if (message.type !== 'mouse-move') {
     console.log('[Agent] Received control command:', message.type, JSON.stringify(message));
@@ -463,6 +512,30 @@ async function handleControlMessage(message) {
   try {
     switch (message.type) {
       case 'control-request':
+        const requestedDisplay = getDisplayControlState(screen);
+        const requestedGeneration = displayControlGeneration;
+        if (!requestedDisplay.supported || !canControlCapture(message)) {
+          revokeDisplayControl();
+          if (usePolling) {
+            await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sessionCode: currentSession, token: currentToken,
+                message: { type: 'control-response', allowed: false },
+              }),
+            });
+          } else if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'control-response', allowed: false, sessionCode: currentSession }));
+          }
+          await dialog.showMessageBox(mainWindow, {
+            type: 'warning',
+            title: 'Screen sharing cannot be controlled',
+            message: requestedDisplay.reason || 'Share your entire screen before requesting control. Window, tab, audio-only, and unidentified captures are view-only.',
+            buttons: ['OK'],
+          });
+          break;
+        }
         // Always process control requests regardless of current state
         const result = await dialog.showMessageBox(mainWindow, {
           type: 'question',
@@ -472,7 +545,12 @@ async function handleControlMessage(message) {
           buttons: ['Allow', 'Deny']
         });
         
-        controlEnabled = result.response === 0;
+        const currentDisplay = getDisplayControlState(screen);
+        controlEnabled = result.response === 0 && currentDisplay.supported &&
+          requestedGeneration === displayControlGeneration &&
+          currentDisplay.signature === requestedDisplay.signature;
+        approvedDisplaySignature = controlEnabled ? currentDisplay.signature : null;
+        approvedCaptureId = controlEnabled ? message.captureId : null;
         
         // Send response via appropriate channel
         if (usePolling) {
@@ -482,13 +560,14 @@ async function handleControlMessage(message) {
             body: JSON.stringify({
               token: currentToken,
               sessionCode: currentSession,
-              message: { type: 'control-response', allowed: controlEnabled }
+              message: { type: 'control-response', allowed: controlEnabled, captureId: approvedCaptureId }
             })
           });
         } else if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ 
             type: 'control-response', 
             allowed: controlEnabled,
+            captureId: approvedCaptureId,
             sessionCode: currentSession 
           }));
         }
@@ -497,8 +576,8 @@ async function handleControlMessage(message) {
       
       case 'control-end':
         // Always process control end requests
-        controlEnabled = false;
-        mainWindow.webContents.send('control-status', { enabled: false });
+        ++displayControlGeneration;
+        revokeDisplayControl();
         break;
       
       case 'session-ended':

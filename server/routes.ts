@@ -13,6 +13,7 @@ import { getStripePublishableKey, getUncachableStripeClient } from "./stripeClie
 import { sendWelcomeEmail } from "./gmailService";
 import type { SessionRole, ControlMessage, AgentToken } from "@shared/schema";
 import crypto from "crypto";
+import { CaptureControl } from "./capture-control";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -754,12 +755,54 @@ export async function registerRoutes(
   });
 
   // Store screen info from agents
-  const agentScreenInfo = new Map<string, { screenWidth: number; screenHeight: number; scaleFactor: number }>();
+  const agentScreenInfo = new Map<string, {
+    screenWidth: number; screenHeight: number; scaleFactor: number;
+    displayControlSupported: boolean; displayControlReason: string | null;
+  }>();
+  const captureControl = new CaptureControl();
+
+  function liveCapture(code: string) {
+    const artistId = agentConnections.get(code)?.userId || pollingAgents.get(code)?.userId;
+    return captureControl.get(code, artistId, id =>
+      rooms.get(code)?.get(id)?.role === 'artist' ||
+      pollingRooms.get(code)?.get(id)?.role === 'artist');
+  }
+
+  function revokeCaptureControl(code: string) {
+    controlPermissions.set(code, false);
+    const message = { type: 'control-end', sessionCode: code };
+    const agent = agentConnections.get(code);
+    if (agent?.ws.readyState === WebSocket.OPEN) agent.ws.send(JSON.stringify(message));
+    const pollingAgent = pollingAgents.get(code);
+    if (pollingAgent) {
+      pollingAgent.controlEnabled = false;
+      pollingAgent.messages.push(message);
+    }
+    const status = { type: 'control-response', allowed: false };
+    rooms.get(code)?.forEach(p => {
+      if (p.ws.readyState === WebSocket.OPEN) p.ws.send(JSON.stringify(status));
+    });
+    pollingRooms.get(code)?.forEach(p => p.messages.push(status));
+  }
+
+  function captureStatus(code: string) {
+    return { type: 'capture-status', supported: !!liveCapture(code) };
+  }
+
+  function updateCapture(code: string, userId: string, payload: any) {
+    if (captureControl.update(code, userId, payload)) revokeCaptureControl(code);
+    const status = captureStatus(code);
+    rooms.get(code)?.forEach(p => {
+      if (p.ws.readyState === WebSocket.OPEN) p.ws.send(JSON.stringify(status));
+    });
+    pollingRooms.get(code)?.forEach(p => p.messages.push(status));
+  }
 
   // Agent sends screen info for accurate mouse positioning
   app.post('/api/agent/screen-info', (req, res) => {
     try {
-      const { sessionCode, screenWidth, screenHeight, scaleFactor } = req.body;
+      const { sessionCode, screenWidth, screenHeight, scaleFactor,
+        displayControlSupported, displayControlReason } = req.body;
       
       if (!sessionCode || !screenWidth || !screenHeight) {
         return res.status(400).json({ error: 'Session code and screen dimensions required' });
@@ -768,7 +811,13 @@ export async function registerRoutes(
       const normalizedCode = sessionCode.toUpperCase();
       
       // Store screen info
-      agentScreenInfo.set(normalizedCode, { screenWidth, screenHeight, scaleFactor: scaleFactor || 1 });
+      const info = {
+        screenWidth, screenHeight, scaleFactor: scaleFactor || 1,
+        displayControlSupported: displayControlSupported === true,
+        displayControlReason: typeof displayControlReason === 'string' ? displayControlReason : null,
+      };
+      agentScreenInfo.set(normalizedCode, info);
+      if (!info.displayControlSupported) revokeCaptureControl(normalizedCode);
       console.log(`[Agent] Screen info for ${normalizedCode}: ${screenWidth}x${screenHeight} (scale: ${scaleFactor})`);
       
       // Notify room participants via WebSocket
@@ -778,9 +827,7 @@ export async function registerRoutes(
           if (participant.ws.readyState === WebSocket.OPEN) {
             participant.ws.send(JSON.stringify({ 
               type: 'agent-screen-info', 
-              screenWidth, 
-              screenHeight, 
-              scaleFactor 
+              ...info,
             }));
           }
         });
@@ -792,9 +839,7 @@ export async function registerRoutes(
         pollingRoom.forEach(p => {
           p.messages.push({ 
             type: 'agent-screen-info', 
-            screenWidth, 
-            screenHeight, 
-            scaleFactor 
+            ...info,
           });
         });
       }
@@ -884,6 +929,7 @@ export async function registerRoutes(
         .map(([pId, p]) => ({ userId: pId, role: p.role }));
       
       // Add or update participant
+      if (role === 'artist') updateCapture(normalizedRoom, userId, null);
       room.set(userId, {
         userId,
         role,
@@ -897,6 +943,7 @@ export async function registerRoutes(
       if (screenInfo) {
         room.get(userId)!.messages.push({ type: 'agent-screen-info', ...screenInfo });
       }
+      room.get(userId)!.messages.push(captureStatus(normalizedRoom));
       
       // Notify others that user joined
       room.forEach((p, pId) => {
@@ -982,6 +1029,11 @@ export async function registerRoutes(
       if (sender) {
         sender.lastPoll = Date.now();
       }
+      if (type === 'capture-state') {
+        if (sender?.role !== 'artist') return res.status(403).json({ error: 'Artist required' });
+        updateCapture(normalizedRoom, userId, payload);
+        return res.json({ success: true });
+      }
       
       // Handle control commands - forward to agent
       if (pollingControlMessageTypes.has(type)) {
@@ -994,6 +1046,11 @@ export async function registerRoutes(
         // Find the agent for this session - check both WebSocket and polling agents
         const wsAgent = agentConnections.get(normalizedRoom);
         const httpAgent = pollingAgents.get(normalizedRoom);
+        const capture = liveCapture(normalizedRoom);
+        if (type !== 'control-end' &&
+            (!capture || agentScreenInfo.get(normalizedRoom)?.displayControlSupported !== true)) {
+          return res.json({ success: false, reason: 'Share an entire screen with one supported display connected' });
+        }
         
         // For control requests and ends, always forward. For other commands, check permission
         if (type !== 'control-request' && type !== 'control-end' && !controlPermissions.get(normalizedRoom)) {
@@ -1009,7 +1066,7 @@ export async function registerRoutes(
         
         // Try WebSocket agent first
         if (wsAgent && wsAgent.ws.readyState === WebSocket.OPEN) {
-          const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
+          const controlMessage = { type, ...payload, ...capture, sessionCode: normalizedRoom, verifiedUserId: userId };
           console.log('[Control Polling] Forwarding to WS agent:', type, 'session:', normalizedRoom);
           wsAgent.ws.send(JSON.stringify(controlMessage));
           return res.json({ success: true });
@@ -1017,7 +1074,7 @@ export async function registerRoutes(
         
         // Fallback to HTTP polling agent
         if (httpAgent) {
-          const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
+          const controlMessage = { type, ...payload, ...capture, sessionCode: normalizedRoom, verifiedUserId: userId };
           console.log('[Control Polling] Queueing for HTTP agent:', type, 'session:', normalizedRoom);
           httpAgent.messages.push(controlMessage);
           return res.json({ success: true });
@@ -1062,6 +1119,7 @@ export async function registerRoutes(
       const room = pollingRooms.get(normalizedRoom);
       
       if (room) {
+        if (room.get(userId)?.role === 'artist') updateCapture(normalizedRoom, userId, null);
         room.delete(userId);
         
         // Notify others
@@ -1253,6 +1311,10 @@ export async function registerRoutes(
       
       // Handle message type
       if (message.type === 'control-response') {
+        message.allowed = message.allowed === true &&
+          !!liveCapture(normalizedCode) &&
+          message.captureId === liveCapture(normalizedCode)?.captureId &&
+          agentScreenInfo.get(normalizedCode)?.displayControlSupported === true;
         // Forward to room participants
         const room = rooms.get(normalizedCode);
         if (room) {
@@ -1337,6 +1399,14 @@ export async function registerRoutes(
     ws.on('message', (data) => {
       try {
         const message = JSON.parse(data.toString());
+        if (message.type === 'capture-state') {
+          const conn = wsConnectionData.get(ws);
+          if (!conn) return;
+          const member = rooms.get(conn.roomId)?.get(conn.userId);
+          if (member?.role !== 'artist' || member.ws !== ws) return;
+          updateCapture(conn.roomId, conn.userId, message.payload);
+          return;
+        }
         const { type, roomId, userId, role, payload } = message;
 
         switch (type) {
@@ -1352,7 +1422,9 @@ export async function registerRoutes(
             }
             
             const room = rooms.get(currentRoom)!;
+            if (role === 'artist') updateCapture(currentRoom, currentUserId, null);
             room.set(currentUserId, { ws, role, userId: currentUserId });
+            ws.send(JSON.stringify(captureStatus(currentRoom)));
             
             // Notify others in the room
             room.forEach((participant, pId) => {
@@ -1495,6 +1567,7 @@ export async function registerRoutes(
             return;
           }
           
+          if (leavingRole === 'artist') updateCapture(currentRoom, currentUserId, null);
           room.delete(currentUserId);
           
           console.log(`[WS] User ${currentUserId} left room ${currentRoom} - notifying others`);
@@ -1638,6 +1711,10 @@ export async function registerRoutes(
 
         switch (message.type) {
           case 'control-response': {
+            message.allowed = message.allowed === true &&
+              !!liveCapture(agentSession!) &&
+              message.captureId === liveCapture(agentSession!)?.captureId &&
+              agentScreenInfo.get(agentSession!)?.displayControlSupported === true;
             // Artist responded to control request
             console.log('[Control] Control response received, allowed:', message.allowed, 'session:', agentSession);
             controlPermissions.set(agentSession!, message.allowed);
@@ -1787,12 +1864,16 @@ export async function registerRoutes(
           }
           
           const agent = agentConnections.get(sessionCode);
-          if (!agent) {
+          const httpAgent = pollingAgents.get(sessionCode);
+          const capture = liveCapture(sessionCode);
+          if (message.type !== 'control-end' &&
+              (!capture || agentScreenInfo.get(sessionCode)?.displayControlSupported !== true)) return;
+          if (!agent && !httpAgent) {
             console.log('[Control] Blocked: no agent connected for session', sessionCode);
             return;
           }
           
-          if (agent.ws.readyState !== WebSocket.OPEN) {
+          if (agent && agent.ws.readyState !== WebSocket.OPEN && !httpAgent) {
             console.log('[Control] Blocked: agent websocket not open');
             return;
           }
@@ -1813,11 +1894,17 @@ export async function registerRoutes(
           if (message.type !== 'mouse-move') {
             console.log('[Control] Forwarding to agent:', message.type, 'session:', sessionCode);
           }
-          agent.ws.send(JSON.stringify({
+          const controlMessage = {
             ...message,
+            ...capture,
             sessionCode,
             verifiedUserId: connData.userId,
-          }));
+          };
+          if (agent?.ws.readyState === WebSocket.OPEN) {
+            agent.ws.send(JSON.stringify(controlMessage));
+          } else if (httpAgent) {
+            httpAgent.messages.push(controlMessage);
+          }
         }
       } catch (err) {
         // Ignore parse errors - they'll be handled by the main handler

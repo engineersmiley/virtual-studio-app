@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { runInContext, createContext } from 'node:vm';
 import ts from 'typescript';
 import monitorModule from '../../../virtual-studio-agent/src/screen-info.js';
+import displayControlModule from '../../../virtual-studio-agent/src/display-control.js';
 import { mapVideoPointToScreen } from './remote-control-video.js';
 
 const { monitorScreenInfo } = monitorModule;
@@ -13,8 +14,9 @@ const events = ['display-metrics-changed', 'display-added', 'display-removed'];
 
 function setup(publish = async () => ({ ok: true })) {
   const screen = new EventEmitter();
-  let display = { id: 1, size: { width: 1920, height: 1080 }, scaleFactor: 1 };
+  let display = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, size: { width: 1920, height: 1080 }, scaleFactor: 1 };
   screen.getPrimaryDisplay = () => display;
+  screen.getAllDisplays = () => [display];
   const sent = [];
   const errors = [];
   const stop = monitorScreenInfo({
@@ -39,12 +41,18 @@ test('publishes initial geometry, resolution, scale-only and primary display cha
   const state = setup();
   t.after(state.stop);
   await flush();
-  assert.deepEqual(state.sent[0].info, { screenWidth: 1920, screenHeight: 1080, scaleFactor: 1 });
+  assert.deepEqual(state.sent[0].info, {
+    screenWidth: 1920, screenHeight: 1080, scaleFactor: 1,
+    displayControlSupported: true, displayControlReason: null,
+  });
   state.change({ size: { width: 2560, height: 1440 } });
   await flush();
   state.change({ scaleFactor: 2 });
   await flush();
-  assert.deepEqual(state.sent[2].info, { screenWidth: 2560, screenHeight: 1440, scaleFactor: 2 });
+  assert.equal(state.sent[2].info.screenWidth, 2560);
+  assert.equal(state.sent[2].info.screenHeight, 1440);
+  assert.equal(state.sent[2].info.scaleFactor, 2);
+  assert.equal(state.sent[2].info.displayControlSupported, process.platform === 'darwin');
   state.change({ id: 2 }, 'display-added');
   await flush();
   assert.equal(state.sent.length, 4);
@@ -113,7 +121,11 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
   app.requestSingleInstanceLock = () => true;
   app.whenReady = () => ({ then() {} });
   const screen = new EventEmitter();
-  screen.getPrimaryDisplay = () => ({ id: 1, size: { width: 1920, height: 1080 }, scaleFactor: 1 });
+  screen.getPrimaryDisplay = () => ({
+    id: 1, size: { width: 1920, height: 1080 },
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1,
+  });
+  screen.getAllDisplays = () => [screen.getPrimaryDisplay()];
   const handlers = new Map();
   const requests = [];
   const intervals = new Set();
@@ -134,6 +146,7 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
         dialog: { showMessageBox: async () => ({ response: 0 }) },
       };
       if (name === './screen-info') return monitorModule;
+      if (name === './display-control') return displayControlModule;
       if (name === '@jitsi/robotjs') throw new Error('native dependency unavailable');
       return {};
     },
@@ -194,6 +207,7 @@ test('server broadcasts new geometry on both transports and retains it for the s
   const stored = new Map();
   const handler = evaluate(route.arguments[1], source, {
     agentScreenInfo: stored,
+    revokeCaptureControl() {},
     rooms: new Map([['ABC123', [{ ws: { readyState: 1, send: data => wsMessages.push(JSON.parse(data)) } }]]]),
     pollingRooms: new Map([['ABC123', [pollingParticipant]]]),
     WebSocket: { OPEN: 1 },
@@ -246,6 +260,8 @@ function signalingHarness() {
     agentConnections: new Map(),
     pollingAgents: new Map(),
     controlPermissions: new Map(),
+    revokeCaptureControl() {},
+    captureStatus: () => ({ type: 'capture-status', supported: false }),
     wsConnectionData: new WeakMap(),
     WebSocket: { OPEN: 1 },
     console: { log() {}, error() {} },
@@ -291,8 +307,8 @@ function signalingHarness() {
 for (const transport of ['WebSocket', 'polling']) {
   test(`${transport} late join and reconnect replay the latest non-default geometry`, () => {
     const signaling = signalingHarness();
-    const initial = { screenWidth: 2560, screenHeight: 1440, scaleFactor: 2 };
-    const updated = { screenWidth: 3440, screenHeight: 1440, scaleFactor: 1.5 };
+    const initial = { screenWidth: 2560, screenHeight: 1440, scaleFactor: 2, displayControlSupported: false, displayControlReason: null };
+    const updated = { screenWidth: 3440, screenHeight: 1440, scaleFactor: 1.5, displayControlSupported: false, displayControlReason: null };
     const join = () => {
       if (transport === 'WebSocket') return signaling.joinWebSocket();
       signaling.joinPolling();

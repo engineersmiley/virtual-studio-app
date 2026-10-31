@@ -1,6 +1,8 @@
 // Electron reports logical display dimensions, matching the agent's input coordinates.
 // Keep scaleFactor as metadata; multiplying by it would double-scale Retina input.
-function monitorScreenInfo({ screen, publish, onError, retryMs = 2000 }) {
+const { getDisplayControlState } = require('./display-control');
+
+function monitorScreenInfo({ screen, publish, onError, onChange = () => {}, retryMs = 2000 }) {
   let stopped = false;
   let running = false;
   let lastPublished = null;
@@ -18,13 +20,17 @@ function monitorScreenInfo({ screen, publish, onError, retryMs = 2000 }) {
       // Re-read after each request to catch changes that happened while it ran.
       while (!stopped) {
         const display = screen.getPrimaryDisplay();
+        const control = getDisplayControlState(screen);
         const info = {
           screenWidth: display.size.width,
           screenHeight: display.size.height,
           scaleFactor: display.scaleFactor,
+          displayControlSupported: control.supported,
+          displayControlReason: control.reason,
         };
-        const signature = JSON.stringify({ displayId: display.id, ...info });
+        const signature = JSON.stringify({ topology: control.signature, ...info });
         if (signature === lastPublished) break;
+        onChange(control);
         const response = await publish(info, controller.signal);
         if (!response.ok) throw new Error(`Screen info request failed (${response.status})`);
         lastPublished = signature;
@@ -40,14 +46,19 @@ function monitorScreenInfo({ screen, publish, onError, retryMs = 2000 }) {
     }
   }
 
-  for (const event of events) screen.on(event, refresh);
+  const changed = () => {
+    // Revoke locally before any network request, even while publication is busy.
+    onChange(getDisplayControlState(screen));
+    void refresh();
+  };
+  for (const event of events) screen.on(event, changed);
   void refresh();
 
   return () => {
     stopped = true;
     clearTimeout(retryTimer);
     controller.abort();
-    for (const event of events) screen.removeListener(event, refresh);
+    for (const event of events) screen.removeListener(event, changed);
   };
 }
 

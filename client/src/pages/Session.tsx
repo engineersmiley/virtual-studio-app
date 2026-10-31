@@ -406,6 +406,9 @@ function SessionContent() {
     hasRemoteStream,
     remoteStreams,
     agentConnected: wsAgentConnected,
+    displayControlSupported,
+    displayControlReason,
+    captureSupported,
     controlAllowed: wsControlAllowed,
     controlPending: wsControlPending,
     audioConfirmations,
@@ -1969,14 +1972,14 @@ function SessionContent() {
                 ) : (
                   <button 
                     onClick={() => agentConnected && requestFullControl('Engineer')} 
-                    disabled={controlPending || !agentConnected} 
+                    disabled={controlPending || !agentConnected || !displayControlSupported || !captureSupported}
                     data-testid="button-request-control"
                     className={`px-2 py-1 rounded text-xs font-medium border transition-colors flex items-center gap-1 disabled:opacity-50 ${
                       agentConnected 
                         ? 'bg-purple-500/20 text-purple-400 border-purple-500/50 hover:bg-purple-500/30'
                         : 'bg-gray-500/20 text-gray-400 border-gray-500/50 cursor-not-allowed'
                     }`}
-                    title={agentConnected ? "Request to control artist's screen" : "Artist must run Virtual Studio Agent first"}>
+                    title={displayControlReason || (agentConnected ? "Share the entire screen on a single-display computer before requesting control" : "Artist must run Virtual Studio Agent first")}>
                     <MousePointer2 size={12} /> {controlPending ? 'Waiting...' : agentConnected ? 'Control' : 'No Agent'}
                   </button>
                 )}
@@ -2311,6 +2314,13 @@ function SessionContent() {
                 <div className={`w-2 h-2 rounded-full ${agentConnected ? 'bg-purple-400 animate-pulse' : 'bg-gray-500'}`} />
                 <span>Agent: {agentConnected ? 'Connected' : 'Not Connected'}</span>
               </div>
+              {(role === 'artist' || role === 'engineer') && (
+                <p className="mt-2">
+                  {displayControlReason || 'Full remote control requires one connected display and an entire-screen share. Windows and Linux require 100% display scaling. Window, tab, audio-only, and unidentified shares are view-only.'}
+                  {agentConnected && !displayControlSupported && !displayControlReason && ' Update the desktop agent if control remains unavailable.'}
+                  {agentConnected && displayControlSupported && !captureSupported && ' Waiting for an identified entire-screen share from the artist.'}
+                </p>
+              )}
               {!agentConnected && role === 'artist' && (
                 <p className="mt-1 text-[10px] opacity-70">Click Ctrl button above, then run agent on your computer</p>
               )}

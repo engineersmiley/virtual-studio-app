@@ -125,6 +125,8 @@ interface AgentStatus {
   screenWidth?: number;
   screenHeight?: number;
   scaleFactor?: number;
+  displayControlSupported?: boolean;
+  displayControlReason?: string | null;
 }
 
 interface RemoteStreamInfo {
@@ -210,7 +212,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }, [participants]);
   
   // Notify parent of agent status changes
-  const [agentScreenInfo, setAgentScreenInfo] = useState<Pick<AgentStatus, 'screenWidth' | 'screenHeight' | 'scaleFactor'>>({});
+  const [agentScreenInfo, setAgentScreenInfo] = useState<Pick<AgentStatus,
+    'screenWidth' | 'screenHeight' | 'scaleFactor' | 'displayControlSupported' | 'displayControlReason'>>({});
+  const [captureSupported, setCaptureSupported] = useState(false);
   useEffect(() => {
     onAgentStatusRef.current?.({
       connected: agentConnected,
@@ -219,6 +223,45 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       ...agentScreenInfo,
     });
   }, [agentConnected, controlAllowed, controlPending, agentScreenInfo]);
+
+  // Only an identified, live entire-screen capture can enable desktop input.
+  // Never infer the selected display from its label or encoded video dimensions.
+  const captureIdsRef = useRef(new WeakMap<MediaStreamTrack, string>());
+  const captureSequenceRef = useRef(0);
+  useEffect(() => {
+    if (role !== 'artist' || !connected || !isTransportOpen(wsRef.current)) return;
+    const transport = wsRef.current!;
+    const track = localStream?.getVideoTracks()[0];
+    if (track && !captureIdsRef.current.has(track)) {
+      captureIdsRef.current.set(track, crypto.randomUUID());
+    }
+    const publish = (stopped = false) => {
+      const settings = track?.getSettings();
+      const surface = !stopped && track?.readyState === 'live' && !track.muted
+        ? settings?.displaySurface : undefined;
+      if (isTransportOpen(transport)) {
+        transport.send(JSON.stringify({
+          type: 'capture-state', roomId, userId, role,
+          payload: {
+            surface: surface === 'monitor' ? 'monitor' : null,
+            captureId: track ? captureIdsRef.current.get(track) : null,
+            sequence: ++captureSequenceRef.current,
+          },
+        }));
+      }
+    };
+    const onChange = () => publish();
+    publish();
+    track?.addEventListener('ended', onChange);
+    track?.addEventListener('mute', onChange);
+    track?.addEventListener('unmute', onChange);
+    return () => {
+      publish(true);
+      track?.removeEventListener('ended', onChange);
+      track?.removeEventListener('mute', onChange);
+      track?.removeEventListener('unmute', onChange);
+    };
+  }, [localStream, connected, agentConnected, role, roomId, userId]);
 
   // Multiple STUN and TURN servers for NAT traversal
   // TURN servers are required when both parties are behind symmetric NAT
@@ -755,13 +798,23 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         setAgentConnected(true);
         break;
       }
+      case 'capture-status': {
+        setCaptureSupported(message.supported === true);
+        if (message.supported !== true) {
+          setControlAllowed(false);
+          setControlPending(false);
+        }
+        break;
+      }
       
       case 'agent-screen-info': {
         // Use the status effect so a geometry update retains current control state.
         setAgentScreenInfo({
           screenWidth: message.screenWidth,
           screenHeight: message.screenHeight,
-          scaleFactor: message.scaleFactor
+          scaleFactor: message.scaleFactor,
+          displayControlSupported: message.displayControlSupported === true,
+          displayControlReason: message.displayControlReason,
         });
         break;
       }
@@ -986,8 +1039,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
             sampleRate: 48000,
             sampleSize: 16,
             channelCount: 2,
-          } as any
-        });
+          } as any,
+          // An in-picker surface switch can change monitors without a new track.
+          // Browsers that ignore this hint still cannot control multi-display setups.
+          surfaceSwitching: 'exclude',
+        } as DisplayMediaStreamOptions);
         videoTrack = displayStream.getVideoTracks()[0];
       } else {
         displayStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1397,6 +1453,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       console.log('[Control] Cannot request control - not engineer role');
       return;
     }
+    if (!captureSupported || agentScreenInfo.displayControlSupported !== true) {
+      setError(agentScreenInfo.displayControlReason ||
+        'The artist must share an entire screen with one supported display connected. Window, tab, audio-only, and unidentified shares are view-only.');
+      return;
+    }
     
     if (!isTransportOpen(wsRef.current)) {
       console.log('[Control] Cannot request control - transport not connected');
@@ -1417,7 +1478,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     console.log('[Control] Sending control request:', message);
     wsRef.current!.send(JSON.stringify(message));
     console.log('[Control] Sent control request successfully');
-  }, [roomId, userId, role, connect]);
+  }, [roomId, userId, role, connect, captureSupported, agentScreenInfo]);
   
   // End full control
   const endFullControl = useCallback(() => {
@@ -1553,6 +1614,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     hasRemoteStream,
     remoteStreams,
     agentConnected,
+    displayControlSupported: agentScreenInfo.displayControlSupported === true,
+    displayControlReason: agentScreenInfo.displayControlReason,
+    captureSupported,
     controlAllowed,
     controlPending,
     audioConfirmations,
