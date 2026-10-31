@@ -17,7 +17,7 @@
     "check": "tsc",
     "test": "node --test client/src/lib/*.test.mjs",
     "test:mobile": "playwright test --config playwright.mobile.config.mjs",
-    "test:workflows": "node --test scripts/workflow-contract.test.mjs scripts/audit-repository-protection.test.mjs scripts/production-smoke-workflow.test.mjs",
+    "test:workflows": "node --test scripts/workflow-contract.test.mjs scripts/release-workflow-contract.test.mjs scripts/audit-repository-protection.test.mjs scripts/production-smoke-workflow.test.mjs",
     "audit:protection": "node scripts/audit-repository-protection.mjs",
     "db:push": "drizzle-kit push"
   },
