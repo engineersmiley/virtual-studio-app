@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand } from "lucide-react";
 import { Link } from "wouter";
-import { AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS, AGENT_VERSION } from "@/lib/agent-downloads";
+import { AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS, CURRENT_AGENT_VERSION } from "@/lib/agent-downloads";
 
 export default function RemoteControl() {
   return (
@@ -32,7 +32,7 @@ export default function RemoteControl() {
             <CardTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
               Virtual Studio Agent
-              <Badge variant="outline" className="ml-2">v{AGENT_VERSION}</Badge>
+              <Badge variant="outline" className="ml-2">v{CURRENT_AGENT_VERSION}</Badge>
             </CardTitle>
             <CardDescription>
               Control your artist's computer directly from Virtual Studio with audio streaming included - all in one integrated experience.
@@ -63,7 +63,7 @@ export default function RemoteControl() {
               </a>
               <div className="flex flex-col gap-2">
                 <a
-                  href={DOWNLOAD_URLS.macAppleSilicon}
+                  href={DOWNLOAD_URLS.macCurrent}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full"
@@ -74,25 +74,13 @@ export default function RemoteControl() {
                     data-testid="button-download-agent-mac"
                   >
                     <Apple className="w-8 h-8" />
-                    <span className="font-semibold">Apple Silicon</span>
-                    <span className="text-xs opacity-70">M1 / M2 / M3 / M4 · .dmg</span>
+                    <span className="font-semibold">macOS 11+</span>
+                    <span className="text-xs opacity-70">Current .dmg installer</span>
                   </Button>
                 </a>
-                <a
-                  href={DOWNLOAD_URLS.macIntel}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full"
-                >
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full text-xs"
-                    data-testid="button-download-agent-mac-intel"
-                  >
-                    Intel Mac · macOS 11+
-                  </Button>
-                </a>
+                <p className="text-xs text-muted-foreground text-center">
+                  A separate native Apple Silicon installer is being prepared.
+                </p>
                 <a
                   href={DOWNLOAD_URLS.macLegacy}
                   target="_blank"
@@ -127,7 +115,7 @@ export default function RemoteControl() {
               </a>
             </div>
             <p className="text-xs text-muted-foreground mt-4 text-center">
-              Version {AGENT_VERSION} - Download the installer for your operating system above
+              Current version {CURRENT_AGENT_VERSION} - Download the installer for your operating system above
             </p>
             <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
               <p className="text-xs text-yellow-200/80 text-center">

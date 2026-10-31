@@ -94,6 +94,11 @@ The release workflow fails before publishing if any of these are missing. Do not
 put certificate data or passwords in source files. The macOS build creates
 separate Apple Silicon (`arm64`) and Intel (`x64`) DMG installers.
 
+If signing credentials are not available, a maintainer can manually run the
+workflow on a version tag and enable `publish_unsigned_macos`. That release is
+not notarized; users must only install it from the official release and may need
+to remove the app's quarantine attribute to open it.
+
 #### Option 2: Build Locally
 
 ```bash

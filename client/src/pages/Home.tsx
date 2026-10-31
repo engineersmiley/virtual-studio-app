@@ -291,22 +291,22 @@ export default function Home() {
                     Newer Mac Download
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Separate Apple Silicon installer for M1, M2, M3, and M4 Macs.
+                    A native Apple Silicon DMG for M1, M2, M3, and M4 Macs is being prepared.
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Choose Intel Mac or Linux from the full downloads page.
+                    For now, download the current Mac installer. M1 Macs may need Rosetta.
                   </p>
                 </div>
               </div>
               <a
-                href={AGENT_DOWNLOAD_URLS.macAppleSilicon}
+                href={AGENT_DOWNLOAD_URLS.macCurrent}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full sm:w-auto"
               >
                 <Button className="w-full sm:w-auto" data-testid="button-download-agent-apple-silicon-home">
                   <Download className="w-4 h-4 mr-2" />
-                  Download for Apple Silicon
+                  Download current Mac installer
                 </Button>
               </a>
             </div>

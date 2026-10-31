@@ -5,6 +5,12 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      publish_unsigned_macos:
+        description: Publish a Mac release without Apple signing; users must bypass Gatekeeper
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   typecheck:
@@ -77,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Require Apple signing and notarization credentials for releases
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && !inputs.publish_unsigned_macos
         env:
           MACOS_CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
           MACOS_CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
@@ -210,6 +216,8 @@ jobs:
             - **macOS Apple Silicon** (M1/M2/M3/M4): Virtual.Studio.Agent-arm64.dmg
             - **macOS Intel**: Virtual.Studio.Agent-x64.dmg
             - **Linux**: Virtual.Studio.Agent.AppImage
+
+            If this release was manually built without Apple signing, macOS may report the app as damaged. Only use the official release and follow the per-app Gatekeeper instructions.
           files: |
             dist/Virtual.Studio.Agent.Setup.exe
             dist/Virtual.Studio.Agent-arm64.dmg

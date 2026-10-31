@@ -26,13 +26,17 @@ test('tagged macOS releases require code signing and notarization credentials', 
   const credentialStep = macJob.steps.find(step => step.name === 'Require Apple signing and notarization credentials for releases');
   assert.ok(credentialStep, 'release signing credential gate must exist');
   assert.match(credentialStep.if, /refs\/tags/);
+  assert.match(credentialStep.if, /!inputs\.publish_unsigned_macos/);
   for (const name of ['MACOS_CSC_LINK', 'MACOS_CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID']) {
     assert.ok(credentialStep.env[name], `${name} must be supplied from GitHub Actions secrets`);
   }
+  assert.equal(workflow.on.workflow_dispatch.inputs.publish_unsigned_macos.type, 'boolean');
+  assert.equal(workflow.on.workflow_dispatch.inputs.publish_unsigned_macos.default, false);
 });
 
 test('release version and Mac download links match the published artifacts', () => {
   assert.match(downloadConfig, new RegExp(`AGENT_VERSION = "${agent.version}"`));
+  assert.match(downloadConfig, /CURRENT_AGENT_VERSION = "1\.20\.0"/);
   const renameStep = releaseJob.steps.find(step => step.name === 'Rename files for consistent download URLs');
   for (const filename of ['Virtual.Studio.Agent-arm64.dmg', 'Virtual.Studio.Agent-x64.dmg']) {
     assert.ok(downloadConfig.includes(filename), `shared download config must link ${filename}`);
@@ -40,9 +44,10 @@ test('release version and Mac download links match the published artifacts', () 
     assert.ok(releaseFiles.includes(`dist/${filename}`), `release must upload ${filename}`);
     assert.ok(renameStep.run.includes(filename), `release workflow must produce ${filename}`);
   }
+  assert.match(downloadConfig, /Remote\.Studio\.Agent\.dmg/);
   assert.match(downloadPage, /AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS/);
-  assert.match(downloadPage, /DOWNLOAD_URLS\.macAppleSilicon/);
-  assert.match(downloadPage, /DOWNLOAD_URLS\.macIntel/);
-  assert.match(homePage, /AGENT_DOWNLOAD_URLS\.macAppleSilicon/);
+  assert.match(downloadPage, /DOWNLOAD_URLS\.macCurrent/);
+  assert.match(homePage, /AGENT_DOWNLOAD_URLS\.macCurrent/);
   assert.match(homePage, /button-download-agent-apple-silicon-home/);
+  assert.match(releaseText, /If this release was manually built without Apple signing/);
 });
