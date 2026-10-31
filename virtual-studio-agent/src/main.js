@@ -3,6 +3,37 @@ const path = require('path');
 const WebSocket = require('ws');
 const https = require('https');
 const { exec } = require('child_process');
+const { monitorScreenInfo } = require('./screen-info');
+const { getDisplayControlState, canControlCapture } = require('./display-control');
+
+let approvedDisplaySignature = null;
+let approvedCaptureId = null;
+let displayControlGeneration = 0;
+const inputMessageTypes = new Set([
+  'mouse-move', 'mouse-click', 'mouse-double-click', 'mouse-scroll', 'key-press', 'key-type',
+]);
+
+function revokeDisplayControl() {
+  const wasEnabled = controlEnabled;
+  controlEnabled = false;
+  approvedDisplaySignature = null;
+  approvedCaptureId = null;
+  mainWindow?.webContents.send('control-status', { enabled: false });
+  if (wasEnabled && currentSession) {
+    if (usePolling) {
+      void httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionCode: currentSession, token: currentToken,
+          message: { type: 'control-response', allowed: false },
+        }),
+      }).catch(error => console.error('[Agent] Failed to report stopped control:', error.message));
+    } else if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'control-response', allowed: false, sessionCode: currentSession }));
+    }
+  }
+}
 
 // Use AppleScript for keyboard on macOS (works in fullscreen apps)
 function sendKeyWithAppleScript(key, modifiers = []) {
@@ -19,6 +50,8 @@ function sendKeyWithAppleScript(key, modifiers = []) {
   let script;
   const keyCode = keyCodeMap[key.toLowerCase()];
   
+  console.log('[AppleScript] Sending key:', key, 'with modifiers:', modifiers);
+
   if (keyCode !== undefined) {
     const modStr = modifiers.map(m => {
       if (m === 'command' || m === 'cmd') return 'command down';
@@ -44,21 +77,47 @@ function sendKeyWithAppleScript(key, modifiers = []) {
       ? `tell application "System Events" to keystroke "${key}" using {${modStr}}`
       : `tell application "System Events" to keystroke "${key}"`;
   } else {
+    console.log('[AppleScript] Unknown key:', key);
     return false;
   }
   
-  exec(`osascript -e '${script}'`, (err) => {
-    if (err) console.error('[AppleScript] Error:', err.message);
+  // Use double quotes for shell to handle special characters better
+  const cmd = `osascript -e "${script.replace(/"/g, '\\"')}"`;
+  console.log('[AppleScript] Executing:', cmd);
+
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) {
+      console.error('[AppleScript] Key error:', err.message);
+      console.error('[AppleScript] stderr:', stderr);
+    } else {
+      console.log('[AppleScript] Key success');
+    }
   });
   return true;
 }
 
 function typeTextWithAppleScript(text) {
   if (process.platform !== 'darwin') return false;
-  const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "'\\''");
+  console.log('[AppleScript] Typing text:', text);
+
+  // Escape for AppleScript string (inside double quotes)
+  const escaped = text
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+
   const script = `tell application "System Events" to keystroke "${escaped}"`;
-  exec(`osascript -e '${script}'`, (err) => {
-    if (err) console.error('[AppleScript] Type error:', err.message);
+
+  // Use double quotes for the shell command to avoid single quote issues
+  const cmd = `osascript -e "${script.replace(/"/g, '\\"')}"`;
+  console.log('[AppleScript] Executing:', cmd);
+
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) {
+      console.error('[AppleScript] Type error:', err.message);
+      console.error('[AppleScript] stderr:', stderr);
+    } else {
+      console.log('[AppleScript] Type success');
+    }
   });
   return true;
 }
@@ -137,16 +196,6 @@ Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateScrollWheelEvent(N
   return true;
 }
 
-// Get the actual screen size for accurate mouse positioning
-function getScreenSize() {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  return {
-    width: primaryDisplay.size.width,
-    height: primaryDisplay.size.height,
-    scaleFactor: primaryDisplay.scaleFactor
-  };
-}
-
 // HTTP request helper for legacy Electron (no fetch API)
 function httpRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
@@ -156,7 +205,8 @@ function httpRequest(url, options = {}) {
       port: urlObj.port || 443,
       path: urlObj.pathname + urlObj.search,
       method: options.method || 'GET',
-      headers: options.headers || {}
+      headers: options.headers || {},
+      signal: options.signal
     };
 
     const req = https.request(reqOptions, (res) => {
@@ -173,6 +223,11 @@ function httpRequest(url, options = {}) {
     });
 
     req.on('error', reject);
+    if (options.timeoutMs) {
+      req.setTimeout(options.timeoutMs, () => {
+        req.destroy(new Error('HTTP request timed out'));
+      });
+    }
     
     if (options.body) {
       req.write(options.body);
@@ -198,6 +253,15 @@ let currentSession = null;
 let currentToken = null;
 let pollingInterval = null;
 let usePolling = false;
+let stopScreenInfoMonitor = null;
+let connectionGeneration = 0;
+
+function stopScreenInfoUpdates() {
+  if (stopScreenInfoMonitor) {
+    stopScreenInfoMonitor();
+    stopScreenInfoMonitor = null;
+  }
+}
 
 const VIRTUAL_STUDIO_URL = 'wss://virtualstudio.sale';
 const VIRTUAL_STUDIO_HTTP = 'https://virtualstudio.sale';
@@ -240,7 +304,7 @@ function createTray() {
   
   const contextMenu = Menu.buildFromTemplate([
     { 
-      label: 'Open Virtual Studio Agent', 
+      label: 'Open Virtual Studio Agent',
       click: () => mainWindow.show() 
     },
     { type: 'separator' },
@@ -292,7 +356,7 @@ async function checkAccessibilityPermissions() {
 let consecutiveErrors = 0;
 const MAX_CONSECUTIVE_ERRORS = 10; // Disconnect after 5 seconds of errors
 
-async function connectViaPolling(sessionCode) {
+async function connectViaPolling(sessionCode, generation) {
   try {
     // Simple mode - no token needed, just session code
     const response = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/simple-connect`, {
@@ -300,6 +364,7 @@ async function connectViaPolling(sessionCode) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionCode })
     });
+    if (generation !== connectionGeneration) return;
     
     if (!response.ok) {
       const data = await response.json();
@@ -312,25 +377,24 @@ async function connectViaPolling(sessionCode) {
     currentToken = null; // No token needed in simple mode
     consecutiveErrors = 0;
     
-    // Get and send screen size to the session
-    const screenSize = getScreenSize();
-    console.log(`[Agent] Screen size: ${screenSize.width}x${screenSize.height} (scale: ${screenSize.scaleFactor})`);
-    
-    // Send screen size to server so engineers get accurate coordinates
-    try {
-      await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/screen-info`, {
+    // Publish initial geometry and keep it current without reconnecting.
+    stopScreenInfoMonitor = monitorScreenInfo({
+      screen,
+      onChange: (state) => {
+        ++displayControlGeneration;
+        if (approvedDisplaySignature && approvedDisplaySignature !== state.signature) {
+          revokeDisplayControl();
+        }
+      },
+      publish: (info, signal) => httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/screen-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          sessionCode, 
-          screenWidth: screenSize.width,
-          screenHeight: screenSize.height,
-          scaleFactor: screenSize.scaleFactor
-        })
-      });
-    } catch (err) {
-      console.log('[Agent] Failed to send screen info:', err.message);
-    }
+        body: JSON.stringify({ sessionCode, ...info }),
+        signal,
+        timeoutMs: 5000
+      }),
+      onError: (err) => console.error('[Agent] Failed to send screen info; will retry:', err.message)
+    });
     
     mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
     updateTrayMenu();
@@ -340,6 +404,7 @@ async function connectViaPolling(sessionCode) {
     pollingInterval = setInterval(async () => {
       // Safety check - if already disconnected, stop polling
       if (!currentSession || !isConnected) {
+        stopScreenInfoUpdates();
         console.log('[Agent] Polling stopped - no longer connected');
         if (pollingInterval) {
           clearInterval(pollingInterval);
@@ -384,12 +449,16 @@ async function connectViaPolling(sessionCode) {
     }, 500);
     
   } catch (error) {
+    if (generation !== connectionGeneration) return;
+    stopScreenInfoUpdates();
     console.error('[Agent] HTTP connection error:', error);
     mainWindow.webContents.send('error', error.message);
   }
 }
 
 function connectToServer(sessionCode) {
+  const generation = ++connectionGeneration;
+  stopScreenInfoUpdates();
   // Close any existing connections
   if (ws) {
     ws.close();
@@ -401,10 +470,23 @@ function connectToServer(sessionCode) {
   }
   
   // Use HTTP polling directly - no token needed, simpler and more reliable
-  connectViaPolling(sessionCode);
+  connectViaPolling(sessionCode, generation);
 }
 
 async function handleControlMessage(message) {
+  if (inputMessageTypes.has(message.type)) {
+    const display = getDisplayControlState(screen);
+    if (!controlEnabled || !display.supported || display.signature !== approvedDisplaySignature ||
+        !canControlCapture(message) || message.captureId !== approvedCaptureId) {
+      revokeDisplayControl();
+      return;
+    }
+    if (message.type === 'mouse-move') {
+      if (!Number.isFinite(message.x) || !Number.isFinite(message.y)) return;
+      message.x = Math.max(0, Math.min(display.width - 1, Math.round(message.x)));
+      message.y = Math.max(0, Math.min(display.height - 1, Math.round(message.y)));
+    }
+  }
   // Log received control commands (skip mouse-move to avoid spam)
   if (message.type !== 'mouse-move') {
     console.log('[Agent] Received control command:', message.type, JSON.stringify(message));
@@ -412,21 +494,48 @@ async function handleControlMessage(message) {
   
   let robot = null;
   let robotFailed = false;
-  try {
-    robot = require('@jitsi/robotjs');
-  } catch (e) {
-    console.error('Failed to load robotjs, will use AppleScript fallback on macOS:', e.message);
-    robotFailed = true;
-    // Don't return - continue to try AppleScript on macOS
-    if (process.platform !== 'darwin') {
-      console.error('No fallback available on non-macOS platforms');
-      return;
+  // Session cleanup must work even if the native input dependency is unavailable.
+  if (message.type !== 'session-ended') {
+    try {
+      robot = require('@jitsi/robotjs');
+    } catch (e) {
+      console.error('Failed to load robotjs, will use AppleScript fallback on macOS:', e.message);
+      robotFailed = true;
+      // Don't return - continue to try AppleScript on macOS
+      if (process.platform !== 'darwin') {
+        console.error('No fallback available on non-macOS platforms');
+        return;
+      }
     }
   }
   
   try {
     switch (message.type) {
       case 'control-request':
+        const requestedDisplay = getDisplayControlState(screen);
+        const requestedGeneration = displayControlGeneration;
+        if (!requestedDisplay.supported || !canControlCapture(message)) {
+          revokeDisplayControl();
+          if (usePolling) {
+            await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sessionCode: currentSession, token: currentToken,
+                message: { type: 'control-response', allowed: false },
+              }),
+            });
+          } else if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'control-response', allowed: false, sessionCode: currentSession }));
+          }
+          await dialog.showMessageBox(mainWindow, {
+            type: 'warning',
+            title: 'Screen sharing cannot be controlled',
+            message: requestedDisplay.reason || 'Share your entire screen before requesting control. Window, tab, audio-only, and unidentified captures are view-only.',
+            buttons: ['OK'],
+          });
+          break;
+        }
         // Always process control requests regardless of current state
         const result = await dialog.showMessageBox(mainWindow, {
           type: 'question',
@@ -436,7 +545,12 @@ async function handleControlMessage(message) {
           buttons: ['Allow', 'Deny']
         });
         
-        controlEnabled = result.response === 0;
+        const currentDisplay = getDisplayControlState(screen);
+        controlEnabled = result.response === 0 && currentDisplay.supported &&
+          requestedGeneration === displayControlGeneration &&
+          currentDisplay.signature === requestedDisplay.signature;
+        approvedDisplaySignature = controlEnabled ? currentDisplay.signature : null;
+        approvedCaptureId = controlEnabled ? message.captureId : null;
         
         // Send response via appropriate channel
         if (usePolling) {
@@ -446,13 +560,14 @@ async function handleControlMessage(message) {
             body: JSON.stringify({
               token: currentToken,
               sessionCode: currentSession,
-              message: { type: 'control-response', allowed: controlEnabled }
+              message: { type: 'control-response', allowed: controlEnabled, captureId: approvedCaptureId }
             })
           });
         } else if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ 
             type: 'control-response', 
             allowed: controlEnabled,
+            captureId: approvedCaptureId,
             sessionCode: currentSession 
           }));
         }
@@ -461,13 +576,15 @@ async function handleControlMessage(message) {
       
       case 'control-end':
         // Always process control end requests
-        controlEnabled = false;
-        mainWindow.webContents.send('control-status', { enabled: false });
+        ++displayControlGeneration;
+        revokeDisplayControl();
         break;
       
       case 'session-ended':
         // Session ended (artist left), auto-disconnect
         console.log('Session ended:', message.reason);
+        ++connectionGeneration;
+        stopScreenInfoUpdates();
         
         // CRITICAL: Stop polling immediately to prevent further requests
         if (pollingInterval) {
@@ -596,7 +713,7 @@ async function handleControlMessage(message) {
           // Use AppleScript on macOS (works in fullscreen), robotjs elsewhere
           if (process.platform === 'darwin') {
             typeTextWithAppleScript(text);
-          } else {
+          } else if (robot && !robotFailed) {
             // Windows/Linux: type character by character for reliability
             for (let i = 0; i < text.length; i++) {
               const char = text[i];
@@ -614,6 +731,8 @@ async function handleControlMessage(message) {
                 robot.typeString(char);
               }
             }
+          } else {
+            console.log('[Agent] Cannot type - robotjs not available');
           }
         }
         break;
@@ -673,7 +792,7 @@ function updateTrayMenu() {
   if (tray) {
     const contextMenu = Menu.buildFromTemplate([
       { 
-        label: 'Open Virtual Studio Agent', 
+        label: 'Open Virtual Studio Agent',
         click: () => mainWindow.show() 
       },
       { type: 'separator' },
@@ -717,6 +836,11 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('before-quit', () => {
+  ++connectionGeneration;
+  stopScreenInfoUpdates();
+});
+
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
@@ -737,6 +861,8 @@ ipcMain.handle('connect', async (event, { sessionCode }) => {
 
 ipcMain.handle('disconnect', async () => {
   console.log('[Agent] Disconnect requested');
+  ++connectionGeneration;
+  stopScreenInfoUpdates();
   
   // Stop polling first to prevent any more requests
   if (pollingInterval) {

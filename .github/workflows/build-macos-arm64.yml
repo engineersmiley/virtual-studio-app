@@ -1,0 +1,48 @@
+name: Build Virtual Studio Agent for Apple Silicon
+
+on:
+  push:
+    tags:
+      - "macos-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-arm64:
+    runs-on: macos-latest
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install agent dependencies
+        working-directory: virtual-studio-agent
+        run: npm install
+
+      - name: Build unsigned Apple Silicon DMG
+        working-directory: virtual-studio-agent
+        run: npm run build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Verify DMG exists
+        run: test -f virtual-studio-agent/dist/Virtual.Studio.Agent-arm64.dmg
+
+      - name: Publish Apple Silicon release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Virtual Studio Agent Apple Silicon v1.20.1
+          body: |
+            Apple Silicon (arm64) installer for Virtual Studio Agent 1.20.1.
+
+            This installer is unsigned and not notarized. If you trust the download and macOS blocks it, control-click the app and choose Open, then confirm Open. If that option is not shown, check System Settings > Privacy & Security for Open Anyway.
+          prerelease: true
+          files: virtual-studio-agent/dist/Virtual.Studio.Agent-arm64.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
