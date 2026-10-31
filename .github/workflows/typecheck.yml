@@ -41,6 +41,12 @@ jobs:
       - name: Test remote video input
         run: npm test
 
+      - name: Install mobile test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Test mobile browser touch input
+        run: npm run test:mobile
+
       - name: Build root web app
         run: npm run build
 

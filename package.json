@@ -16,6 +16,7 @@
     "test:production:runner": "node --test scripts/production-smoke.test.mjs",
     "check": "tsc",
     "test": "node --test client/src/lib/*.test.mjs",
+    "test:mobile": "playwright test --config playwright.mobile.config.mjs",
     "test:workflows": "node --test scripts/workflow-contract.test.mjs scripts/audit-repository-protection.test.mjs scripts/production-smoke-workflow.test.mjs",
     "audit:protection": "node scripts/audit-repository-protection.mjs",
     "db:push": "drizzle-kit push"
@@ -94,6 +95,7 @@
     "zod-validation-error": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",

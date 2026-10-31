@@ -72,7 +72,7 @@ requiredJob(load(source)).steps.forEach((step, index) => {
   }, /must not allow failure/);
 });
 
-for (const command of ['npm ci', 'npm run check', 'npm run test:workflows', 'npm test', 'npm run build', 'npm run test:production']) {
+for (const command of ['npm ci', 'npm run check', 'npm run test:workflows', 'npm test', 'npx playwright install --with-deps chromium', 'npm run test:mobile', 'npm run build', 'npm run test:production']) {
   rejects(`removing ${command}`, (_workflow, job) => {
     job.steps = job.steps.filter(step => step.run !== command);
   }, /must execute/);
@@ -85,6 +85,11 @@ for (const command of ['npm ci', 'npm run check', 'npm run test:workflows', 'npm
 rejects('checking before installing dependencies', (_workflow, job) => {
   job.steps.reverse();
 }, /after npm ci/);
+rejects('running mobile tests before installing the browser', (_workflow, job) => {
+  const install = job.steps.find(step => step.run === 'npx playwright install --with-deps chromium');
+  job.steps = job.steps.filter(step => step !== install);
+  job.steps.push(install);
+}, /after installing the browser/);
 
 for (const trigger of ['pull_request', ['push', 'pull_request'], { pull_request: {} }]) {
   test(`accepts unfiltered trigger syntax ${JSON.stringify(trigger)}`, () => {

@@ -57,12 +57,16 @@ export function assertWorkflowContract(source) {
   const check = commands.indexOf('npm run check');
   assert.ok(install >= 0, 'Required job must execute a standalone npm ci step');
   assert.ok(check > install, 'Required job must execute a standalone npm run check after npm ci');
-  for (const command of ['npm run test:workflows', 'npm test', 'npm run build']) {
+  for (const command of ['npm run test:workflows', 'npm test', 'npm run test:mobile', 'npx playwright install --with-deps chromium', 'npm run build']) {
     assert.ok(
       commands.indexOf(command) > install,
       `Required job must execute a standalone ${command} step after npm ci`,
     );
   }
+  assert.ok(
+    commands.indexOf('npm run test:mobile') > commands.indexOf('npx playwright install --with-deps chromium'),
+    'Required job must execute mobile tests after installing the browser',
+  );
   assert.ok(
     commands.indexOf('npm run test:production') > commands.indexOf('npm run build'),
     'Required job must execute a standalone npm run test:production step after npm run build',
