@@ -890,6 +890,13 @@ export async function registerRoutes(
         lastPoll: Date.now(),
         messages: []
       });
+
+      // Replay the latest geometry on every join, including polling reconnects.
+      // Use the regular message queue so the existing client handler applies it.
+      const screenInfo = agentScreenInfo.get(normalizedRoom);
+      if (screenInfo) {
+        room.get(userId)!.messages.push({ type: 'agent-screen-info', ...screenInfo });
+      }
       
       // Notify others that user joined
       room.forEach((p, pId) => {
@@ -1375,6 +1382,12 @@ export async function registerRoutes(
               agentConnected,
               controlActive
             }));
+
+            // The agent may have published before this participant connected.
+            const screenInfo = agentScreenInfo.get(currentRoom);
+            if (screenInfo) {
+              ws.send(JSON.stringify({ type: 'agent-screen-info', ...screenInfo }));
+            }
             break;
           }
 

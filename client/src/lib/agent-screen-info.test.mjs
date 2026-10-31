@@ -236,3 +236,91 @@ test('geometry reaches status callback without resetting active control and resc
     { width: status.screenWidth, height: status.screenHeight });
   assert.deepEqual(target, { x: 1280, y: 720 });
 });
+
+function signalingHarness() {
+  const source = parse('../../../server/routes.ts');
+  const scope = {
+    agentScreenInfo: new Map(),
+    rooms: new Map(),
+    pollingRooms: new Map(),
+    agentConnections: new Map(),
+    pollingAgents: new Map(),
+    controlPermissions: new Map(),
+    wsConnectionData: new WeakMap(),
+    WebSocket: { OPEN: 1 },
+    console: { log() {}, error() {} },
+  };
+  const route = (method, path) => {
+    const node = find(source, node => ts.isCallExpression(node)
+      && node.expression.getText(source) === `app.${method}`
+      && node.arguments[0]?.text === path);
+    return evaluate(node.arguments[1], source, scope);
+  };
+  const publish = info => route('post', '/api/agent/screen-info')({
+    body: { sessionCode: 'abc123', ...info },
+  }, { json: data => assert.equal(data.success, true) });
+  const joinBranch = find(source, node => ts.isCaseClause(node) && node.expression.text === 'join');
+  const joinJs = ts.transpileModule(joinBranch.statements[0].getText(source).replace(/\bbreak;/, ''), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const wsJoin = new Function(...Object.keys(scope), 'ws', 'roomId', 'userId', 'role',
+    `let currentRoom = null, currentUserId = null; ${joinJs}`);
+  return {
+    publish,
+    joinWebSocket(userId = 'late-engineer', roomId = 'abc123') {
+      const messages = [];
+      const ws = { readyState: 1, send: data => messages.push(JSON.parse(data)) };
+      wsJoin(...Object.values(scope), ws, roomId, userId, 'engineer');
+      return messages;
+    },
+    joinPolling(userId = 'late-engineer', roomId = 'abc123') {
+      route('post', '/api/signal/join')({ body: { roomId, userId, role: 'engineer' } }, {
+        json: data => assert.equal(data.success, true),
+      });
+    },
+    poll(userId = 'late-engineer', roomId = 'abc123') {
+      let result;
+      route('post', '/api/signal/poll')({ body: { roomId, userId } }, {
+        json: data => { result = data; },
+      });
+      return result.messages;
+    },
+  };
+}
+
+for (const transport of ['WebSocket', 'polling']) {
+  test(`${transport} late join and reconnect replay the latest non-default geometry`, () => {
+    const signaling = signalingHarness();
+    const initial = { screenWidth: 2560, screenHeight: 1440, scaleFactor: 2 };
+    const updated = { screenWidth: 3440, screenHeight: 1440, scaleFactor: 1.5 };
+    const join = () => {
+      if (transport === 'WebSocket') return signaling.joinWebSocket();
+      signaling.joinPolling();
+      return signaling.poll();
+    };
+    const geometry = messages => messages.filter(message => message.type === 'agent-screen-info');
+    signaling.publish(initial);
+    assert.deepEqual(geometry(join()), [{ type: 'agent-screen-info', ...initial }]);
+    assert.deepEqual(geometry(join()), [{ type: 'agent-screen-info', ...initial }],
+      'reconnecting needs no display event or agent reconnect');
+    signaling.publish(updated);
+    assert.deepEqual(geometry(join()), [{ type: 'agent-screen-info', ...updated }],
+      'reconnect uses the current geometry, not the original publication');
+    if (transport === 'polling') {
+      assert.deepEqual(signaling.poll(), [], 'replay is delivered only once per join');
+    }
+  });
+
+  test(`${transport} join does not invent geometry or leak another session's screen size`, () => {
+    const signaling = signalingHarness();
+    signaling.publish({ screenWidth: 2560, screenHeight: 1440 });
+    let messages;
+    if (transport === 'WebSocket') {
+      messages = signaling.joinWebSocket('other-engineer', 'xyz789');
+    } else {
+      signaling.joinPolling('other-engineer', 'xyz789');
+      messages = signaling.poll('other-engineer', 'xyz789');
+    }
+    assert.deepEqual(messages.filter(message => message.type === 'agent-screen-info'), []);
+  });
+}
