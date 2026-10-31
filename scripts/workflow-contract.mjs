@@ -7,6 +7,7 @@ const isMapping = value => value !== null && typeof value === 'object' && !Array
 const requiredWorkflowTests = [
   'scripts/workflow-contract.test.mjs',
   'scripts/release-workflow-contract.test.mjs',
+  'scripts/mac-agent-release.test.mjs',
   'scripts/audit-repository-protection.test.mjs',
   'scripts/protection-monitor-workflow.test.mjs',
   'scripts/production-smoke-workflow.test.mjs',

@@ -81,6 +81,19 @@ git push && git push --tags
 
 The GitHub Actions workflow will automatically build installers for Windows, macOS, and Linux.
 
+For tagged macOS releases, configure these repository Actions secrets so the
+installers are signed with Developer ID and notarized by Apple:
+
+- `MACOS_CSC_LINK`: Base64-encoded Developer ID Application `.p12` certificate
+- `MACOS_CSC_KEY_PASSWORD`: password for that certificate
+- `APPLE_ID`: Apple Developer account email
+- `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
+- `APPLE_TEAM_ID`: Apple Developer Team ID
+
+The release workflow fails before publishing if any of these are missing. Do not
+put certificate data or passwords in source files. The macOS build creates
+separate Apple Silicon (`arm64`) and Intel (`x64`) DMG installers.
+
 #### Option 2: Build Locally
 
 ```bash

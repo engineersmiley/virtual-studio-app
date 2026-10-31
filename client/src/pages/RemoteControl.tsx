@@ -4,16 +4,18 @@ import { Badge } from "@/components/ui/badge";
 import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand } from "lucide-react";
 import { Link } from "wouter";
 
-const AGENT_VERSION = "1.20.0";
+const AGENT_VERSION = "1.20.1";
+const LEGACY_AGENT_VERSION = "1.20.0";
 
 // Download URLs - GitHub release assets
 const RELEASE_DOWNLOAD_BASE = "https://github.com/engineersmiley/virtual-studio-app/releases/download";
 const DOWNLOAD_URLS = {
-  windows: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Remote.Studio.Agent.Setup.exe`,
-  mac: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Remote.Studio.Agent.dmg`,
-  linux: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Remote.Studio.Agent.AppImage`,
+  windows: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Virtual.Studio.Agent.Setup.exe`,
+  macAppleSilicon: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Virtual.Studio.Agent-arm64.dmg`,
+  macIntel: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Virtual.Studio.Agent-x64.dmg`,
+  linux: `${RELEASE_DOWNLOAD_BASE}/v${AGENT_VERSION}/Virtual.Studio.Agent.AppImage`,
   // Legacy build - works on macOS 10.11+ (El Capitan)
-  macLegacy: `${RELEASE_DOWNLOAD_BASE}/legacy-v${AGENT_VERSION}/Remote.Studio.Agent.Legacy.zip`,
+  macLegacy: `${RELEASE_DOWNLOAD_BASE}/legacy-v${LEGACY_AGENT_VERSION}/Remote.Studio.Agent.Legacy.zip`,
 };
 
 export default function RemoteControl() {
@@ -73,8 +75,8 @@ export default function RemoteControl() {
                 </Button>
               </a>
               <div className="flex flex-col gap-2">
-                <a 
-                  href={DOWNLOAD_URLS.mac}
+                <a
+                  href={DOWNLOAD_URLS.macAppleSilicon}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full"
@@ -85,11 +87,26 @@ export default function RemoteControl() {
                     data-testid="button-download-agent-mac"
                   >
                     <Apple className="w-8 h-8" />
-                    <span className="font-semibold">macOS 11+</span>
-                    <span className="text-xs opacity-70">.dmg installer</span>
+                    <span className="font-semibold">Apple Silicon</span>
+                    <span className="text-xs opacity-70">M1 / M2 / M3 / M4 · .dmg</span>
                   </Button>
                 </a>
-                <a 
+                <a
+                  href={DOWNLOAD_URLS.macIntel}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full"
+                >
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full text-xs"
+                    data-testid="button-download-agent-mac-intel"
+                  >
+                    Intel Mac · macOS 11+
+                  </Button>
+                </a>
+                <a
                   href={DOWNLOAD_URLS.macLegacy}
                   target="_blank"
                   rel="noopener noreferrer"

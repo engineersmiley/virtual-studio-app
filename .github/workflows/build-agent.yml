@@ -76,6 +76,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Require Apple signing and notarization credentials for releases
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          MACOS_CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+          MACOS_CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=()
+          for name in MACOS_CSC_LINK MACOS_CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing GitHub Actions secrets required for a signed macOS release: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -87,6 +107,12 @@ jobs:
 
       - name: Build for macOS
         working-directory: virtual-studio-agent
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run build:mac
 
       - name: Upload artifacts
@@ -157,10 +183,19 @@ jobs:
 
       - name: Rename files for consistent download URLs
         run: |
+          set -euo pipefail
           cd dist
           for f in *.exe; do mv "$f" "Virtual.Studio.Agent.Setup.exe" 2>/dev/null || true; done
-          for f in *.dmg; do mv "$f" "Virtual.Studio.Agent.dmg" 2>/dev/null || true; done
+          for f in *.dmg; do
+            case "$f" in
+              *arm64*) mv "$f" "Virtual.Studio.Agent-arm64.dmg" ;;
+              *x64*) mv "$f" "Virtual.Studio.Agent-x64.dmg" ;;
+              *) echo "Unexpected macOS installer name: $f"; exit 1 ;;
+            esac
+          done
           for f in *.AppImage; do mv "$f" "Virtual.Studio.Agent.AppImage" 2>/dev/null || true; done
+          test -f Virtual.Studio.Agent-arm64.dmg
+          test -f Virtual.Studio.Agent-x64.dmg
           ls -la
 
       - name: Create Release
@@ -172,11 +207,13 @@ jobs:
             
             Download the installer for your operating system:
             - **Windows**: Virtual.Studio.Agent.Setup.exe
-            - **macOS** (11+): Virtual.Studio.Agent.dmg
+            - **macOS Apple Silicon** (M1/M2/M3/M4): Virtual.Studio.Agent-arm64.dmg
+            - **macOS Intel**: Virtual.Studio.Agent-x64.dmg
             - **Linux**: Virtual.Studio.Agent.AppImage
           files: |
             dist/Virtual.Studio.Agent.Setup.exe
-            dist/Virtual.Studio.Agent.dmg
+            dist/Virtual.Studio.Agent-arm64.dmg
+            dist/Virtual.Studio.Agent-x64.dmg
             dist/Virtual.Studio.Agent.AppImage
           draft: false
           prerelease: false
