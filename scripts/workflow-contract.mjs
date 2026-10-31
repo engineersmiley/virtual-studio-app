@@ -10,6 +10,7 @@ const requiredWorkflowTests = [
   'scripts/audit-repository-protection.test.mjs',
   'scripts/protection-monitor-workflow.test.mjs',
   'scripts/production-smoke-workflow.test.mjs',
+  'scripts/check-web-bundle.test.mjs',
 ];
 
 // Keep these commands deliberately narrow, like the workflow steps below.

@@ -5,6 +5,27 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 export default defineConfig({
   plugins: [
+    {
+      name: "bundle-module-inventory",
+      apply: "build",
+      generateBundle(_options, bundle) {
+        const modules = Object.fromEntries(
+          Object.values(bundle)
+            .filter((output) => output.type === "chunk")
+            .map((chunk) => [
+              chunk.fileName,
+              Object.keys(chunk.modules).map((id) =>
+                path.relative(import.meta.dirname, id).replaceAll("\\", "/"),
+              ),
+            ]),
+        );
+        this.emitFile({
+          type: "asset",
+          fileName: ".vite/chunk-modules.json",
+          source: JSON.stringify(modules, null, 2),
+        });
+      },
+    },
     react(),
     runtimeErrorOverlay(),
     ...(process.env.NODE_ENV !== "production" &&
@@ -28,6 +49,7 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
+    manifest: true,
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
   },
