@@ -420,6 +420,8 @@ function SessionContent() {
     requestFullControl,
     endFullControl,
     sendFullControlCommand,
+    queueFullControlClick,
+    cancelPendingControlClicks,
     confirmAudio,
     unconfirmAudio,
   } = useWebRTC({
@@ -479,6 +481,11 @@ function SessionContent() {
 
   // Direct screen touch control - touch on video to control computer
   const controlEnabled = fullControlActive || wsControlAllowed;
+
+  // Cancel the previous view's pending input on view changes and session teardown.
+  useEffect(() => {
+    return cancelPendingControlClicks;
+  }, [isFullscreen, hasRemoteStream, cancelPendingControlClicks]);
   
   const handleVideoTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartRef.current = null;
@@ -562,11 +569,9 @@ function SessionContent() {
       // Move to position then click
       virtualCursorRef.current = { x, y };
       sendFullControlCommand({ type: 'mouse-move', x, y });
-      setTimeout(() => {
-        sendFullControlCommand({ type: 'mouse-click', button: 'left' });
-      }, 50);
+      queueFullControlClick(video);
     }
-  }, [controlEnabled, sendFullControlCommand, agentScreenSize]);
+  }, [controlEnabled, sendFullControlCommand, queueFullControlClick, agentScreenSize]);
 
   const handleVideoTouchCancel = useCallback(() => {
     touchStartRef.current = null;
@@ -1417,9 +1422,7 @@ function SessionContent() {
                 }
 
                 sendFullControlCommand({ type: 'mouse-move', x, y });
-                setTimeout(() => {
-                  sendFullControlCommand({ type: 'mouse-click', button: 'left' });
-                }, 50);
+                queueFullControlClick(video);
               }
             }}
             onMouseMove={(e) => {
@@ -1517,9 +1520,7 @@ function SessionContent() {
                 );
                 virtualCursorRef.current = { x, y };
                 sendFullControlCommand({ type: 'mouse-move', x, y });
-                setTimeout(() => {
-                  sendFullControlCommand({ type: 'mouse-click', button: 'left' });
-                }, 50);
+                queueFullControlClick(video);
               }
             }}
             onTouchCancel={() => {
@@ -1593,9 +1594,7 @@ function SessionContent() {
                 if (controlEnabled) {
                   virtualCursorRef.current = { x, y };
                   sendFullControlCommand({ type: 'mouse-move', x, y });
-                  setTimeout(() => {
-                    sendFullControlCommand({ type: 'mouse-click', button: 'left' });
-                  }, 50);
+                  queueFullControlClick(video);
                 } else if (controlMode) {
                   // Pointer mode - show pointer on artist's screen
                   sendControlEvent('click', x / agentScreenSize.width, y / agentScreenSize.height);
@@ -1699,9 +1698,7 @@ function SessionContent() {
                       );
                       virtualCursorRef.current = { x, y };
                       sendFullControlCommand({ type: 'mouse-move', x, y });
-                      setTimeout(() => {
-                        sendFullControlCommand({ type: 'mouse-click', button: 'left' });
-                      }, 50);
+                      queueFullControlClick(video);
                     }
                   }}
                   style={{ cursor: hasRemoteStream ? 'none' : 'default' }}

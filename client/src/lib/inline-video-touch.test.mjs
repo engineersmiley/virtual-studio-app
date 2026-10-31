@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
 import { isSyntheticClickAfterTouch, mapVideoPointToScreen } from './remote-control-video.js';
+import { remoteControlHarness } from './test-support/remote-control-harness.mjs';
 
 // Execute the real callbacks wired to the inline video, without a WebRTC session.
 const source = ts.createSourceFile(
@@ -35,13 +36,14 @@ visit(source);
 assert.ok(video, 'inline remote video must exist');
 assert.ok(container, 'inline video container must exist');
 
-function setup({ controlEnabled = true, videoPresent = true } = {}) {
-  const commands = [];
+function setup({ controlEnabled = true, videoPresent = true, remote } = {}) {
+  const commands = remote?.commands ?? [];
   const touchStartRef = { current: null };
   const lastRemoteVideoTouchTimeRef = { current: 0 };
   const lastMouseMoveRef = { current: 0 };
   let now = 1_000;
   const remoteVideoRef = { current: videoPresent ? {
+    isConnected: true,
     videoWidth: 1920, videoHeight: 1080,
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 1920, height: 1080 }),
   } : null };
@@ -51,7 +53,9 @@ function setup({ controlEnabled = true, videoPresent = true } = {}) {
     hasRemoteStream: true, controlMode: false,
     lastMouseMoveRef, MOUSE_THROTTLE_MS: 16, remoteVideoRef,
     agentScreenSize: { width: 1920, height: 1080 },
-    sendFullControlCommand: (command) => commands.push(command),
+    sendFullControlCommand: remote?.api.sendFullControlCommand ?? ((command) => commands.push(command)),
+    queueFullControlClick: remote?.api.queueFullControlClick ??
+      (() => commands.push({ type: 'mouse-click', button: 'left' })),
     sendControlEvent: () => assert.fail('unexpected pointer-only command'),
     mapVideoPointToScreen, isSyntheticClickAfterTouch, TOUCH_DELAY_MS: 500,
     Date: { now: () => now },
@@ -222,3 +226,56 @@ test('container desktop clicks still work before touches and after the suppressi
   handlers.containerClick(click);
   assert.equal(clickCount(commands), 2);
 });
+
+for (const input of ['tap', 'onClick', 'containerClick']) {
+  function queue(state) {
+    if (input === 'tap') {
+      state.handlers.onTouchStart(state.event());
+      state.handlers.onTouchEnd(state.event([]));
+    } else {
+      state.handlers[input]({ ...state.event(), clientX: 100, clientY: 200 });
+    }
+  }
+
+  test(`inline ${input} moves immediately and clicks once after 50ms`, () => {
+    const remote = remoteControlHarness();
+    const state = setup({ remote });
+    queue(state);
+    assert.equal(remote.commands.length, 1);
+    assert.equal(remote.commands[0].type, 'mouse-move');
+    remote.advance(49);
+    assert.equal(clickCount(remote.commands), 0);
+    remote.advance(1);
+    assert.equal(clickCount(remote.commands), 1);
+    remote.advance(100);
+    assert.equal(clickCount(remote.commands), 1);
+    assert.equal(remote.pending, 0);
+  });
+
+  for (const boundary of ['revoke', 'deny', 'agent-disconnect', 'poll-revoke', 'end', 'disconnect',
+    'transport-close', 'reconnect', 'unmount', 'view-unmount', 'view-detach']) {
+    test(`inline ${input} cancels a pending click on ${boundary}`, () => {
+      const remote = remoteControlHarness();
+      const state = setup({ remote });
+      queue(state);
+      remote.advance(25);
+      if (boundary === 'revoke') remote.message({ type: 'control-stopped' });
+      if (boundary === 'deny') remote.message({ type: 'control-response', allowed: false });
+      if (boundary === 'agent-disconnect') remote.message({ type: 'agent-disconnected' });
+      if (boundary === 'poll-revoke') remote.message({ type: 'agent-status', connected: true, controlActive: false });
+      if (boundary === 'end') remote.api.endFullControl();
+      if (boundary === 'disconnect') remote.api.disconnect();
+      if (boundary === 'transport-close') remote.close();
+      if (boundary === 'reconnect') remote.reconnect();
+      if (boundary === 'unmount') remote.unmount();
+      if (boundary === 'view-unmount') remote.unmountView();
+      if (boundary === 'view-detach') state.remoteVideoRef.current.isConnected = false;
+      if (boundary !== 'view-detach') assert.equal(remote.pending, 0, 'cancel the timer, not just its send');
+      // Re-grant before the original timer expires: old input must not cross grants.
+      if (['revoke', 'deny', 'agent-disconnect', 'poll-revoke', 'end', 'reconnect'].includes(boundary)) remote.grant();
+      remote.advance(100);
+      assert.equal(clickCount(remote.commands), 0);
+      assert.equal(remote.pending, 0);
+    });
+  }
+}

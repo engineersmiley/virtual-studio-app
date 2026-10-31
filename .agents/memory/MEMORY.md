@@ -7,3 +7,4 @@
 - [Touch compatibility clicks](touch-compatibility-clicks.md) — a touch's follow-up click can target a shared ancestor, not just the video where it began.
 - [Required PR check](required-pr-check.md) — GitHub merge protection is external state; keep the required status synchronized with workflow job names.
 - [Disposable PostgreSQL tooling](disposable-postgres-tooling.md) — Replit's Nix environment can expose server tools without pg_config; Ubuntu often needs pg_config discovery.
+- [Remote input lifetimes](remote-input-lifetimes.md) — delayed input must belong to its original authorization grant, not just pass a current permission check.

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { SessionRole } from '@shared/schema';
 import { PollingTransport } from '@/lib/polling-transport';
+import { createRemoteControlLifetime } from '@/lib/remote-control-lifetime.js';
 
 type SignalingTransport = WebSocket | PollingTransport;
 
@@ -151,7 +152,23 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, RemoteStreamInfo>>(new Map());
   const [agentConnected, setAgentConnected] = useState(false);
-  const [controlAllowed, setControlAllowed] = useState(false);
+  const [controlAllowed, setControlAllowedState] = useState(false);
+  const controlLifetimeRef = useRef<ReturnType<typeof createRemoteControlLifetime> | null>(null);
+  if (!controlLifetimeRef.current) controlLifetimeRef.current = createRemoteControlLifetime();
+  const controlLifetime = controlLifetimeRef.current;
+  const lastMouseMoveRef = useRef<number>(0);
+  const pendingMouseMoveRef = useRef<{x: number, y: number} | null>(null);
+  const mouseMoveQueuedRef = useRef(false);
+  // Update authorization synchronously, before React renders or effects run.
+  const setControlAllowed = useCallback((allowed: boolean) => {
+    controlLifetime.setAllowed(allowed);
+    if (!allowed) {
+      pendingMouseMoveRef.current = null;
+      mouseMoveQueuedRef.current = false;
+      lastMouseMoveRef.current = 0;
+    }
+    setControlAllowedState(allowed);
+  }, [controlLifetime]);
   const [controlPending, setControlPending] = useState(false);
   // Audio confirmations: Map of broadcasterUserId -> Set of confirming userIds
   const [audioConfirmations, setAudioConfirmations] = useState<Map<string, Set<string>>>(new Map());
@@ -759,8 +776,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       case 'agent-status': {
         // Real-time agent status from polling
         setAgentConnected(message.connected);
-        if (message.controlActive) {
-          setControlAllowed(true);
+        if (message.controlActive !== undefined || !message.connected) {
+          setControlAllowed(message.connected === true && message.controlActive === true);
+        }
+        if (message.controlActive || !message.connected) {
           setControlPending(false);
         }
         break;
@@ -812,6 +831,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }, [roomId, userId, role, createPeerConnection, closePeerConnection, sendOfferToViewer]);
 
   const connectWithPolling = useCallback(() => {
+    setControlAllowed(false);
     console.log('[Polling] Switching to HTTP polling fallback');
     usingPollingRef.current = true;
     setError('Using backup connection...');
@@ -832,6 +852,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     };
     
     transport.onmessage = async (event) => {
+      if (wsRef.current !== transport || !isTransportOpen(transport)) return;
       handleSignalingMessage(event.data);
     };
     
@@ -841,6 +862,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     };
     
     transport.onclose = () => {
+      if (wsRef.current !== transport) return;
+      setControlAllowed(false);
       console.log('[Polling] Closed');
       closeAllPeerConnections();
       setConnected(false);
@@ -850,6 +873,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }, [roomId, userId, role, closeAllPeerConnections, handleSignalingMessage]);
 
   const connect = useCallback(() => {
+    setControlAllowed(false);
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
@@ -881,10 +905,13 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     };
 
     ws.onmessage = async (event) => {
+      if (wsRef.current !== ws || !isTransportOpen(ws)) return;
       handleSignalingMessage(event.data);
     };
 
     ws.onerror = (event) => {
+      if (wsRef.current !== ws) return;
+      setControlAllowed(false);
       console.error('[WebSocket] Connection error:', event);
       if (retryCountRef.current < maxRetries) {
         retryCountRef.current++;
@@ -901,6 +928,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     };
     
     ws.onclose = (event) => {
+      if (wsRef.current !== ws) return;
+      setControlAllowed(false);
       console.log('[WebSocket] Connection closed:', event.code, event.reason);
       // DON'T close peer connections on WebSocket close - keep video alive
       // The peer connections are direct P2P and don't need WebSocket once established
@@ -1269,6 +1298,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }, [closeAllPeerConnections]);
 
   const disconnect = useCallback(() => {
+    setControlAllowed(false);
+    setControlPending(false);
     // Stop sharing first
     stopSharing();
     
@@ -1343,6 +1374,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      setControlAllowed(false);
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
       }
@@ -1355,7 +1387,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         wsRef.current.close();
       }
     };
-  }, []);
+  }, [roomId, userId, role, setControlAllowed]);
 
   // Request full control from agent
   const requestFullControl = useCallback((name: string = 'Engineer') => {
@@ -1409,9 +1441,6 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }, [roomId, userId, role]);
   
   // Throttle mouse moves to reduce lag (send max every 16ms = ~60fps)
-  const lastMouseMoveRef = useRef<number>(0);
-  const pendingMouseMoveRef = useRef<{x: number, y: number} | null>(null);
-  const mouseMoveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Send full control command (mouse/keyboard to agent)
   const sendFullControlCommand = useCallback((command: {
@@ -1419,7 +1448,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     [key: string]: any;
   }) => {
     if (role !== 'engineer') return;
-    if (!controlAllowed) return;
+    if (!controlLifetime.isAllowed()) return;
     if (!isTransportOpen(wsRef.current)) return;
     
     // Throttle mouse-move to prevent flooding
@@ -1430,10 +1459,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       if (elapsed < 16) {
         // Queue this move and send after throttle period
         pendingMouseMoveRef.current = { x: command.x, y: command.y };
-        if (!mouseMoveTimeoutRef.current) {
-          mouseMoveTimeoutRef.current = setTimeout(() => {
-            mouseMoveTimeoutRef.current = null;
-            if (pendingMouseMoveRef.current && isTransportOpen(wsRef.current)) {
+        if (!mouseMoveQueuedRef.current) {
+          mouseMoveQueuedRef.current = true;
+          const transport = wsRef.current;
+          controlLifetime.schedule('move', () => {
+            mouseMoveQueuedRef.current = false;
+            if (pendingMouseMoveRef.current && wsRef.current === transport && isTransportOpen(transport)) {
               const payload = {
                 type: 'mouse-move',
                 ...pendingMouseMoveRef.current,
@@ -1462,7 +1493,21 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     }
     
     wsRef.current!.send(JSON.stringify(payload));
-  }, [roomId, userId, role, controlAllowed]);
+  }, [roomId, userId, role, controlLifetime]);
+
+  const cancelPendingControlClicks = useCallback(() => {
+    controlLifetime.cancel('click');
+  }, [controlLifetime]);
+
+  const queueFullControlClick = useCallback((video: HTMLVideoElement) => {
+    if (role !== 'engineer' || !isTransportOpen(wsRef.current)) return;
+    const transport = wsRef.current;
+    controlLifetime.schedule('click', () => {
+      if (video.isConnected && wsRef.current === transport) {
+        sendFullControlCommand({ type: 'mouse-click', button: 'left' });
+      }
+    }, 50);
+  }, [role, controlLifetime, sendFullControlCommand]);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -1522,6 +1567,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     requestFullControl,
     endFullControl,
     sendFullControlCommand,
+    queueFullControlClick,
+    cancelPendingControlClicks,
     confirmAudio,
     unconfirmAudio,
   };

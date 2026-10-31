@@ -63,6 +63,9 @@ function setup({ role = 'engineer', controlEnabled = true } = {}) {
     document: { pointerLockElement: null },
     Date: { now: () => now },
     setTimeout: (callback, delay) => { timers.push({ callback, due: now + delay }); },
+    queueFullControlClick: () => {
+      timers.push({ callback: () => commands.push({ type: 'mouse-click', button: 'left' }), due: now + 50 });
+    },
     sendFullControlCommand: (command) => commands.push(command),
     mapVideoPointToScreen, isSyntheticClickAfterTouch,
   };

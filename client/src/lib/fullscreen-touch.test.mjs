@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
 import { isSyntheticClickAfterTouch, mapVideoPointToScreen } from './remote-control-video.js';
+import { remoteControlHarness } from './test-support/remote-control-harness.mjs';
 
 // Run the real fullscreen JSX handlers without mounting a WebRTC session.
 const source = ts.createSourceFile(
@@ -25,8 +26,8 @@ function visit(node) {
 visit(source);
 assert.ok(video, 'fullscreen video must exist');
 
-function setup({ role = 'engineer', controlEnabled = true } = {}) {
-  const commands = [];
+function setup({ role = 'engineer', controlEnabled = true, remote } = {}) {
+  const commands = remote?.commands ?? [];
   const fullscreenTouchRef = { current: null };
   const lastRemoteVideoTouchTimeRef = { current: 0 };
   let now = 1_000;
@@ -34,7 +35,9 @@ function setup({ role = 'engineer', controlEnabled = true } = {}) {
     role, controlEnabled, fullscreenTouchRef, lastRemoteVideoTouchTimeRef,
     virtualCursorRef: { current: { x: 960, y: 540 } },
     agentScreenSize: { width: 1920, height: 1080 },
-    sendFullControlCommand: (command) => commands.push(command),
+    sendFullControlCommand: remote?.api.sendFullControlCommand ?? ((command) => commands.push(command)),
+    queueFullControlClick: remote?.api.queueFullControlClick ??
+      (() => commands.push({ type: 'mouse-click', button: 'left' })),
     mapVideoPointToScreen, isSyntheticClickAfterTouch, TOUCH_DELAY_MS: 500,
     Date: { now: () => now },
     setTimeout: (callback) => callback(),
@@ -54,6 +57,7 @@ function setup({ role = 'engineer', controlEnabled = true } = {}) {
     changedTouches: [point(x, y)],
     preventDefault() {},
     currentTarget: {
+      isConnected: true,
       videoWidth: 1920, videoHeight: 1080,
       getBoundingClientRect: () => ({ left: 0, top: 0, width: 1920, height: 1080 }),
     },
@@ -140,3 +144,44 @@ test('touch control remains limited to engineers with control enabled', () => {
     assert.deepEqual(commands, []);
   }
 });
+
+test('fullscreen authorized tap waits 50ms and clicks once', () => {
+  const remote = remoteControlHarness();
+  const state = setup({ remote });
+  state.handlers.onTouchStart(state.event(100, 200));
+  state.handlers.onTouchEnd(state.event(100, 200, true));
+  assert.equal(remote.commands.length, 1);
+  assert.equal(remote.commands[0].type, 'mouse-move');
+  remote.advance(49);
+  assert.equal(remote.commands.length, 1);
+  remote.advance(1);
+  state.syntheticClick();
+  assert.equal(remote.commands.length, 2);
+  assert.equal(remote.commands[1].type, 'mouse-click');
+  assert.equal(remote.pending, 0);
+});
+
+for (const boundary of ['revoke', 'end', 'disconnect', 'transport-close', 'reconnect',
+  'unmount', 'view-unmount', 'view-detach']) {
+  test(`fullscreen pending tap cannot click after ${boundary}`, () => {
+    const remote = remoteControlHarness();
+    const state = setup({ remote });
+    state.handlers.onTouchStart(state.event(100, 200));
+    const end = state.event(100, 200, true);
+    state.handlers.onTouchEnd(end);
+    remote.advance(25);
+    if (boundary === 'revoke') remote.message({ type: 'control-stopped' });
+    if (boundary === 'end') remote.api.endFullControl();
+    if (boundary === 'disconnect') remote.api.disconnect();
+    if (boundary === 'transport-close') remote.close();
+    if (boundary === 'reconnect') remote.reconnect();
+    if (boundary === 'unmount') remote.unmount();
+    if (boundary === 'view-unmount') remote.unmountView();
+    if (boundary === 'view-detach') end.currentTarget.isConnected = false;
+    if (boundary !== 'view-detach') assert.equal(remote.pending, 0);
+    if (['revoke', 'end', 'reconnect'].includes(boundary)) remote.grant();
+    remote.advance(100);
+    assert.equal(remote.commands.filter(command => command.type === 'mouse-click').length, 0);
+    assert.equal(remote.pending, 0);
+  });
+}

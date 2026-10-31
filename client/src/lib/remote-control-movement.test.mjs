@@ -50,6 +50,7 @@ function setup() {
     agentScreenSize: { width: 1920, height: 1080 },
     MOUSE_THROTTLE_MS: 16, TOUCH_DELAY_MS: 500,
     Date: { now: () => 1000 }, setTimeout: (callback) => callback(),
+    queueFullControlClick: () => commands.push({ type: 'mouse-click', button: 'left' }),
     document: { pointerLockElement: null },
     sendFullControlCommand: (command) => commands.push(command),
     sendControlEvent: () => assert.fail('unexpected pointer-only command'),
