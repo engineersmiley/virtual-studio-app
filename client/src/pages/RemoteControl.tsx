@@ -1,11 +1,26 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand } from "lucide-react";
+import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand, Copy, Check } from "lucide-react";
 import { Link } from "wouter";
 import { AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS, CURRENT_AGENT_VERSION } from "@/lib/agent-downloads";
 
+const APPLE_SILICON_GATEKEEPER_COMMAND =
+  'xattr -dr com.apple.quarantine "/Applications/Virtual Studio Agent.app"';
+
 export default function RemoteControl() {
+  const [commandCopyStatus, setCommandCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+
+  const copyGatekeeperCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(APPLE_SILICON_GATEKEEPER_COMMAND);
+      setCommandCopyStatus("copied");
+    } catch {
+      setCommandCopyStatus("failed");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container max-w-4xl mx-auto px-4 py-8">
@@ -133,10 +148,49 @@ export default function RemoteControl() {
                 </Button>
               </a>
             </div>
-            <p className="mt-3 text-xs text-muted-foreground text-center">
-              Apple Silicon installer is unsigned and not notarized. If you trust this download and macOS blocks it,
-              Control-click the app and choose Open. If needed, check System Settings → Privacy &amp; Security → Open Anyway.
-            </p>
+            <div
+              className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4"
+              data-testid="section-mac-apple-silicon-gatekeeper"
+            >
+              <p className="text-sm font-semibold text-yellow-100">
+                macOS may block this unsigned and not notarized Apple Silicon app
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Only use these steps if you trust this download from the official Virtual Studio GitHub release.
+              </p>
+              <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
+                <li>Open the DMG, drag Virtual Studio Agent into Applications, then eject the DMG.</li>
+                <li>Open Terminal, paste the command below, and press Return.</li>
+                <li>Open Virtual Studio Agent from Applications.</li>
+              </ol>
+              <div className="mt-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                <code className="min-w-0 flex-1 overflow-x-auto break-all rounded bg-background/80 px-3 py-2 text-xs">
+                  {APPLE_SILICON_GATEKEEPER_COMMAND}
+                </code>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={copyGatekeeperCommand}
+                  data-testid="button-copy-mac-quarantine-command"
+                >
+                  {commandCopyStatus === "copied" ? (
+                    <Check className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Copy className="mr-2 h-4 w-4" />
+                  )}
+                  {commandCopyStatus === "copied" ? "Copied" : "Copy command"}
+                </Button>
+              </div>
+              {commandCopyStatus !== "idle" && (
+                <p className="mt-2 text-xs text-muted-foreground" role="status">
+                  {commandCopyStatus === "copied"
+                    ? "Command copied. Paste it into Terminal."
+                    : "Could not copy automatically. Select and copy the command above."}
+                </p>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-4 text-center">
               Current version {CURRENT_AGENT_VERSION} - Download the installer for your operating system above
             </p>

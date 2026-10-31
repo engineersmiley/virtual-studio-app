@@ -54,6 +54,11 @@ test('release version and Mac download links match the published artifacts', () 
   assert.match(downloadPage, /button-download-agent-mac-apple-silicon/);
   assert.doesNotMatch(downloadPage, /button-download-agent-mac-apple-silicon-pending|This installer is not published yet/);
   assert.match(downloadPage, /unsigned and not notarized/i);
+  assert.match(downloadPage, /APPLE_SILICON_GATEKEEPER_COMMAND/);
+  assert.match(downloadPage, /xattr -dr com\.apple\.quarantine/);
+  assert.match(downloadPage, /button-copy-mac-quarantine-command/);
+  assert.match(downloadPage, /drag Virtual Studio Agent into Applications/);
+  assert.match(downloadPage, /Open Terminal/);
   assert.doesNotMatch(homePage, /section-apple-silicon-download/);
   assert.match(releaseText, /If this release was manually built without Apple signing/);
 });
