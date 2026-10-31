@@ -1417,8 +1417,13 @@ function SessionContent() {
                 virtualCursorRef.current = { x, y };
 
                 // Seed the cursor before acquisition; lock changes must not reset it.
-                if (!document.pointerLockElement) {
-                  video.requestPointerLock();
+                if (!document.pointerLockElement && typeof video.requestPointerLock === 'function') {
+                  try {
+                    // Capture is optional; keep absolute input working if acquisition fails.
+                    video.requestPointerLock()?.catch(() => {});
+                  } catch {
+                    // Some browsers throw synchronously instead of returning a rejected promise.
+                  }
                 }
 
                 sendFullControlCommand({ type: 'mouse-move', x, y });

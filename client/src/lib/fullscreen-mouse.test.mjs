@@ -119,6 +119,43 @@ test('ordinary desktop click maps the video point, requests lock, then clicks af
   assert.equal(state.timers.length, 0);
 });
 
+for (const failure of ['missing', 'throwing', 'rejecting']) {
+  test(`${failure} pointer lock preserves absolute movement and the delayed left click`, async () => {
+    const state = setup();
+    let attempts = 0;
+    if (failure === 'missing') {
+      delete state.video.requestPointerLock;
+    } else {
+      state.video.requestPointerLock = function () {
+        assert.equal(this, state.video, 'acquisition must retain the video receiver');
+        attempts++;
+        const error = new Error('Pointer lock unavailable');
+        if (failure === 'throwing') throw error;
+        return Promise.reject(error);
+      };
+    }
+
+    assert.doesNotThrow(() => state.run('video.onClick'));
+    assert.equal(attempts, failure === 'missing' ? 0 : 1);
+    assert.deepEqual(state.commands, [{ type: 'mouse-move', x: 480, y: 810 }]);
+    state.advance(49);
+    assert.equal(state.commands.length, 1, 'click must still wait for cursor positioning');
+    state.advance(1);
+    // Let rejected promises settle. node:test also fails on unhandled rejections.
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(state.scope.document.pointerLockElement, null);
+    state.run('video.onMouseMove', {
+      clientX: 850, clientY: 580, movementX: -10000, movementY: 10000,
+    });
+    assert.deepEqual(state.commands, [
+      { type: 'mouse-move', x: 480, y: 810 },
+      { type: 'mouse-click', button: 'left' },
+      { type: 'mouse-move', x: 1440, y: 540 },
+    ]);
+    assert.equal(state.timers.length, 0);
+  });
+}
+
 test('touch suppression blocks commands and lock requests, but expires at 500ms', () => {
   const state = setup();
   state.touchNow();
