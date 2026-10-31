@@ -3,6 +3,7 @@ const path = require('path');
 const WebSocket = require('ws');
 const https = require('https');
 const { exec } = require('child_process');
+const { monitorScreenInfo } = require('./screen-info');
 
 // Use AppleScript for keyboard on macOS (works in fullscreen apps)
 function sendKeyWithAppleScript(key, modifiers = []) {
@@ -165,16 +166,6 @@ Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateScrollWheelEvent(N
   return true;
 }
 
-// Get the actual screen size for accurate mouse positioning
-function getScreenSize() {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  return {
-    width: primaryDisplay.size.width,
-    height: primaryDisplay.size.height,
-    scaleFactor: primaryDisplay.scaleFactor
-  };
-}
-
 // HTTP request helper for legacy Electron (no fetch API)
 function httpRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
@@ -184,7 +175,8 @@ function httpRequest(url, options = {}) {
       port: urlObj.port || 443,
       path: urlObj.pathname + urlObj.search,
       method: options.method || 'GET',
-      headers: options.headers || {}
+      headers: options.headers || {},
+      signal: options.signal
     };
 
     const req = https.request(reqOptions, (res) => {
@@ -201,6 +193,11 @@ function httpRequest(url, options = {}) {
     });
 
     req.on('error', reject);
+    if (options.timeoutMs) {
+      req.setTimeout(options.timeoutMs, () => {
+        req.destroy(new Error('HTTP request timed out'));
+      });
+    }
     
     if (options.body) {
       req.write(options.body);
@@ -226,6 +223,15 @@ let currentSession = null;
 let currentToken = null;
 let pollingInterval = null;
 let usePolling = false;
+let stopScreenInfoMonitor = null;
+let connectionGeneration = 0;
+
+function stopScreenInfoUpdates() {
+  if (stopScreenInfoMonitor) {
+    stopScreenInfoMonitor();
+    stopScreenInfoMonitor = null;
+  }
+}
 
 const VIRTUAL_STUDIO_URL = 'wss://virtualstudio.sale';
 const VIRTUAL_STUDIO_HTTP = 'https://virtualstudio.sale';
@@ -320,7 +326,7 @@ async function checkAccessibilityPermissions() {
 let consecutiveErrors = 0;
 const MAX_CONSECUTIVE_ERRORS = 10; // Disconnect after 5 seconds of errors
 
-async function connectViaPolling(sessionCode) {
+async function connectViaPolling(sessionCode, generation) {
   try {
     // Simple mode - no token needed, just session code
     const response = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/simple-connect`, {
@@ -328,6 +334,7 @@ async function connectViaPolling(sessionCode) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionCode })
     });
+    if (generation !== connectionGeneration) return;
     
     if (!response.ok) {
       const data = await response.json();
@@ -340,25 +347,18 @@ async function connectViaPolling(sessionCode) {
     currentToken = null; // No token needed in simple mode
     consecutiveErrors = 0;
     
-    // Get and send screen size to the session
-    const screenSize = getScreenSize();
-    console.log(`[Agent] Screen size: ${screenSize.width}x${screenSize.height} (scale: ${screenSize.scaleFactor})`);
-    
-    // Send screen size to server so engineers get accurate coordinates
-    try {
-      await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/screen-info`, {
+    // Publish initial geometry and keep it current without reconnecting.
+    stopScreenInfoMonitor = monitorScreenInfo({
+      screen,
+      publish: (info, signal) => httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/screen-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          sessionCode, 
-          screenWidth: screenSize.width,
-          screenHeight: screenSize.height,
-          scaleFactor: screenSize.scaleFactor
-        })
-      });
-    } catch (err) {
-      console.log('[Agent] Failed to send screen info:', err.message);
-    }
+        body: JSON.stringify({ sessionCode, ...info }),
+        signal,
+        timeoutMs: 5000
+      }),
+      onError: (err) => console.error('[Agent] Failed to send screen info; will retry:', err.message)
+    });
     
     mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
     updateTrayMenu();
@@ -368,6 +368,7 @@ async function connectViaPolling(sessionCode) {
     pollingInterval = setInterval(async () => {
       // Safety check - if already disconnected, stop polling
       if (!currentSession || !isConnected) {
+        stopScreenInfoUpdates();
         console.log('[Agent] Polling stopped - no longer connected');
         if (pollingInterval) {
           clearInterval(pollingInterval);
@@ -412,12 +413,16 @@ async function connectViaPolling(sessionCode) {
     }, 500);
     
   } catch (error) {
+    if (generation !== connectionGeneration) return;
+    stopScreenInfoUpdates();
     console.error('[Agent] HTTP connection error:', error);
     mainWindow.webContents.send('error', error.message);
   }
 }
 
 function connectToServer(sessionCode) {
+  const generation = ++connectionGeneration;
+  stopScreenInfoUpdates();
   // Close any existing connections
   if (ws) {
     ws.close();
@@ -429,7 +434,7 @@ function connectToServer(sessionCode) {
   }
   
   // Use HTTP polling directly - no token needed, simpler and more reliable
-  connectViaPolling(sessionCode);
+  connectViaPolling(sessionCode, generation);
 }
 
 async function handleControlMessage(message) {
@@ -440,15 +445,18 @@ async function handleControlMessage(message) {
   
   let robot = null;
   let robotFailed = false;
-  try {
-    robot = require('@jitsi/robotjs');
-  } catch (e) {
-    console.error('Failed to load robotjs, will use AppleScript fallback on macOS:', e.message);
-    robotFailed = true;
-    // Don't return - continue to try AppleScript on macOS
-    if (process.platform !== 'darwin') {
-      console.error('No fallback available on non-macOS platforms');
-      return;
+  // Session cleanup must work even if the native input dependency is unavailable.
+  if (message.type !== 'session-ended') {
+    try {
+      robot = require('@jitsi/robotjs');
+    } catch (e) {
+      console.error('Failed to load robotjs, will use AppleScript fallback on macOS:', e.message);
+      robotFailed = true;
+      // Don't return - continue to try AppleScript on macOS
+      if (process.platform !== 'darwin') {
+        console.error('No fallback available on non-macOS platforms');
+        return;
+      }
     }
   }
   
@@ -496,6 +504,8 @@ async function handleControlMessage(message) {
       case 'session-ended':
         // Session ended (artist left), auto-disconnect
         console.log('Session ended:', message.reason);
+        ++connectionGeneration;
+        stopScreenInfoUpdates();
         
         // CRITICAL: Stop polling immediately to prevent further requests
         if (pollingInterval) {
@@ -747,6 +757,11 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('before-quit', () => {
+  ++connectionGeneration;
+  stopScreenInfoUpdates();
+});
+
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
@@ -767,6 +782,8 @@ ipcMain.handle('connect', async (event, { sessionCode }) => {
 
 ipcMain.handle('disconnect', async () => {
   console.log('[Agent] Disconnect requested');
+  ++connectionGeneration;
+  stopScreenInfoUpdates();
   
   // Stop polling first to prevent any more requests
   if (pollingInterval) {

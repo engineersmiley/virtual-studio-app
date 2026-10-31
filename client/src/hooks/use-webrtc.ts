@@ -193,13 +193,15 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }, [participants]);
   
   // Notify parent of agent status changes
+  const [agentScreenInfo, setAgentScreenInfo] = useState<Pick<AgentStatus, 'screenWidth' | 'screenHeight' | 'scaleFactor'>>({});
   useEffect(() => {
     onAgentStatusRef.current?.({
       connected: agentConnected,
       controlAllowed,
       controlPending,
+      ...agentScreenInfo,
     });
-  }, [agentConnected, controlAllowed, controlPending]);
+  }, [agentConnected, controlAllowed, controlPending, agentScreenInfo]);
 
   // Multiple STUN and TURN servers for NAT traversal
   // TURN servers are required when both parties are behind symmetric NAT
@@ -738,17 +740,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       }
       
       case 'agent-screen-info': {
-        // Received screen info from agent - pass to callback
-        if (onAgentStatusRef.current) {
-          onAgentStatusRef.current({ 
-            connected: true, 
-            controlAllowed,
-            controlPending,
-            screenWidth: message.screenWidth,
-            screenHeight: message.screenHeight,
-            scaleFactor: message.scaleFactor
-          });
-        }
+        // Use the status effect so a geometry update retains current control state.
+        setAgentScreenInfo({
+          screenWidth: message.screenWidth,
+          screenHeight: message.screenHeight,
+          scaleFactor: message.scaleFactor
+        });
         break;
       }
       

@@ -1,0 +1,54 @@
+// Electron reports logical display dimensions, matching the agent's input coordinates.
+// Keep scaleFactor as metadata; multiplying by it would double-scale Retina input.
+function monitorScreenInfo({ screen, publish, onError, retryMs = 2000 }) {
+  let stopped = false;
+  let running = false;
+  let lastPublished = null;
+  let retryTimer = null;
+  const controller = new AbortController();
+  const events = ['display-metrics-changed', 'display-added', 'display-removed'];
+
+  async function refresh() {
+    if (stopped || running) return;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    running = true;
+    try {
+      // Serialize requests so a slow, older update cannot overwrite a newer one.
+      // Re-read after each request to catch changes that happened while it ran.
+      while (!stopped) {
+        const display = screen.getPrimaryDisplay();
+        const info = {
+          screenWidth: display.size.width,
+          screenHeight: display.size.height,
+          scaleFactor: display.scaleFactor,
+        };
+        const signature = JSON.stringify({ displayId: display.id, ...info });
+        if (signature === lastPublished) break;
+        const response = await publish(info, controller.signal);
+        if (!response.ok) throw new Error(`Screen info request failed (${response.status})`);
+        lastPublished = signature;
+      }
+    } catch (error) {
+      if (!stopped) {
+        onError(error);
+        // A failed update must not require another display event to be retried.
+        retryTimer = setTimeout(refresh, retryMs);
+      }
+    } finally {
+      running = false;
+    }
+  }
+
+  for (const event of events) screen.on(event, refresh);
+  void refresh();
+
+  return () => {
+    stopped = true;
+    clearTimeout(retryTimer);
+    controller.abort();
+    for (const event of events) screen.removeListener(event, refresh);
+  };
+}
+
+module.exports = { monitorScreenInfo };
