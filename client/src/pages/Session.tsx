@@ -151,7 +151,6 @@ function SessionContent() {
   const [agentScreenSize, setAgentScreenSize] = useState({ width: 1920, height: 1080 });
   
   // Pointer lock for fullscreen cursor confinement
-  const [isPointerLocked, setIsPointerLocked] = useState(false);
   const virtualCursorRef = useRef({ x: 960, y: 540 }); // Virtual cursor position when pointer is locked
   
   // Producer audio state - track status per user: pending (not tried), playing, blocked
@@ -398,22 +397,6 @@ function SessionContent() {
     };
   }, []);
   
-  // Listen for pointer lock changes
-  useEffect(() => {
-    const handlePointerLockChange = () => {
-      const locked = !!document.pointerLockElement;
-      setIsPointerLocked(locked);
-      if (locked) {
-        // Initialize virtual cursor to center of screen
-        virtualCursorRef.current = { x: agentScreenSize.width / 2, y: agentScreenSize.height / 2 };
-      }
-    };
-    document.addEventListener('pointerlockchange', handlePointerLockChange);
-    return () => {
-      document.removeEventListener('pointerlockchange', handlePointerLockChange);
-    };
-  }, [agentScreenSize]);
-
   const {
     connected,
     participants,
@@ -543,6 +526,7 @@ function SessionContent() {
       agentScreenSize,
     );
     
+    virtualCursorRef.current = { x, y };
     sendFullControlCommand({ type: 'mouse-move', x, y });
   }, [controlEnabled, sendFullControlCommand, agentScreenSize]);
   
@@ -576,6 +560,7 @@ function SessionContent() {
       );
       
       // Move to position then click
+      virtualCursorRef.current = { x, y };
       sendFullControlCommand({ type: 'mouse-move', x, y });
       setTimeout(() => {
         sendFullControlCommand({ type: 'mouse-click', button: 'left' });
@@ -1411,21 +1396,25 @@ function SessionContent() {
                   return;
                 }
 
-                // Re-engage pointer lock if it was lost while fullscreen control is active.
-                if (!document.pointerLockElement) {
-                  e.currentTarget.requestPointerLock();
-                }
-
                 const video = e.currentTarget;
-                const rect = video.getBoundingClientRect();
-                const { x, y } = mapVideoPointToScreen(
-                  e.clientX,
-                  e.clientY,
-                  rect,
-                  video.videoWidth,
-                  video.videoHeight,
-                  agentScreenSize,
-                );
+                // Locked client coordinates can stay fixed while the remote cursor moves.
+                const locked = document.pointerLockElement === video;
+                const { x, y } = locked
+                  ? virtualCursorRef.current
+                  : mapVideoPointToScreen(
+                    e.clientX,
+                    e.clientY,
+                    video.getBoundingClientRect(),
+                    video.videoWidth,
+                    video.videoHeight,
+                    agentScreenSize,
+                  );
+                virtualCursorRef.current = { x, y };
+
+                // Seed the cursor before acquisition; lock changes must not reset it.
+                if (!document.pointerLockElement) {
+                  video.requestPointerLock();
+                }
 
                 sendFullControlCommand({ type: 'mouse-move', x, y });
                 setTimeout(() => {
@@ -1438,7 +1427,7 @@ function SessionContent() {
               if (role === 'engineer' && controlEnabled) {
                 let x: number, y: number;
                 
-                if (isPointerLocked) {
+                if (document.pointerLockElement === e.currentTarget) {
                   // Use relative movement when pointer is locked
                   const sensitivity = 1.5; // Adjust cursor speed
                   // Allow cursor to go slightly beyond bounds to reach dock/edges
@@ -1464,6 +1453,7 @@ function SessionContent() {
                   ));
                 }
                 
+                virtualCursorRef.current = { x, y };
                 sendFullControlCommand({ type: 'mouse-move', x, y });
               }
             }}
@@ -1500,6 +1490,7 @@ function SessionContent() {
                   video.videoHeight,
                   agentScreenSize,
                 );
+                virtualCursorRef.current = { x, y };
                 sendFullControlCommand({ type: 'mouse-move', x, y });
               }
             }}
@@ -1524,6 +1515,7 @@ function SessionContent() {
                   video.videoHeight,
                   agentScreenSize,
                 );
+                virtualCursorRef.current = { x, y };
                 sendFullControlCommand({ type: 'mouse-move', x, y });
                 setTimeout(() => {
                   sendFullControlCommand({ type: 'mouse-click', button: 'left' });
@@ -1599,6 +1591,7 @@ function SessionContent() {
                 
                 // Full control mode - send mouse commands to agent
                 if (controlEnabled) {
+                  virtualCursorRef.current = { x, y };
                   sendFullControlCommand({ type: 'mouse-move', x, y });
                   setTimeout(() => {
                     sendFullControlCommand({ type: 'mouse-click', button: 'left' });
@@ -1628,6 +1621,7 @@ function SessionContent() {
                 
                 // Full control mode - send mouse move to agent
                 if (controlEnabled) {
+                  virtualCursorRef.current = { x, y };
                   sendFullControlCommand({ type: 'mouse-move', x, y });
                 } else if (controlMode) {
                   // Pointer mode - show pointer on artist's screen
@@ -1703,6 +1697,7 @@ function SessionContent() {
                         video.videoHeight,
                         agentScreenSize,
                       );
+                      virtualCursorRef.current = { x, y };
                       sendFullControlCommand({ type: 'mouse-move', x, y });
                       setTimeout(() => {
                         sendFullControlCommand({ type: 'mouse-click', button: 'left' });

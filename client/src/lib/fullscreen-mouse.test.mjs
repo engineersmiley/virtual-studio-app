@@ -31,13 +31,10 @@ function visit(node) {
       }
     }
   }
-  if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'handlePointerLockChange') {
-    expressions.set('pointerLockChange', node.initializer.getText(source));
-  }
   ts.forEachChild(node, visit);
 }
 visit(source);
-for (const name of ['video.onClick', 'video.onMouseMove', 'rightButton.onClick', 'pointerLockChange']) {
+for (const name of ['video.onClick', 'video.onMouseMove', 'rightButton.onClick']) {
   assert.ok(expressions.has(name), `missing production handler: ${name}`);
 }
 const compiled = new Map([...expressions].map(([name, expression]) => [
@@ -58,15 +55,14 @@ function setup({ role = 'engineer', controlEnabled = true } = {}) {
     requestPointerLock() { lockRequests++; },
   };
   const scope = {
-    role, controlEnabled, isPointerLocked: false,
+    role, controlEnabled,
     agentScreenSize: { width: 1920, height: 1080 },
-    virtualCursorRef: { current: { x: 0, y: 0 } },
+    virtualCursorRef: { current: { x: 960, y: 540 } },
     lastRemoteVideoTouchTimeRef: { current: 0 },
     TOUCH_DELAY_MS: 500,
     document: { pointerLockElement: null },
     Date: { now: () => now },
     setTimeout: (callback, delay) => { timers.push({ callback, due: now + delay }); },
-    setIsPointerLocked: (locked) => { scope.isPointerLocked = locked; },
     sendFullControlCommand: (command) => commands.push(command),
     mapVideoPointToScreen, isSyntheticClickAfterTouch,
   };
@@ -93,7 +89,6 @@ function setup({ role = 'engineer', controlEnabled = true } = {}) {
   }
   function changeLock(locked) {
     scope.document.pointerLockElement = locked ? video : null;
-    run('pointerLockChange');
   }
   // Browser contextmenu/dblclick events do not imply an onClick invocation.
   function optionalEvent(name, overrides) {
@@ -141,10 +136,9 @@ test('touch suppression blocks commands and lock requests, but expires at 500ms'
   ]);
 });
 
-test('pointer lock initializes the cursor and relative moves accumulate with sensitivity', () => {
+test('pointer lock preserves the cursor and relative moves accumulate with sensitivity', () => {
   const state = setup();
   state.changeLock(true);
-  assert.equal(state.scope.isPointerLocked, true);
   assert.deepEqual(state.scope.virtualCursorRef.current, { x: 960, y: 540 });
   state.run('video.onMouseMove', { movementX: 10, movementY: -20, clientX: 0, clientY: 0 });
   state.run('video.onMouseMove', { movementX: -4, movementY: 8, clientX: 9999, clientY: 9999 });
@@ -173,7 +167,7 @@ test('unlocked mouse movement uses absolute coordinates, not relative deltas', (
   const state = setup();
   state.run('video.onMouseMove', { movementX: 10000, movementY: -10000 });
   assert.deepEqual(state.commands, [{ type: 'mouse-move', x: 480, y: 810 }]);
-  assert.deepEqual(state.scope.virtualCursorRef.current, { x: 0, y: 0 });
+  assert.deepEqual(state.scope.virtualCursorRef.current, { x: 480, y: 810 });
   assert.equal(state.lockRequests, 0);
 });
 
@@ -185,7 +179,6 @@ test('clicks do not reacquire an existing lock; the first click after lock loss 
   assert.equal(state.lockRequests, 0);
   assert.deepEqual(state.commands.map((command) => command.type), ['mouse-move', 'mouse-click']);
   state.changeLock(false);
-  assert.equal(state.scope.isPointerLocked, false);
   state.commands.length = 0;
   state.run('video.onMouseMove');
   state.run('video.onClick');
@@ -196,7 +189,7 @@ test('clicks do not reacquire an existing lock; the first click after lock loss 
   assert.deepEqual(state.commands, [
     { type: 'mouse-move', x: 480, y: 810 },
     { type: 'mouse-move', x: 480, y: 810 },
-    { type: 'mouse-move', x: 963, y: 537 },
+    { type: 'mouse-move', x: 483, y: 807 },
     { type: 'mouse-click', button: 'left' },
   ]);
 });

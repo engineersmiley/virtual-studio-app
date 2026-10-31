@@ -47,6 +47,7 @@ function setup({ controlEnabled = true, videoPresent = true } = {}) {
   } : null };
   const scope = {
     role: 'engineer', controlEnabled, touchStartRef, lastRemoteVideoTouchTimeRef,
+    virtualCursorRef: { current: { x: 960, y: 540 } },
     hasRemoteStream: true, controlMode: false,
     lastMouseMoveRef, MOUSE_THROTTLE_MS: 16, remoteVideoRef,
     agentScreenSize: { width: 1920, height: 1080 },

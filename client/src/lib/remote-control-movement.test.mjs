@@ -42,7 +42,6 @@ function setup() {
   };
   const scope = {
     role: 'engineer', controlEnabled: true, controlMode: false, hasRemoteStream: true,
-    isPointerLocked: false,
     remoteVideoRef: { current: video }, fullscreenTouchRef: { current: null },
     virtualCursorRef: { current: { x: 960, y: 540 } },
     touchStartRef: { current: { x: 0, y: 0, time: 1000, identifier: 1, moved: false } },
@@ -134,10 +133,75 @@ test('movement reads changed stream dimensions and the shared pre-metadata fallb
 
 test('fullscreen pointer lock retains relative sensitivity and edge overreach', () => {
   const state = setup();
-  state.scope.isPointerLocked = true;
+  state.scope.document.pointerLockElement = state.video;
   assert.deepEqual(state.run('fullscreenVideoRef.onMouseMove', 0, 0),
     { type: 'mouse-move', x: 975, y: 510 });
   state.scope.virtualCursorRef.current = { x: 2019, y: -99 };
   assert.deepEqual(state.run('fullscreenVideoRef.onMouseMove', 0, 0),
     { type: 'mouse-move', x: 2020, y: -100 });
+});
+
+test('locked clicks follow relative movement, not frozen browser client coordinates', () => {
+  const state = setup();
+  state.scope.document.pointerLockElement = state.video;
+  for (const [clientX, clientY] of [[0, 0], [0, 0], [9999, -9999]]) {
+    const expected = state.run('fullscreenVideoRef.onMouseMove', clientX, clientY);
+    const before = state.commands.length;
+    state.run('fullscreenVideoRef.onClick', clientX, clientY);
+    assert.deepEqual(state.commands.slice(before), [
+      expected,
+      { type: 'mouse-click', button: 'left' },
+    ]);
+    assert.deepEqual(state.scope.virtualCursorRef.current, { x: expected.x, y: expected.y });
+  }
+});
+
+test('locked clicks retain edge overreach and do not remap through the video', () => {
+  const state = setup();
+  state.scope.document.pointerLockElement = state.video;
+  for (const point of [{ x: 2020, y: -100 }, { x: -100, y: 1180 }]) {
+    state.scope.virtualCursorRef.current = point;
+    state.run('fullscreenVideoRef.onClick', 600, 580);
+    assert.deepEqual(state.commands.at(-2), { type: 'mouse-move', ...point });
+    assert.deepEqual(state.commands.at(-1), { type: 'mouse-click', button: 'left' });
+  }
+});
+
+test('absolute input seeds relative movement when entering or reacquiring pointer lock', () => {
+  for (const name of [...movements, ...clicks]) {
+    const state = setup();
+    state.run(name, 350, 720.625);
+    const absolute = state.commands.filter((command) => command.type === 'mouse-move').at(-1);
+    assert.deepEqual(state.scope.virtualCursorRef.current, { x: absolute.x, y: absolute.y }, name);
+    // Acquiring lock must not need a React render or a center reset.
+    state.scope.document.pointerLockElement = state.video;
+    assert.deepEqual(state.run('fullscreenVideoRef.onMouseMove', 0, 0),
+      { type: 'mouse-move', x: absolute.x + 15, y: absolute.y - 30 }, name);
+    state.run('fullscreenVideoRef.onClick', 0, 0);
+    assert.deepEqual(state.commands.at(-2),
+      { type: 'mouse-move', x: absolute.x + 15, y: absolute.y - 30 }, name);
+  }
+});
+
+test('lock loss restores letterbox-aware clicks and seeds the reacquired cursor', () => {
+  const state = setup();
+  state.scope.document.pointerLockElement = state.video;
+  state.run('fullscreenVideoRef.onMouseMove', 0, 0);
+  state.scope.document.pointerLockElement = null;
+  state.run('fullscreenVideoRef.onClick', 350, 720.625);
+  assert.deepEqual(state.commands.at(-2), { type: 'mouse-move', x: 480, y: 810 });
+  state.scope.document.pointerLockElement = state.video;
+  state.run('fullscreenVideoRef.onClick', 0, 0);
+  assert.deepEqual(state.commands.at(-2), { type: 'mouse-move', x: 480, y: 810 });
+  assert.deepEqual(state.run('fullscreenVideoRef.onMouseMove', 0, 0),
+    { type: 'mouse-move', x: 495, y: 780 });
+});
+
+test('a lock owned by another element does not make fullscreen video input relative', () => {
+  const state = setup();
+  state.scope.document.pointerLockElement = {};
+  state.run('fullscreenVideoRef.onClick', 350, 720.625);
+  assert.deepEqual(state.commands.at(-2), { type: 'mouse-move', x: 480, y: 810 });
+  assert.deepEqual(state.run('fullscreenVideoRef.onMouseMove', 350, 720.625),
+    { type: 'mouse-move', x: 480, y: 810 });
 });

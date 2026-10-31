@@ -32,6 +32,7 @@ function setup({ role = 'engineer', controlEnabled = true } = {}) {
   let now = 1_000;
   const scope = {
     role, controlEnabled, fullscreenTouchRef, lastRemoteVideoTouchTimeRef,
+    virtualCursorRef: { current: { x: 960, y: 540 } },
     agentScreenSize: { width: 1920, height: 1080 },
     sendFullControlCommand: (command) => commands.push(command),
     mapVideoPointToScreen, isSyntheticClickAfterTouch, TOUCH_DELAY_MS: 500,
