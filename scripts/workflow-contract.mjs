@@ -63,4 +63,8 @@ export function assertWorkflowContract(source) {
       `Required job must execute a standalone ${command} step after npm ci`,
     );
   }
+  assert.ok(
+    commands.indexOf('npm run test:production') > commands.indexOf('npm run build'),
+    'Required job must execute a standalone npm run test:production step after npm run build',
+  );
 }

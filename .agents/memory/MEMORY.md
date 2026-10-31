@@ -6,3 +6,4 @@
 - [Remote input geometry](remote-input-geometry.md) — absolute movement must match clicks; keep relative pointer-lock behavior separate.
 - [Touch compatibility clicks](touch-compatibility-clicks.md) — a touch's follow-up click can target a shared ancestor, not just the video where it began.
 - [Required PR check](required-pr-check.md) — GitHub merge protection is external state; keep the required status synchronized with workflow job names.
+- [Disposable PostgreSQL tooling](disposable-postgres-tooling.md) — Replit's Nix environment can expose server tools without pg_config; Ubuntu often needs pg_config discovery.

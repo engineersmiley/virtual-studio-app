@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from './stripeClient';
 import { WebhookHandlers } from './webhookHandlers';
+import { pool } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -16,6 +17,12 @@ declare module "http" {
 }
 
 async function initStripe() {
+  // Allows isolated startup checks without migrations, webhooks or backfills.
+  // Normal production startup remains enabled unless explicitly disabled.
+  if (process.env.STRIPE_SYNC_ENABLED === "false") {
+    console.log("Stripe startup synchronization disabled");
+    return;
+  }
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.log('DATABASE_URL not set, skipping Stripe init');
@@ -130,6 +137,16 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Registered before the SPA fallback, so a 200 HTML page cannot mask failure.
+  app.get("/api/health", async (_req, res) => {
+    try {
+      await pool.query("SELECT 1");
+      res.status(200).json({ status: "ok" });
+    } catch {
+      res.status(503).json({ status: "unavailable" });
+    }
+  });
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

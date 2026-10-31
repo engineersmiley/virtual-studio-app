@@ -31,6 +31,15 @@ jobs:
       - name: Build root web app
         run: npm run build
 
+      - name: Check smoke runner failure handling
+        run: npm run test:production:runner
+
+      - name: Install disposable database tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql
+
+      - name: Smoke test production startup
+        run: npm run test:production
+
   build-mac-legacy:
     needs: [typecheck]
     runs-on: macos-latest

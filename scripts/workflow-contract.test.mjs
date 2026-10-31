@@ -72,7 +72,7 @@ requiredJob(load(source)).steps.forEach((step, index) => {
   }, /must not allow failure/);
 });
 
-for (const command of ['npm ci', 'npm run check', 'npm run test:workflows', 'npm test', 'npm run build']) {
+for (const command of ['npm ci', 'npm run check', 'npm run test:workflows', 'npm test', 'npm run build', 'npm run test:production']) {
   rejects(`removing ${command}`, (_workflow, job) => {
     job.steps = job.steps.filter(step => step.run !== command);
   }, /must execute/);

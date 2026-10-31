@@ -12,9 +12,11 @@
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
+    "test:production": "node scripts/production-smoke.mjs",
+    "test:production:runner": "node --test scripts/production-smoke.test.mjs",
     "check": "tsc",
     "test": "node --test client/src/lib/*.test.mjs",
-    "test:workflows": "node --test scripts/workflow-contract.test.mjs scripts/audit-repository-protection.test.mjs",
+    "test:workflows": "node --test scripts/workflow-contract.test.mjs scripts/audit-repository-protection.test.mjs scripts/production-smoke-workflow.test.mjs",
     "audit:protection": "node scripts/audit-repository-protection.mjs",
     "db:push": "drizzle-kit push"
   },
