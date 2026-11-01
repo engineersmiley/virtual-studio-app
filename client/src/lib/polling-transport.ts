@@ -198,7 +198,8 @@ export class PollingTransport implements PollingTransportEvents {
           data: JSON.stringify({ 
             type: 'agent-status', 
             connected: data.agentConnected || false,
-            controlActive: data.controlActive || false
+            controlActive: data.controlActive || false,
+            controlMode: data.controlMode || null,
           }) 
         });
       }

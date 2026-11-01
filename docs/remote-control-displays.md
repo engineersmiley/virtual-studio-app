@@ -12,8 +12,13 @@ matched to the artist's chosen monitor:
   tab, audio-only, and browsers without `displaySurface` information are view-only.
 - The display must start at desktop origin `(0, 0)`.
 - macOS uses Electron logical coordinates, including Retina displays.
-- Windows and Linux require 100% scaling until their native input conversion is
-  separately verified. This intentionally avoids guessing physical coordinates.
+- On Windows and Linux, scaled control is available only when the Agent can
+  verify that native input dimensions match either logical pixels or the
+  reported scale factor. The Agent maps pointer coordinates using those measured
+  dimensions; it does not infer them from the video.
+- Scaled sessions start in a **pointer-only alignment test**. The artist must
+  check cursor placement on their computer and click **Enable Mouse & Keyboard**
+  in the Agent before clicks, scrolling, or keyboard input are accepted.
 - Use an updated desktop agent. Older agents do not report the supported-display
   capability and cannot receive full control commands from the updated server.
 
@@ -47,24 +52,26 @@ forwarding callbacks with simulated Electron display inventories for `darwin`,
   origins left of or above the primary, and changing which display is primary.
 - Removing a second display, replacing a display, and requiring renewed approval.
 - Clamping single-display input within the logical desktop.
+- Mapping scaled Windows pointer coordinates and rejecting inconsistent native
+  dimensions.
+- Blocking clicks and keys in both the server and Agent until the artist
+  confirms the alignment test.
 - Display/capture changes while the native approval dialog is pending.
 - Window/tab/unidentified capture rejection, track replacement, stale HTTP
   updates, artist binding, both signaling transports, and late approvals.
 
 These are automated simulations, **not physical Windows/macOS/Linux hardware
 certification**. This workspace cannot operate native multi-monitor desktops.
-For native release checks on each target OS:
+Before using scaled control on a real Windows computer:
 
-1. With one display at supported scaling, share the entire screen, approve
-   control, and check corners and center against the visible cursor.
-2. Connect a second display (try mixed scaling and negative origins). Confirm
-   active control stops and no new request is enabled. Viewing either display
-   should still work.
-3. Switch the shared display and primary display while both are connected.
-   Both configurations must remain view-only.
-4. Remove the extra display. Restore `(0, 0)`/supported scaling, share the
-   remaining screen, and confirm a fresh approval is required.
-5. Try a window, tab, audio-only share, and stopping sharing during the approval
-   dialog. No desktop input should be delivered.
+1. Keep one display connected and share the entire screen at the desired scale.
+2. Request control and approve **Allow Cursor Test** on the artist's computer.
+3. Move the engineer's pointer to the center and all four corners. Compare the
+   visible pointer position on the artist's screen.
+4. If any position is wrong, click **Stop Remote Control** and do not unlock
+   clicks or keyboard. If every position matches, the artist can click
+   **Enable Mouse & Keyboard** in the Agent.
+5. Confirm the artist can stop control at any time. Adding, removing, or
+   changing a display must revoke the grant and require a new request.
 
-Do not remove the restrictions based only on resolution-matching tests.
+Until this physical check succeeds, keep using view-only sharing or 100% scale.

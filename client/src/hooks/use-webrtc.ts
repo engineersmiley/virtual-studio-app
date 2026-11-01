@@ -123,11 +123,13 @@ interface AgentStatus {
   connected: boolean;
   controlAllowed: boolean;
   controlPending: boolean;
+  controlMode?: 'alignment' | 'full' | null;
   screenWidth?: number;
   screenHeight?: number;
   scaleFactor?: number;
   displayControlSupported?: boolean;
   displayControlReason?: string | null;
+  controlCalibrationRequired?: boolean;
 }
 
 interface RemoteStreamInfo {
@@ -156,6 +158,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const [remoteStreams, setRemoteStreams] = useState<Map<string, RemoteStreamInfo>>(new Map());
   const [agentConnected, setAgentConnected] = useState(false);
   const [controlAllowed, setControlAllowedState] = useState(false);
+  const [controlMode, setControlMode] = useState<'alignment' | 'full' | null>(null);
   const controlLifetimeRef = useRef<ReturnType<typeof createRemoteControlLifetime> | null>(null);
   if (!controlLifetimeRef.current) controlLifetimeRef.current = createRemoteControlLifetime();
   const controlLifetime = controlLifetimeRef.current;
@@ -171,6 +174,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       lastMouseMoveRef.current = 0;
     }
     setControlAllowedState(allowed);
+    if (!allowed) setControlMode(null);
   }, [controlLifetime]);
   const [controlPending, setControlPending] = useState(false);
   // Audio confirmations: Map of broadcasterUserId -> Set of confirming userIds
@@ -214,7 +218,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   
   // Notify parent of agent status changes
   const [agentScreenInfo, setAgentScreenInfo] = useState<Pick<AgentStatus,
-    'screenWidth' | 'screenHeight' | 'scaleFactor' | 'displayControlSupported' | 'displayControlReason'>>({});
+    'screenWidth' | 'screenHeight' | 'scaleFactor' | 'displayControlSupported' |
+    'displayControlReason' | 'controlCalibrationRequired'>>({});
   const [captureSupported, setCaptureSupported] = useState(false);
   const [signalingJoined, setSignalingJoined] = useState(false);
   useEffect(() => {
@@ -222,9 +227,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       connected: agentConnected,
       controlAllowed,
       controlPending,
+      controlMode,
       ...agentScreenInfo,
     });
-  }, [agentConnected, controlAllowed, controlPending, agentScreenInfo]);
+  }, [agentConnected, controlAllowed, controlPending, controlMode, agentScreenInfo]);
 
   // Only an identified, live entire-screen capture can enable desktop input.
   // Never infer the selected display from its label or encoded video dimensions.
@@ -597,6 +603,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         }
         if (message.controlActive !== undefined) {
           setControlAllowed(message.controlActive);
+          setControlMode(message.controlActive
+            ? (message.controlMode === 'alignment' ? 'alignment' : 'full')
+            : null);
         }
         
         const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
@@ -819,6 +828,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           scaleFactor: message.scaleFactor,
           displayControlSupported: message.displayControlSupported === true,
           displayControlReason: message.displayControlReason,
+          controlCalibrationRequired: message.controlCalibrationRequired === true,
         });
         break;
       }
@@ -835,6 +845,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         setAgentConnected(message.connected);
         if (message.controlActive !== undefined || !message.connected) {
           setControlAllowed(message.connected === true && message.controlActive === true);
+          setControlMode(message.connected === true && message.controlActive === true
+            ? (message.controlMode === 'alignment' ? 'alignment' : 'full')
+            : null);
         }
         if (message.controlActive || !message.connected) {
           setControlPending(false);
@@ -845,6 +858,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       case 'control-response': {
         setControlPending(false);
         setControlAllowed(message.allowed === true);
+        setControlMode(message.allowed === true
+          ? (message.mode === 'alignment' ? 'alignment' : 'full')
+          : null);
         break;
       }
       
@@ -1519,6 +1535,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }) => {
     if (role !== 'engineer') return;
     if (!controlLifetime.isAllowed()) return;
+    if (controlMode === 'alignment' && command.type !== 'mouse-move') return;
     if (!isTransportOpen(wsRef.current)) return;
     
     // Throttle mouse-move to prevent flooding
@@ -1563,7 +1580,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     }
     
     wsRef.current!.send(JSON.stringify(payload));
-  }, [roomId, userId, role, controlLifetime]);
+  }, [roomId, userId, role, controlLifetime, controlMode]);
 
   const cancelPendingControlClicks = useCallback(() => {
     controlLifetime.cancel('click');
@@ -1625,9 +1642,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     agentConnected,
     displayControlSupported: agentScreenInfo.displayControlSupported === true,
     displayControlReason: agentScreenInfo.displayControlReason,
+    displayControlCalibrationRequired: agentScreenInfo.controlCalibrationRequired === true,
     captureSupported,
     controlAllowed,
     controlPending,
+    controlMode,
     audioConfirmations,
     isMicActive,
     connect,

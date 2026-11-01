@@ -53,6 +53,7 @@ interface AgentConnection {
 const agentConnections = new Map<string, AgentConnection>(); // sessionCode -> agent
 const agentTokens = new Map<string, AgentToken>(); // token -> AgentToken data
 const controlPermissions = new Map<string, boolean>(); // sessionCode -> control allowed
+const controlModes = new Map<string, 'alignment' | 'full'>(); // sessionCode -> active input stage
 
 // Simple remote control enabled sessions (no token needed)
 const remoteControlEnabled = new Map<string, { artistUserId: string; enabledAt: number }>(); // sessionCode -> data
@@ -758,6 +759,7 @@ export async function registerRoutes(
   const agentScreenInfo = new Map<string, {
     screenWidth: number; screenHeight: number; scaleFactor: number;
     displayControlSupported: boolean; displayControlReason: string | null;
+    controlCalibrationRequired: boolean;
   }>();
   const captureControl = new CaptureControl();
 
@@ -770,6 +772,7 @@ export async function registerRoutes(
 
   function revokeCaptureControl(code: string) {
     controlPermissions.set(code, false);
+    controlModes.delete(code);
     const message = { type: 'control-end', sessionCode: code };
     const agent = agentConnections.get(code);
     if (agent?.ws.readyState === WebSocket.OPEN) agent.ws.send(JSON.stringify(message));
@@ -802,7 +805,7 @@ export async function registerRoutes(
   app.post('/api/agent/screen-info', (req, res) => {
     try {
       const { sessionCode, screenWidth, screenHeight, scaleFactor,
-        displayControlSupported, displayControlReason } = req.body;
+        displayControlSupported, displayControlReason, controlCalibrationRequired } = req.body;
       
       if (!sessionCode || !screenWidth || !screenHeight) {
         return res.status(400).json({ error: 'Session code and screen dimensions required' });
@@ -815,6 +818,7 @@ export async function registerRoutes(
         screenWidth, screenHeight, scaleFactor: scaleFactor || 1,
         displayControlSupported: displayControlSupported === true,
         displayControlReason: typeof displayControlReason === 'string' ? displayControlReason : null,
+        controlCalibrationRequired: controlCalibrationRequired === true,
       };
       agentScreenInfo.set(normalizedCode, info);
       if (!info.displayControlSupported) revokeCaptureControl(normalizedCode);
@@ -993,8 +997,9 @@ export async function registerRoutes(
       // Include agent connection status and control permission status
       const agentConnected = agentConnections.has(normalizedRoom) || pollingAgents.has(normalizedRoom);
       const controlActive = controlPermissions.get(normalizedRoom) || false;
+      const controlMode = controlModes.get(normalizedRoom) || null;
       
-      res.json({ messages, participants, agentConnected, controlActive });
+      res.json({ messages, participants, agentConnected, controlActive, controlMode });
     } catch (err: any) {
       console.error('Polling poll error:', err);
       res.status(500).json({ error: err.message });
@@ -1057,10 +1062,16 @@ export async function registerRoutes(
           console.log('[Control Polling] Blocked: control not permitted');
           return res.json({ success: false, reason: 'control not permitted' });
         }
+
+        if (controlModes.get(normalizedRoom) === 'alignment' &&
+            type !== 'mouse-move' && type !== 'control-end') {
+          return res.json({ success: false, reason: 'cursor alignment is still in progress' });
+        }
         
         // Clear control permission when control-end is received
         if (type === 'control-end') {
           controlPermissions.set(normalizedRoom, false);
+          controlModes.delete(normalizedRoom);
           console.log('[Control Polling] Engineer ended control for session:', normalizedRoom);
         }
         
@@ -1315,6 +1326,7 @@ export async function registerRoutes(
           !!liveCapture(normalizedCode) &&
           message.captureId === liveCapture(normalizedCode)?.captureId &&
           agentScreenInfo.get(normalizedCode)?.displayControlSupported === true;
+        const mode = message.allowed && message.mode === 'alignment' ? 'alignment' : 'full';
         // Forward to room participants
         const room = rooms.get(normalizedCode);
         if (room) {
@@ -1323,6 +1335,7 @@ export async function registerRoutes(
               participant.ws.send(JSON.stringify({
                 type: 'control-response',
                 allowed: message.allowed,
+                mode: message.allowed ? mode : null,
                 fromAgent: true
               }));
             }
@@ -1331,7 +1344,12 @@ export async function registerRoutes(
         const pollingRoom = pollingRooms.get(normalizedCode);
         if (pollingRoom) {
           pollingRoom.forEach(p => {
-            p.messages.push({ type: 'control-response', allowed: message.allowed, fromAgent: true });
+            p.messages.push({
+              type: 'control-response',
+              allowed: message.allowed,
+              mode: message.allowed ? mode : null,
+              fromAgent: true,
+            });
           });
         }
         
@@ -1339,10 +1357,12 @@ export async function registerRoutes(
         if (message.allowed) {
           agent.controlEnabled = true;
           controlPermissions.set(normalizedCode, true);
+          controlModes.set(normalizedCode, mode);
           console.log('[Agent Polling] Control granted for session:', normalizedCode);
         } else {
           agent.controlEnabled = false;
           controlPermissions.set(normalizedCode, false);
+          controlModes.delete(normalizedCode);
           console.log('[Agent Polling] Control denied for session:', normalizedCode);
         }
       }
@@ -1446,13 +1466,15 @@ export async function registerRoutes(
             // Include agent connection status
             const agentConnected = agentConnections.has(currentRoom) || pollingAgents.has(currentRoom);
             const controlActive = controlPermissions.get(currentRoom) || false;
+            const controlMode = controlModes.get(currentRoom) || null;
             
             ws.send(JSON.stringify({
               type: 'room-state',
               roomId: currentRoom,
               participants,
               agentConnected,
-              controlActive
+              controlActive,
+              controlMode,
             }));
 
             // The agent may have published before this participant connected.
@@ -1639,6 +1661,7 @@ export async function registerRoutes(
             
             // Clear control permissions
             controlPermissions.delete(sessionCode);
+            controlModes.delete(sessionCode);
             
             console.log(`Last artist left session ${sessionCode}, agent disconnected`);
           }
@@ -1715,9 +1738,12 @@ export async function registerRoutes(
               !!liveCapture(agentSession!) &&
               message.captureId === liveCapture(agentSession!)?.captureId &&
               agentScreenInfo.get(agentSession!)?.displayControlSupported === true;
+            const mode = message.allowed && message.mode === 'alignment' ? 'alignment' : 'full';
             // Artist responded to control request
             console.log('[Control] Control response received, allowed:', message.allowed, 'session:', agentSession);
             controlPermissions.set(agentSession!, message.allowed);
+            if (message.allowed) controlModes.set(agentSession!, mode);
+            else controlModes.delete(agentSession!);
             
             const wsRoom = rooms.get(agentSession!);
             console.log('[Control] WebSocket room found:', !!wsRoom, 'size:', wsRoom?.size || 0);
@@ -1729,6 +1755,7 @@ export async function registerRoutes(
                   participant.ws.send(JSON.stringify({
                     type: 'control-response',
                     allowed: message.allowed,
+                    mode: message.allowed ? mode : null,
                     sessionCode: agentSession,
                   }));
                   console.log('[Control] Sent control-response to WS engineer');
@@ -1746,6 +1773,7 @@ export async function registerRoutes(
                   participant.messages.push({
                     type: 'control-response',
                     allowed: message.allowed,
+                    mode: message.allowed ? mode : null,
                     sessionCode: agentSession,
                   });
                   console.log('[Control] Queued control-response for polling engineer');
@@ -1758,6 +1786,7 @@ export async function registerRoutes(
           case 'control-stopped': {
             // Artist stopped control
             controlPermissions.set(agentSession!, false);
+            controlModes.delete(agentSession!);
             const agentConn = agentConnections.get(agentSession!);
             if (agentConn) {
               agentConn.controlEnabled = false;
@@ -1800,6 +1829,7 @@ export async function registerRoutes(
       if (agentSession) {
         agentConnections.delete(agentSession);
         controlPermissions.delete(agentSession);
+        controlModes.delete(agentSession);
         
         // Notify web clients that agent disconnected
         const room = rooms.get(agentSession);
@@ -1822,6 +1852,7 @@ export async function registerRoutes(
       if (agentSession) {
         agentConnections.delete(agentSession);
         controlPermissions.delete(agentSession);
+        controlModes.delete(agentSession);
       }
     });
   });
@@ -1883,10 +1914,17 @@ export async function registerRoutes(
             console.log('[Control] Blocked: control not permitted for session', sessionCode);
             return;
           }
+
+          if (controlModes.get(sessionCode) === 'alignment' &&
+              message.type !== 'mouse-move' && message.type !== 'control-end') {
+            console.log('[Control] Blocked input until cursor alignment is approved:', message.type);
+            return;
+          }
           
           // Clear control permission when control-end is received
           if (message.type === 'control-end') {
             controlPermissions.set(sessionCode, false);
+            controlModes.delete(sessionCode);
             console.log('[Control] Engineer ended control for session:', sessionCode);
           }
           

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand, Copy, Check } from "lucide-react";
 import { Link } from "wouter";
-import { AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS, CURRENT_AGENT_VERSION } from "@/lib/agent-downloads";
+import { AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS, WINDOWS_AGENT_VERSION } from "@/lib/agent-downloads";
 
 const APPLE_SILICON_GATEKEEPER_COMMAND =
   'xattr -dr com.apple.quarantine "/Applications/Virtual Studio Agent.app"';
@@ -47,7 +47,7 @@ export default function RemoteControl() {
             <CardTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
               Virtual Studio Agent
-              <Badge variant="outline" className="ml-2">v{CURRENT_AGENT_VERSION}</Badge>
+              <Badge variant="outline" className="ml-2">Windows v{WINDOWS_AGENT_VERSION}</Badge>
             </CardTitle>
             <CardDescription>
               Control your artist's computer directly from Virtual Studio with audio streaming included - all in one integrated experience.
@@ -73,7 +73,7 @@ export default function RemoteControl() {
                 >
                   <AppWindow className="w-8 h-8" />
                   <span className="font-semibold">Windows</span>
-                  <span className="text-xs opacity-70">.exe installer</span>
+                  <span className="text-xs opacity-70">v{WINDOWS_AGENT_VERSION} · .exe installer</span>
                 </Button>
               </a>
               <div className="flex flex-col gap-2">
@@ -149,6 +149,17 @@ export default function RemoteControl() {
               </a>
             </div>
             <div
+              className="mt-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-4"
+              data-testid="section-windows-control-alignment"
+            >
+              <p className="text-sm font-semibold text-cyan-100">
+                Windows display scaling: verify cursor alignment
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                On scaled displays such as 150%, the artist first approves a cursor-only test. The engineer moves the pointer and confirms it matches the artist’s screen. Then the artist clicks “Enable Mouse &amp; Keyboard.” If the pointer is offset, stop control and do not enable clicks or typing.
+              </p>
+            </div>
+            <div
               className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4"
               data-testid="section-mac-apple-silicon-gatekeeper"
             >
@@ -192,7 +203,7 @@ export default function RemoteControl() {
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-4 text-center">
-              Current version {CURRENT_AGENT_VERSION} - Download the installer for your operating system above
+              Download the installer for your operating system above. Windows v{WINDOWS_AGENT_VERSION}; Apple Silicon Mac v1.20.1.
             </p>
             <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
               <p className="text-xs text-yellow-200/80 text-center">

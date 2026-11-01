@@ -8,10 +8,12 @@ const downloadPage = readFileSync(new URL('../client/src/pages/RemoteControl.tsx
 const homePage = readFileSync(new URL('../client/src/pages/Home.tsx', import.meta.url), 'utf8');
 const downloadConfig = readFileSync(new URL('../client/src/lib/agent-downloads.ts', import.meta.url), 'utf8');
 const workflow = load(readFileSync(new URL('../.github/workflows/build-agent.yml', import.meta.url), 'utf8'));
+const windowsWorkflow = load(readFileSync(new URL('../.github/workflows/build-agent-windows.yml', import.meta.url), 'utf8'));
 const macJob = workflow.jobs['build-mac'];
 const releaseJob = workflow.jobs.release;
 const releaseText = releaseJob.steps.find(step => step.name === 'Create Release').with.body;
 const releaseFiles = releaseJob.steps.find(step => step.name === 'Create Release').with.files;
+const windowsJob = windowsWorkflow.jobs['build-and-release'];
 
 test('macOS agent builds native Apple Silicon and Intel installers', () => {
   assert.match(agent.scripts['build:mac'], /--arm64\s+--x64/);
@@ -36,8 +38,10 @@ test('tagged macOS releases require code signing and notarization credentials', 
 
 test('release version and Mac download links match the published artifacts', () => {
   assert.match(downloadConfig, new RegExp(`AGENT_VERSION = "${agent.version}"`));
+  assert.match(downloadConfig, /WINDOWS_AGENT_VERSION = AGENT_VERSION/);
+  assert.match(downloadConfig, /windows-v\$\{WINDOWS_AGENT_VERSION\}/);
   assert.match(downloadConfig, /CURRENT_AGENT_VERSION = "1\.20\.0"/);
-  assert.match(downloadConfig, /macos-v\$\{AGENT_VERSION\}/);
+  assert.match(downloadConfig, /macos-v\$\{MAC_AGENT_VERSION\}/);
   assert.match(downloadConfig, /Virtual\.Studio\.Agent-arm64\.dmg/);
   const renameStep = releaseJob.steps.find(step => step.name === 'Rename files for consistent download URLs');
   for (const filename of ['Virtual.Studio.Agent-arm64.dmg', 'Virtual.Studio.Agent-x64.dmg']) {
@@ -61,4 +65,17 @@ test('release version and Mac download links match the published artifacts', () 
   assert.match(downloadPage, /Open Terminal/);
   assert.doesNotMatch(homePage, /section-apple-silicon-download/);
   assert.match(releaseText, /If this release was manually built without Apple signing/);
+});
+
+test('Windows scaled-control update has a standalone installer release path', () => {
+  assert.deepEqual(windowsWorkflow.on.push.tags, ['windows-v*']);
+  assert.equal(windowsWorkflow.on.workflow_dispatch.inputs.release_tag.default, 'windows-v1.20.2');
+  assert.equal(windowsJob['runs-on'], 'windows-latest');
+  assert.ok(windowsJob.steps.some(step => step.name === 'Build Windows installer'
+    && step.run === 'npm run build:win'));
+  const publish = windowsJob.steps.find(step => step.name === 'Publish Windows Agent release');
+  assert.equal(publish.uses, 'softprops/action-gh-release@v1');
+  assert.equal(publish.with.files, 'virtual-studio-agent/dist/Virtual.Studio.Agent.Setup.exe');
+  assert.match(publish.with.body, /cursor-only alignment test/i);
+  assert.equal(windowsWorkflow.permissions.contents, 'write');
 });

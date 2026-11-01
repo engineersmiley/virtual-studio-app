@@ -62,13 +62,13 @@ function setup(initiallyActive = true) {
   let cleanup;
   // React runs cleanup before re-running effects whose dependencies changed.
   // Evaluate the production dependency array too, so missing dependencies fail.
-  function render(fullControlActive, sendFullControlCommand = defaultSender) {
+  function render(fullControlActive, sendFullControlCommand = defaultSender, wsControlMode = null) {
     const evaluated = new Function(
-      'fullControlActive', 'sendFullControlCommand', 'window',
+      'fullControlActive', 'sendFullControlCommand', 'wsControlMode', 'window',
       'HTMLInputElement', 'HTMLTextAreaElement', 'console',
       `return ${compiled}`,
     )(
-      fullControlActive, sendFullControlCommand, window,
+      fullControlActive, sendFullControlCommand, wsControlMode, window,
       HTMLInputElement, HTMLTextAreaElement, { log() {} },
     );
     if (!dependencies || dependencies.length !== evaluated.deps.length ||
@@ -175,6 +175,13 @@ test('inactive full control installs no listener and leaves keyboard events alon
   assert.equal(state.keydown('Enter').defaultPrevented, false);
   assert.deepEqual(state.commands, []);
   state.unmount();
+});
+
+test('cursor alignment mode does not capture engineer keyboard input', () => {
+  const state = setup(false);
+  state.render(true, undefined, 'alignment');
+  assert.equal(state.listeners.size, 0);
+  assert.deepEqual(state.commands, []);
 });
 
 test('ending full control removes the exact listener and reactivation does not duplicate it', () => {

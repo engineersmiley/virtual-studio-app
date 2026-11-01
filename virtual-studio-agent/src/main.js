@@ -4,34 +4,73 @@ const WebSocket = require('ws');
 const https = require('https');
 const { exec } = require('child_process');
 const { monitorScreenInfo } = require('./screen-info');
-const { getDisplayControlState, canControlCapture } = require('./display-control');
+const { getDisplayControlState, mapInputPoint, canControlCapture } = require('./display-control');
 
 let approvedDisplaySignature = null;
 let approvedCaptureId = null;
 let displayControlGeneration = 0;
+let controlStage = 'none';
+let robotModule;
 const inputMessageTypes = new Set([
   'mouse-move', 'mouse-click', 'mouse-double-click', 'mouse-scroll', 'key-press', 'key-type',
 ]);
 
+function getRobotModule() {
+  if (robotModule !== undefined) return robotModule;
+  try {
+    robotModule = require('@jitsi/robotjs');
+  } catch (error) {
+    robotModule = null;
+    console.error('Failed to load robotjs:', error.message);
+  }
+  return robotModule;
+}
+
+function getCurrentDisplayControlState() {
+  const display = screen.getPrimaryDisplay();
+  let inputScreenSize = null;
+  if (process.platform !== 'darwin' && display.scaleFactor !== 1) {
+    try {
+      inputScreenSize = getRobotModule()?.getScreenSize?.() || null;
+    } catch (error) {
+      console.error('[Agent] Could not inspect native input screen size:', error.message);
+    }
+  }
+  return getDisplayControlState(screen, process.platform, inputScreenSize);
+}
+
+async function sendControlResponse(allowed, mode = 'none', captureId = null) {
+  const responseMessage = {
+    type: 'control-response',
+    allowed,
+    mode,
+    captureId: allowed ? captureId : undefined,
+  };
+  if (usePolling && currentSession) {
+    await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionCode: currentSession,
+        token: currentToken,
+        message: responseMessage,
+      }),
+    });
+  } else if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ ...responseMessage, sessionCode: currentSession }));
+  }
+}
+
 function revokeDisplayControl() {
   const wasEnabled = controlEnabled;
   controlEnabled = false;
+  controlStage = 'none';
   approvedDisplaySignature = null;
   approvedCaptureId = null;
-  mainWindow?.webContents.send('control-status', { enabled: false });
+  mainWindow?.webContents.send('control-status', { enabled: false, mode: 'none' });
   if (wasEnabled && currentSession) {
-    if (usePolling) {
-      void httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionCode: currentSession, token: currentToken,
-          message: { type: 'control-response', allowed: false },
-        }),
-      }).catch(error => console.error('[Agent] Failed to report stopped control:', error.message));
-    } else if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'control-response', allowed: false, sessionCode: currentSession }));
-    }
+    void sendControlResponse(false).catch(error =>
+      console.error('[Agent] Failed to report stopped control:', error.message));
   }
 }
 
@@ -380,6 +419,7 @@ async function connectViaPolling(sessionCode, generation) {
     // Publish initial geometry and keep it current without reconnecting.
     stopScreenInfoMonitor = monitorScreenInfo({
       screen,
+      getControlState: getCurrentDisplayControlState,
       onChange: (state) => {
         ++displayControlGeneration;
         if (approvedDisplaySignature && approvedDisplaySignature !== state.signature) {
@@ -475,16 +515,20 @@ function connectToServer(sessionCode) {
 
 async function handleControlMessage(message) {
   if (inputMessageTypes.has(message.type)) {
-    const display = getDisplayControlState(screen);
+    const display = getCurrentDisplayControlState();
     if (!controlEnabled || !display.supported || display.signature !== approvedDisplaySignature ||
         !canControlCapture(message) || message.captureId !== approvedCaptureId) {
       revokeDisplayControl();
       return;
     }
+    // Scaled displays start in a move-only alignment stage. The Agent enforces
+    // this independently of the browser and server permission checks.
+    if (controlStage === 'alignment' && message.type !== 'mouse-move') return;
     if (message.type === 'mouse-move') {
       if (!Number.isFinite(message.x) || !Number.isFinite(message.y)) return;
-      message.x = Math.max(0, Math.min(display.width - 1, Math.round(message.x)));
-      message.y = Math.max(0, Math.min(display.height - 1, Math.round(message.y)));
+      const mapped = mapInputPoint(message.x, message.y, display);
+      message.x = mapped.x;
+      message.y = mapped.y;
     }
   }
   // Log received control commands (skip mouse-move to avoid spam)
@@ -496,10 +540,9 @@ async function handleControlMessage(message) {
   let robotFailed = false;
   // Session cleanup must work even if the native input dependency is unavailable.
   if (message.type !== 'session-ended') {
-    try {
-      robot = require('@jitsi/robotjs');
-    } catch (e) {
-      console.error('Failed to load robotjs, will use AppleScript fallback on macOS:', e.message);
+    robot = getRobotModule();
+    if (!robot) {
+      console.error('Failed to load robotjs, will use AppleScript fallback on macOS');
       robotFailed = true;
       // Don't return - continue to try AppleScript on macOS
       if (process.platform !== 'darwin') {
@@ -512,22 +555,11 @@ async function handleControlMessage(message) {
   try {
     switch (message.type) {
       case 'control-request':
-        const requestedDisplay = getDisplayControlState(screen);
+        const requestedDisplay = getCurrentDisplayControlState();
         const requestedGeneration = displayControlGeneration;
         if (!requestedDisplay.supported || !canControlCapture(message)) {
           revokeDisplayControl();
-          if (usePolling) {
-            await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                sessionCode: currentSession, token: currentToken,
-                message: { type: 'control-response', allowed: false },
-              }),
-            });
-          } else if (ws?.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'control-response', allowed: false, sessionCode: currentSession }));
-          }
+          await sendControlResponse(false);
           await dialog.showMessageBox(mainWindow, {
             type: 'warning',
             title: 'Screen sharing cannot be controlled',
@@ -541,37 +573,27 @@ async function handleControlMessage(message) {
           type: 'question',
           title: 'Remote Control Request',
           message: `${message.fromName || 'An engineer'} wants to control your computer.`,
-          detail: 'They will be able to move your mouse and type on your keyboard. You can stop control anytime by pressing Escape.',
-          buttons: ['Allow', 'Deny']
+          detail: requestedDisplay.calibrationRequired
+            ? 'This scaled display needs a cursor alignment check. Allowing now lets the engineer move the cursor only. Clicks and keyboard remain blocked until you verify the cursor and enable full control in this Agent window.'
+            : 'They will be able to move your mouse and type on your keyboard. You can stop control anytime by pressing Escape.',
+          buttons: requestedDisplay.calibrationRequired
+            ? ['Allow Cursor Test', 'Deny']
+            : ['Allow', 'Deny']
         });
         
-        const currentDisplay = getDisplayControlState(screen);
+        const currentDisplay = getCurrentDisplayControlState();
         controlEnabled = result.response === 0 && currentDisplay.supported &&
           requestedGeneration === displayControlGeneration &&
           currentDisplay.signature === requestedDisplay.signature;
+        controlStage = controlEnabled
+          ? (currentDisplay.calibrationRequired ? 'alignment' : 'full')
+          : 'none';
         approvedDisplaySignature = controlEnabled ? currentDisplay.signature : null;
         approvedCaptureId = controlEnabled ? message.captureId : null;
         
-        // Send response via appropriate channel
-        if (usePolling) {
-          await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: currentToken,
-              sessionCode: currentSession,
-              message: { type: 'control-response', allowed: controlEnabled, captureId: approvedCaptureId }
-            })
-          });
-        } else if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ 
-            type: 'control-response', 
-            allowed: controlEnabled,
-            captureId: approvedCaptureId,
-            sessionCode: currentSession 
-          }));
-        }
-        mainWindow.webContents.send('control-status', { enabled: controlEnabled });
+        await sendControlResponse(controlEnabled, controlStage, approvedCaptureId);
+        mainWindow.webContents.send('control-status', { enabled: controlEnabled, mode: controlStage });
+        updateTrayMenu();
         break;
       
       case 'control-end':
@@ -598,6 +620,7 @@ async function handleControlMessage(message) {
         
         // Reset all connection state
         controlEnabled = false;
+        controlStage = 'none';
         isConnected = false;
         usePolling = false;
         const endedSession = currentSession;
@@ -606,7 +629,7 @@ async function handleControlMessage(message) {
         
         updateTrayMenu();
         mainWindow.webContents.send('connection-status', { connected: false });
-        mainWindow.webContents.send('control-status', { enabled: false });
+        mainWindow.webContents.send('control-status', { enabled: false, mode: 'none' });
         mainWindow.webContents.send('session-ended', { reason: message.reason || 'Session ended' });
         
         // Show notification to user (non-blocking)
@@ -897,6 +920,7 @@ ipcMain.handle('disconnect', async () => {
   // Reset all state
   isConnected = false;
   controlEnabled = false;
+  controlStage = 'none';
   currentSession = null;
   currentToken = null;
   usePolling = false;
@@ -907,7 +931,7 @@ ipcMain.handle('disconnect', async () => {
   // Notify UI of disconnection immediately
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('connection-status', { connected: false });
-    mainWindow.webContents.send('control-status', { enabled: false });
+    mainWindow.webContents.send('control-status', { enabled: false, mode: 'none' });
   }
   
   console.log('[Agent] Disconnected successfully');
@@ -915,14 +939,34 @@ ipcMain.handle('disconnect', async () => {
 });
 
 ipcMain.handle('stop-control', () => {
-  controlEnabled = false;
-  if (ws && isConnected) {
-    ws.send(JSON.stringify({ 
-      type: 'control-stopped', 
-      sessionCode: currentSession 
-    }));
+  revokeDisplayControl();
+  updateTrayMenu();
+  return { success: true };
+});
+
+ipcMain.handle('enable-full-control', async () => {
+  if (!controlEnabled || controlStage !== 'alignment') {
+    return { success: false, error: 'No cursor alignment test is active.' };
   }
-  mainWindow.webContents.send('control-status', { enabled: false });
+  const display = getCurrentDisplayControlState();
+  if (!display.supported || display.signature !== approvedDisplaySignature) {
+    revokeDisplayControl();
+    updateTrayMenu();
+    return { success: false, error: 'Display settings changed. Start a new control request.' };
+  }
+  controlStage = 'full';
+  mainWindow?.webContents.send('control-status', { enabled: true, mode: 'full' });
+  updateTrayMenu();
+  try {
+    await sendControlResponse(true, 'full', approvedCaptureId);
+  } catch (error) {
+    // Keep the local Agent in the more restrictive mode if the server did not
+    // confirm the upgrade.
+    controlStage = 'alignment';
+    mainWindow?.webContents.send('control-status', { enabled: true, mode: 'alignment' });
+    updateTrayMenu();
+    return { success: false, error: error.message };
+  }
   return { success: true };
 });
 
@@ -930,6 +974,7 @@ ipcMain.handle('get-status', () => {
   return {
     connected: isConnected,
     controlEnabled,
+    controlStage,
     session: currentSession
   };
 });

@@ -408,9 +408,11 @@ function SessionContent() {
     agentConnected: wsAgentConnected,
     displayControlSupported,
     displayControlReason,
+    displayControlCalibrationRequired,
     captureSupported,
     controlAllowed: wsControlAllowed,
     controlPending: wsControlPending,
+    controlMode: wsControlMode,
     audioConfirmations,
     isMicActive,
     connect,
@@ -484,6 +486,13 @@ function SessionContent() {
 
   // Direct screen touch control - touch on video to control computer
   const controlEnabled = fullControlActive || wsControlAllowed;
+
+  useEffect(() => {
+    if (wsControlMode === 'alignment') {
+      setShowKeyboardInput(false);
+      cancelPendingControlClicks();
+    }
+  }, [wsControlMode, cancelPendingControlClicks]);
 
   // Cancel the previous view's pending input on view changes and session teardown.
   useEffect(() => {
@@ -677,7 +686,7 @@ function SessionContent() {
   
   // Keyboard capture when control mode is active - send keystrokes to agent
   useEffect(() => {
-    if (!fullControlActive) return;
+    if (!fullControlActive || wsControlMode === 'alignment') return;
     
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't capture keys if user is typing in an input/textarea
@@ -709,7 +718,7 @@ function SessionContent() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fullControlActive, sendFullControlCommand]);
+  }, [fullControlActive, wsControlMode, sendFullControlCommand]);
 
   useEffect(() => {
     if (roomId) {
@@ -1932,6 +1941,12 @@ function SessionContent() {
                       className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1">
                       <MousePointer2 size={12} /> End Control
                     </button>
+                    {wsControlMode === 'alignment' ? (
+                      <span className="px-2 py-1 text-[10px] text-amber-300" data-testid="control-alignment-status">
+                        Cursor test only — artist must enable clicks &amp; keyboard
+                      </span>
+                    ) : (
+                      <>
                     {/* Keyboard toggle button - desktop only (mobile uses fullscreen controls) */}
                     <button 
                       onClick={() => {
@@ -1968,6 +1983,8 @@ function SessionContent() {
                     >
                       R-Click
                     </button>
+                      </>
+                    )}
                   </>
                 ) : (
                   <button 
@@ -2316,8 +2333,10 @@ function SessionContent() {
               </div>
               {(role === 'artist' || role === 'engineer') && (
                 <p className="mt-2">
-                  {displayControlReason || 'Full remote control requires one connected display and an entire-screen share. Windows and Linux require 100% display scaling. Window, tab, audio-only, and unidentified shares are view-only.'}
-                  {agentConnected && !displayControlSupported && !displayControlReason && ' The running Agent has not confirmed display compatibility. Completely quit and reopen version 1.20.1; installing it without restarting may leave an older process running.'}
+                  {displayControlReason || (displayControlCalibrationRequired
+                    ? 'Scaled displays start with cursor movement only. The artist must confirm the cursor is aligned in the Agent before clicks and keyboard input unlock.'
+                    : 'Full remote control requires one connected display and an entire-screen share. Window, tab, audio-only, and unidentified shares are view-only.')}
+                  {agentConnected && !displayControlSupported && !displayControlReason && ' The running Agent has not confirmed display compatibility. Completely quit and reopen the current Agent version; installing it without restarting may leave an older process running.'}
                   {agentConnected && displayControlSupported && !captureSupported && ' Waiting for an identified entire-screen share from the artist.'}
                 </p>
               )}

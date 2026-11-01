@@ -44,6 +44,7 @@ test('publishes initial geometry, resolution, scale-only and primary display cha
   assert.deepEqual(state.sent[0].info, {
     screenWidth: 1920, screenHeight: 1080, scaleFactor: 1,
     displayControlSupported: true, displayControlReason: null,
+    controlCalibrationRequired: false,
   });
   state.change({ size: { width: 2560, height: 1440 } });
   await flush();
@@ -53,6 +54,7 @@ test('publishes initial geometry, resolution, scale-only and primary display cha
   assert.equal(state.sent[2].info.screenHeight, 1440);
   assert.equal(state.sent[2].info.scaleFactor, 2);
   assert.equal(state.sent[2].info.displayControlSupported, process.platform === 'darwin');
+  assert.equal(state.sent[2].info.controlCalibrationRequired, process.platform !== 'darwin');
   state.change({ id: 2 }, 'display-added');
   await flush();
   assert.equal(state.sent.length, 4);
@@ -240,10 +242,12 @@ test('geometry reaches status callback without resetting active control and resc
   let status;
   evaluate(effect.arguments[0], source, {
     agentConnected: true, controlAllowed: true, controlPending: false,
+    controlMode: 'alignment',
     agentScreenInfo: latest,
     onAgentStatusRef: { current: value => { status = value; } },
   })();
   assert.equal(status.controlAllowed, true);
+  assert.equal(status.controlMode, 'alignment');
   assert.equal(status.screenWidth, 2560);
   const target = mapVideoPointToScreen(500, 250,
     { left: 0, top: 0, width: 1000, height: 500 }, 2560, 1440,
@@ -255,6 +259,7 @@ function signalingHarness() {
   const source = parse('../../../server/routes.ts');
   const scope = {
     agentScreenInfo: new Map(),
+    controlModes: new Map(),
     rooms: new Map(),
     pollingRooms: new Map(),
     agentConnections: new Map(),
@@ -307,8 +312,8 @@ function signalingHarness() {
 for (const transport of ['WebSocket', 'polling']) {
   test(`${transport} late join and reconnect replay the latest non-default geometry`, () => {
     const signaling = signalingHarness();
-    const initial = { screenWidth: 2560, screenHeight: 1440, scaleFactor: 2, displayControlSupported: false, displayControlReason: null };
-    const updated = { screenWidth: 3440, screenHeight: 1440, scaleFactor: 1.5, displayControlSupported: false, displayControlReason: null };
+    const initial = { screenWidth: 2560, screenHeight: 1440, scaleFactor: 2, displayControlSupported: false, displayControlReason: null, controlCalibrationRequired: true };
+    const updated = { screenWidth: 3440, screenHeight: 1440, scaleFactor: 1.5, displayControlSupported: false, displayControlReason: null, controlCalibrationRequired: true };
     const join = () => {
       if (transport === 'WebSocket') return signaling.joinWebSocket();
       signaling.joinPolling();

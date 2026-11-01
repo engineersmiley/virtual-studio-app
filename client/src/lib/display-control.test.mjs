@@ -48,6 +48,20 @@ for (const platform of ['darwin', 'win32', 'linux']) {
   });
 }
 
+test('scaled Windows input is mapped only when native dimensions match the reported scale', () => {
+  const screen = desktop([{
+    id: 1, bounds: { x: 0, y: 0, width: 1280, height: 720 },
+    size: { width: 1280, height: 720 }, scaleFactor: 1.5,
+  }]);
+  const control = policy.getDisplayControlState(screen, 'win32', { width: 1920, height: 1080 });
+  assert.equal(control.supported, true);
+  assert.equal(control.calibrationRequired, true);
+  assert.deepEqual(policy.mapInputPoint(640, 360, control), { x: 960, y: 540 });
+  assert.deepEqual(policy.mapInputPoint(1280, 720, control), { x: 1919, y: 1079 });
+  assert.equal(policy.getDisplayControlState(screen, 'win32', { width: 1920, height: 1200 }).supported, false);
+  assert.equal(policy.getDisplayControlState(screen, 'win32').supported, false);
+});
+
 test('capture registry rejects unidentified surfaces, stale updates, wrong artists and replaced tracks', () => {
   const registry = new CaptureControl();
   const get = (owner = 'artist', live = true) => registry.get('ROOM', owner, () => live);
@@ -87,6 +101,8 @@ function agent(platform) {
   const calls = [];
   const statuses = [];
   const requests = [];
+  const ipcHandlers = new Map();
+  let robotScreenSize = { width: 1920, height: 1080 };
   let consent = async () => ({ response: 0 });
   const app = new EventEmitter();
   app.requestSingleInstanceLock = () => true;
@@ -96,13 +112,14 @@ function agent(platform) {
     console: { log() {}, error() {} },
     require(name) {
       if (name === 'electron') return {
-        app, screen, ipcMain: { handle() {} },
+        app, screen, ipcMain: { handle: (event, handler) => ipcHandlers.set(event, handler) },
         dialog: { showMessageBox: () => consent() },
       };
       if (name === './display-control') return {
-        ...policy, getDisplayControlState: s => policy.getDisplayControlState(s, platform),
+        ...policy, getDisplayControlState: (s, p, size) => policy.getDisplayControlState(s, platform, size),
       };
       if (name === '@jitsi/robotjs') return {
+        getScreenSize: () => robotScreenSize,
         moveMouse: (...args) => calls.push(['move', ...args]),
         mouseClick: (...args) => calls.push(['click', ...args]),
         keyTap: (...args) => calls.push(['key', ...args]),
@@ -122,10 +139,39 @@ function agent(platform) {
     type: 'control-request', captureSurface: 'monitor', captureId,
   });
   return { screen, calls, statuses, requests, grant, send,
+    setRobotScreenSize: size => { robotScreenSize = size; },
+    enableFullControl: () => ipcHandlers.get('enable-full-control')(),
+    stage: () => runInContext('controlStage', context),
     consent: fn => { consent = fn; },
     allowed: () => runInContext('controlEnabled', context),
   };
 }
+
+test('scaled Windows Agent allows only pointer alignment until the artist enables full control', async () => {
+  const state = agent('win32');
+  state.screen.displays = [{
+    id: 1,
+    bounds: { x: 0, y: 0, width: 1280, height: 720 },
+    size: { width: 1280, height: 720 },
+    scaleFactor: 1.5,
+  }];
+  state.setRobotScreenSize({ width: 1920, height: 1080 });
+  await state.grant();
+  assert.equal(state.allowed(), true);
+  assert.equal(state.stage(), 'alignment');
+  assert.equal(state.requests.at(-1).body.message.mode, 'alignment');
+
+  await state.send({ type: 'mouse-move', x: 640, y: 360, captureSurface: 'monitor', captureId: 'capture-one' });
+  await state.send({ type: 'mouse-click', captureSurface: 'monitor', captureId: 'capture-one' });
+  await state.send({ type: 'key-press', key: 'a', captureSurface: 'monitor', captureId: 'capture-one' });
+  assert.deepEqual(state.calls, [['move', 960, 540]]);
+
+  assert.equal((await state.enableFullControl()).success, true);
+  assert.equal(state.stage(), 'full');
+  assert.equal(state.requests.at(-1).body.message.mode, 'full');
+  await state.send({ type: 'mouse-click', captureSurface: 'monitor', captureId: 'capture-one' });
+  assert.deepEqual(state.calls.at(-1), ['click', 'left']);
+});
 
 for (const platform of ['darwin', 'win32', 'linux']) {
   test(`${platform}: real input handler cannot control a secondary display or reuse approval after removal`, async () => {
@@ -194,6 +240,7 @@ function signaling() {
     agentConnections: new Map([['ROOM', agent]]),
     agentScreenInfo: new Map([['ROOM', { displayControlSupported: true }]]),
     controlPermissions: new Map([['ROOM', true]]),
+    controlModes: new Map(),
     pollingControlMessageTypes: new Set(['control-request', 'control-end', 'mouse-move', 'mouse-click']),
     controlMessageTypes: new Set(['control-request', 'control-end', 'mouse-move', 'mouse-click']),
     wsConnectionData: new WeakMap(),
@@ -260,4 +307,32 @@ for (const transport of ['WebSocket', 'polling']) {
     assert.equal(state.received.length + state.agent.messages.length, previous);
   });
  }
+}
+
+for (const transport of ['WebSocket', 'polling']) {
+  test(`${transport} signaling blocks clicks and keys until scaled cursor alignment is confirmed`, () => {
+    const state = signaling();
+    if (transport === 'polling') state.scope.agentConnections.clear();
+    state.capture({ surface: 'monitor', captureId: 'track-one', sequence: 1 });
+    state.scope.controlPermissions.set('ROOM', true);
+    state.scope.controlModes.set('ROOM', 'alignment');
+    const send = type => {
+      if (transport === 'WebSocket') state.wsSend({ type });
+      else state.post('/api/signal/send', {
+        roomId: 'ROOM', userId: 'engineer', role: 'engineer', type, payload: { type },
+      });
+    };
+    const queued = () => state.received.length + state.agent.messages.length;
+
+    const before = queued();
+    send('mouse-click');
+    send('key-press');
+    assert.equal(queued(), before, 'no clicks or keys reach the Agent during alignment');
+    send('mouse-move');
+    assert.equal(queued(), before + 1, 'pointer movement remains available for the test');
+
+    state.scope.controlModes.set('ROOM', 'full');
+    send('mouse-click');
+    assert.equal(queued(), before + 2, 'full input starts only after the artist confirms');
+  });
 }
