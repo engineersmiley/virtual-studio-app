@@ -2317,7 +2317,7 @@ function SessionContent() {
               {(role === 'artist' || role === 'engineer') && (
                 <p className="mt-2">
                   {displayControlReason || 'Full remote control requires one connected display and an entire-screen share. Windows and Linux require 100% display scaling. Window, tab, audio-only, and unidentified shares are view-only.'}
-                  {agentConnected && !displayControlSupported && !displayControlReason && ' Update the desktop agent if control remains unavailable.'}
+                  {agentConnected && !displayControlSupported && !displayControlReason && ' The running Agent has not confirmed display compatibility. Completely quit and reopen version 1.20.1; installing it without restarting may leave an older process running.'}
                   {agentConnected && displayControlSupported && !captureSupported && ' Waiting for an identified entire-screen share from the artist.'}
                 </p>
               )}

@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import type { SessionRole } from '@shared/schema';
 import { PollingTransport } from '@/lib/polling-transport';
 import { createRemoteControlLifetime } from '@/lib/remote-control-lifetime.js';
+import { getIdentifiedCaptureSurface, shouldPublishCaptureState } from '@/lib/capture-state.js';
 
 type SignalingTransport = WebSocket | PollingTransport;
 
@@ -215,6 +216,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const [agentScreenInfo, setAgentScreenInfo] = useState<Pick<AgentStatus,
     'screenWidth' | 'screenHeight' | 'scaleFactor' | 'displayControlSupported' | 'displayControlReason'>>({});
   const [captureSupported, setCaptureSupported] = useState(false);
+  const [signalingJoined, setSignalingJoined] = useState(false);
   useEffect(() => {
     onAgentStatusRef.current?.({
       connected: agentConnected,
@@ -229,21 +231,22 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const captureIdsRef = useRef(new WeakMap<MediaStreamTrack, string>());
   const captureSequenceRef = useRef(0);
   useEffect(() => {
-    if (role !== 'artist' || !connected || !isTransportOpen(wsRef.current)) return;
-    const transport = wsRef.current!;
+    const transport = wsRef.current;
+    if (!transport || !shouldPublishCaptureState({
+      role,
+      signalingJoined,
+      transportOpen: isTransportOpen(transport),
+    })) return;
     const track = localStream?.getVideoTracks()[0];
     if (track && !captureIdsRef.current.has(track)) {
       captureIdsRef.current.set(track, crypto.randomUUID());
     }
     const publish = (stopped = false) => {
-      const settings = track?.getSettings();
-      const surface = !stopped && track?.readyState === 'live' && !track.muted
-        ? settings?.displaySurface : undefined;
       if (isTransportOpen(transport)) {
         transport.send(JSON.stringify({
           type: 'capture-state', roomId, userId, role,
           payload: {
-            surface: surface === 'monitor' ? 'monitor' : null,
+            surface: getIdentifiedCaptureSurface(track, stopped),
             captureId: track ? captureIdsRef.current.get(track) : null,
             sequence: ++captureSequenceRef.current,
           },
@@ -261,7 +264,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       track?.removeEventListener('mute', onChange);
       track?.removeEventListener('unmute', onChange);
     };
-  }, [localStream, connected, agentConnected, role, roomId, userId]);
+  }, [localStream, signalingJoined, agentConnected, role, roomId, userId]);
 
   // Multiple STUN and TURN servers for NAT traversal
   // TURN servers are required when both parties are behind symmetric NAT
@@ -585,6 +588,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
     switch (message.type) {
       case 'room-state': {
+        setSignalingJoined(true);
         setParticipants(message.participants || []);
         
         // Set agent status from room state (WebSocket initial join)
@@ -885,6 +889,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
   const connectWithPolling = useCallback(() => {
     setControlAllowed(false);
+    setSignalingJoined(false);
     console.log('[Polling] Switching to HTTP polling fallback');
     usingPollingRef.current = true;
     setError('Using backup connection...');
@@ -917,6 +922,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     transport.onclose = () => {
       if (wsRef.current !== transport) return;
       setControlAllowed(false);
+      setSignalingJoined(false);
       console.log('[Polling] Closed');
       closeAllPeerConnections();
       setConnected(false);
@@ -927,6 +933,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
   const connect = useCallback(() => {
     setControlAllowed(false);
+    setSignalingJoined(false);
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
@@ -983,6 +990,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     ws.onclose = (event) => {
       if (wsRef.current !== ws) return;
       setControlAllowed(false);
+      setSignalingJoined(false);
       console.log('[WebSocket] Connection closed:', event.code, event.reason);
       // DON'T close peer connections on WebSocket close - keep video alive
       // The peer connections are direct P2P and don't need WebSocket once established
@@ -1356,6 +1364,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const disconnect = useCallback(() => {
     setControlAllowed(false);
     setControlPending(false);
+    setSignalingJoined(false);
     // Stop sharing first
     stopSharing();
     
