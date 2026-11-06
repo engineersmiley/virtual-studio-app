@@ -276,6 +276,8 @@ function httpRequest(url, options = {}) {
 
     req.on('error', error => finish(reject, error));
     if (options.timeoutMs) {
+      // A wall-clock deadline also bounds DNS, TLS, and a response that never
+      // finishes. Socket inactivity timeouts alone do not cover all of these.
       deadline = setTimeout(() => {
         const error = new Error('Connection timed out. Check your internet connection and try again.');
         finish(reject, error);
@@ -455,9 +457,14 @@ async function connectViaPolling(sessionCode, generation) {
     // Do not let delayed polls overwrite fresh geometry or deliver commands to
     // a replacement connection.
     let pollInFlight = false;
+    let lastPollStartedAt = -Infinity;
     // Start polling for messages
     pollingInterval = setInterval(async () => {
       if (generation !== connectionGeneration || pollInFlight) return;
+      const now = Date.now();
+      // Keep idle traffic low, but deliver input near 30 fps once the artist
+      // grants cursor-only or full control. No concurrent heartbeat requests.
+      if (now - lastPollStartedAt < (controlEnabled ? 33 : 500)) return;
       // Safety check - if already disconnected, stop polling
       if (!currentSession || !isConnected) {
         stopScreenInfoUpdates();
@@ -470,6 +477,7 @@ async function connectViaPolling(sessionCode, generation) {
       }
       
       pollInFlight = true;
+      lastPollStartedAt = now;
       try {
         // Poll without token - simple mode
         const pollResponse = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
@@ -516,7 +524,7 @@ async function connectViaPolling(sessionCode, generation) {
       } finally {
         pollInFlight = false;
       }
-    }, 500);
+    }, 33);
     return { success: true };
   } catch (error) {
     if (generation !== connectionGeneration) return { success: false, error: 'Connection cancelled' };

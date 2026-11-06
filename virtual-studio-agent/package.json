@@ -1,13 +1,13 @@
 {
   "name": "virtual-studio-agent",
-  "version": "1.20.4",
+  "version": "1.20.5",
   "description": "Virtual Studio Remote Control Agent - allows engineers to control artist's computer during sessions",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "postinstall": "electron-builder install-app-deps",
     "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac --arm64 --x64",
+    "build:mac": "electron-builder --mac --x64",
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder --win --mac --linux"
   },
