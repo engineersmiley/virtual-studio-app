@@ -3,7 +3,7 @@ const path = require('path');
 const WebSocket = require('ws');
 const https = require('https');
 const { exec } = require('child_process');
-const { monitorScreenInfo } = require('./screen-info');
+const { monitorScreenInfo, readScreenInfo } = require('./screen-info');
 const { getDisplayControlState, mapInputPoint, canControlCapture } = require('./display-control');
 
 let approvedDisplaySignature = null;
@@ -393,7 +393,7 @@ async function checkAccessibilityPermissions() {
 }
 
 let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 10; // Disconnect after 5 seconds of errors
+const MAX_CONSECUTIVE_ERRORS = 10; // Disconnect after ten consecutive failed polls
 
 async function connectViaPolling(sessionCode, generation) {
   try {
@@ -416,7 +416,9 @@ async function connectViaPolling(sessionCode, generation) {
     currentToken = null; // No token needed in simple mode
     consecutiveErrors = 0;
     
-    // Publish initial geometry and keep it current without reconnecting.
+    // Watch topology locally so approval is revoked immediately on changes.
+    // Network reports travel with the serialized heartbeat below, not through
+    // a second HTTP route that can arrive out of order or fail independently.
     stopScreenInfoMonitor = monitorScreenInfo({
       screen,
       getControlState: getCurrentDisplayControlState,
@@ -426,22 +428,20 @@ async function connectViaPolling(sessionCode, generation) {
           revokeDisplayControl();
         }
       },
-      publish: (info, signal) => httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/screen-info`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionCode, ...info }),
-        signal,
-        timeoutMs: 5000
-      }),
-      onError: (err) => console.error('[Agent] Failed to send screen info; will retry:', err.message)
+      publish: async () => ({ ok: true }),
+      onError: (err) => console.error('[Agent] Failed to inspect display; will retry:', err.message)
     });
     
     mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
     updateTrayMenu();
     console.log(`[Agent] Connected to session ${sessionCode} via polling`);
     
+    // Do not let delayed polls overwrite fresh geometry or deliver commands to
+    // a replacement connection.
+    let pollInFlight = false;
     // Start polling for messages
     pollingInterval = setInterval(async () => {
+      if (generation !== connectionGeneration || pollInFlight) return;
       // Safety check - if already disconnected, stop polling
       if (!currentSession || !isConnected) {
         stopScreenInfoUpdates();
@@ -453,13 +453,24 @@ async function connectViaPolling(sessionCode, generation) {
         return;
       }
       
+      pollInFlight = true;
       try {
         // Poll without token - simple mode
         const pollResponse = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionCode: currentSession })
+          timeoutMs: 5000,
+          // Renew compatibility on the same request that proves the Agent is
+          // alive. A lost one-time screen-info POST must not strand Control.
+          body: JSON.stringify({
+            sessionCode: currentSession,
+            screenInfo: {
+              ...readScreenInfo({ screen, getControlState: getCurrentDisplayControlState }),
+              agentVersion: app.getVersion(),
+            },
+          })
         });
+        if (generation !== connectionGeneration) return;
         
         if (pollResponse.ok) {
           consecutiveErrors = 0; // Reset on success
@@ -477,6 +488,7 @@ async function connectViaPolling(sessionCode, generation) {
           console.log(`[Agent] Poll error (${pollResponse.status}), consecutive: ${consecutiveErrors}`);
         }
       } catch (err) {
+        if (generation !== connectionGeneration) return;
         consecutiveErrors++;
         console.error(`[Agent] Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, err.message);
         
@@ -485,6 +497,8 @@ async function connectViaPolling(sessionCode, generation) {
           console.log('[Agent] Too many errors - auto-disconnecting');
           await handleControlMessage({ type: 'session-ended', reason: 'Connection lost' });
         }
+      } finally {
+        pollInFlight = false;
       }
     }, 500);
     
@@ -972,6 +986,7 @@ ipcMain.handle('enable-full-control', async () => {
 
 ipcMain.handle('get-status', () => {
   return {
+    agentVersion: app.getVersion(),
     connected: isConnected,
     controlEnabled,
     controlStage,
