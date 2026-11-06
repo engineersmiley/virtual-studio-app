@@ -38,3 +38,15 @@ the website cannot upgrade the desktop process running on the artist's machine.
 **How to apply:** Check the public release assets and the released Agent's protocol,
 not just the workspace version. Explain separately when the website must be
 republished and when the artist must quit, install, and reopen the Agent.
+
+Do not treat missing display-capability confirmation as proof that the user
+failed to install or restart the Agent.
+
+**Why:** The user has repeatedly confirmed completing installation, full restart,
+and entire-screen sharing while Mac-to-Windows control remained unavailable.
+The server normalizes absent capability fields to false, so its stored state
+alone cannot distinguish an older binary from another reporting failure.
+
+**How to apply:** After the user confirms those steps, investigate the live
+capability payload and identify the running Windows executable version before
+prescribing another reinstall or setup cycle.
