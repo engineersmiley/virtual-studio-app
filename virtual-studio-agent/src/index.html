@@ -327,6 +327,7 @@
         }
       } catch (error) {
         showError('Connection error: ' + error.message);
+      } finally {
         connectBtn.disabled = false;
         connectBtn.textContent = 'Connect to Session';
       }
@@ -364,6 +365,8 @@
     });
     
     window.agent.onConnectionStatus((data) => {
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect to Session';
       if (data.connected) {
         connectionDot.classList.add('connected');
         connectionText.textContent = `Connected to ${data.session}`;
@@ -412,6 +415,8 @@
     
     window.agent.onError((error) => {
       showError(error);
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect to Session';
     });
     
     function showError(message) {

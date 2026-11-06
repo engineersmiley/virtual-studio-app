@@ -238,6 +238,11 @@ Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateScrollWheelEvent(N
 // HTTP request helper for legacy Electron (no fetch API)
 function httpRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
+    let deadline;
+    const finish = (callback, value) => {
+      clearTimeout(deadline);
+      callback(value);
+    };
     const urlObj = new URL(url);
     const reqOptions = {
       hostname: urlObj.hostname,
@@ -250,22 +255,32 @@ function httpRequest(url, options = {}) {
 
     const req = https.request(reqOptions, (res) => {
       let data = '';
+      res.on('error', error => finish(reject, error));
+      res.on('aborted', () => finish(reject, new Error('Server closed the response before it finished')));
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        resolve({
+        finish(resolve, {
           ok: res.statusCode >= 200 && res.statusCode < 300,
           status: res.statusCode,
-          json: () => Promise.resolve(JSON.parse(data)),
+          json: async () => {
+            try {
+              return JSON.parse(data);
+            } catch {
+              throw new Error(`Server returned an unreadable response (HTTP ${res.statusCode}). Please try again.`);
+            }
+          },
           text: () => Promise.resolve(data)
         });
       });
     });
 
-    req.on('error', reject);
+    req.on('error', error => finish(reject, error));
     if (options.timeoutMs) {
-      req.setTimeout(options.timeoutMs, () => {
-        req.destroy(new Error('HTTP request timed out'));
-      });
+      deadline = setTimeout(() => {
+        const error = new Error('Connection timed out. Check your internet connection and try again.');
+        finish(reject, error);
+        req.destroy(error);
+      }, options.timeoutMs);
     }
     
     if (options.body) {
@@ -400,10 +415,11 @@ async function connectViaPolling(sessionCode, generation) {
     // Simple mode - no token needed, just session code
     const response = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/simple-connect`, {
       method: 'POST',
+      timeoutMs: 10000,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionCode })
     });
-    if (generation !== connectionGeneration) return;
+    if (generation !== connectionGeneration) return { success: false, error: 'Connection cancelled' };
     
     if (!response.ok) {
       const data = await response.json();
@@ -501,17 +517,29 @@ async function connectViaPolling(sessionCode, generation) {
         pollInFlight = false;
       }
     }, 500);
-    
+    return { success: true };
   } catch (error) {
-    if (generation !== connectionGeneration) return;
+    if (generation !== connectionGeneration) return { success: false, error: 'Connection cancelled' };
     stopScreenInfoUpdates();
+    isConnected = false;
+    currentSession = null;
+    currentToken = null;
+    usePolling = false;
+    updateTrayMenu();
     console.error('[Agent] HTTP connection error:', error);
+    mainWindow.webContents.send('connection-status', { connected: false });
     mainWindow.webContents.send('error', error.message);
+    return { success: false, error: error.message };
   }
 }
 
 function connectToServer(sessionCode) {
   const generation = ++connectionGeneration;
+  revokeDisplayControl();
+  isConnected = false;
+  currentSession = null;
+  currentToken = null;
+  usePolling = false;
   stopScreenInfoUpdates();
   // Close any existing connections
   if (ws) {
@@ -524,7 +552,7 @@ function connectToServer(sessionCode) {
   }
   
   // Use HTTP polling directly - no token needed, simpler and more reliable
-  connectViaPolling(sessionCode, generation);
+  return connectViaPolling(sessionCode, generation);
 }
 
 async function handleControlMessage(message) {
@@ -887,13 +915,15 @@ app.on('activate', () => {
 });
 
 ipcMain.handle('connect', async (event, { sessionCode }) => {
+  if (typeof sessionCode !== 'string' || !/^[A-Z0-9]{6}$/.test(sessionCode)) {
+    return { success: false, error: 'Please enter a valid 6-character session code' };
+  }
   const hasPermissions = await checkAccessibilityPermissions();
   if (!hasPermissions) {
     return { success: false, error: 'Accessibility permissions required' };
   }
   
-  connectToServer(sessionCode);
-  return { success: true };
+  return await connectToServer(sessionCode);
 });
 
 ipcMain.handle('disconnect', async () => {
