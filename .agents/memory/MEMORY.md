@@ -9,4 +9,5 @@
 - [Disposable PostgreSQL tooling](disposable-postgres-tooling.md) — Replit's Nix environment can expose server tools without pg_config; Ubuntu often needs pg_config discovery.
 - [Remote input lifetimes](remote-input-lifetimes.md) — delayed input must belong to its original authorization grant, not just pass a current permission check.
 - [Display capture identity](display-capture-identity.md) — keep monitor identity fail-closed and report eligibility after signaling rejoins, not from peer video state.
+- [Mixed signaling transports](signaling-transports.md) — WebSocket and polling users share one logical room; test presence and signaling across both.
 - [Stripe backfill defaults](stripe-backfill-defaults.md) — do not assume a resolved SDK backfill promise means data was synchronized.

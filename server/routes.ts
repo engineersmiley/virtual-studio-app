@@ -14,6 +14,7 @@ import { sendWelcomeEmail } from "./gmailService";
 import type { SessionRole, ControlMessage, AgentToken } from "@shared/schema";
 import crypto from "crypto";
 import { CaptureControl } from "./capture-control";
+import { listRoomParticipants, relayRoomMessage } from "./signaling-room";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -895,23 +896,22 @@ export async function registerRoutes(
   setInterval(() => {
     const now = Date.now();
     pollingRooms.forEach((room, roomId) => {
-      room.forEach((participant, odId) => {
+      room.forEach((participant, userId) => {
         if (now - participant.lastPoll > POLL_TIMEOUT) {
           // Check if user is still connected via WebSocket before marking as left
           const wsRoom = rooms.get(roomId);
-          const stillConnectedViaWS = wsRoom && Array.from(wsRoom.values()).some(p => p.userId === participant.userId);
+          const stillConnectedViaWS = wsRoom?.get(userId)?.ws.readyState === WebSocket.OPEN;
           
           if (stillConnectedViaWS) {
             // User switched to WebSocket, just clean up polling entry silently
-            console.log(`[Polling] User ${participant.userId} still on WebSocket, removing stale polling entry`);
-            room.delete(participant.userId);
+            console.log(`[Polling] User ${userId} still on WebSocket, removing stale polling entry`);
+            room.delete(userId);
           } else {
-            console.log(`[Polling] User ${participant.userId} timed out after ${POLL_TIMEOUT}ms - sending user-left`);
-            room.delete(participant.userId);
+            console.log(`[Polling] User ${userId} timed out after ${POLL_TIMEOUT}ms - sending user-left`);
+            if (participant.role === 'artist') updateCapture(roomId, userId, null);
+            room.delete(userId);
             // Notify other participants
-            room.forEach(p => {
-              p.messages.push({ type: 'user-left', userId: participant.userId, roomId });
-            });
+            relayRoomMessage(wsRoom, room, { type: 'user-left', userId, roomId }, userId);
           }
           
           if (room.size === 0) {
@@ -939,9 +939,7 @@ export async function registerRoutes(
       const room = pollingRooms.get(normalizedRoom)!;
       
       // Get existing participants before adding new one
-      const existingParticipants = Array.from(room.entries())
-        .filter(([pId]) => pId !== userId)
-        .map(([pId, p]) => ({ userId: pId, role: p.role }));
+      const existingParticipants = listRoomParticipants(rooms.get(normalizedRoom), room, userId);
       
       // Add or update participant
       if (role === 'artist') updateCapture(normalizedRoom, userId, null);
@@ -961,11 +959,8 @@ export async function registerRoutes(
       room.get(userId)!.messages.push(captureStatus(normalizedRoom));
       
       // Notify others that user joined
-      room.forEach((p, pId) => {
-        if (pId !== userId) {
-          p.messages.push({ type: 'user-joined', userId, role, roomId: normalizedRoom });
-        }
-      });
+      relayRoomMessage(rooms.get(normalizedRoom), room,
+        { type: 'user-joined', userId, role, roomId: normalizedRoom }, userId);
       
       res.json({ 
         success: true, 
@@ -1001,9 +996,7 @@ export async function registerRoutes(
       participant.messages = [];
       
       // Get current participants
-      const participants = Array.from(room.entries())
-        .filter(([pId]) => pId !== userId)
-        .map(([pId, p]) => ({ userId: pId, role: p.role }));
+      const participants = listRoomParticipants(rooms.get(normalizedRoom), room, userId);
       
       // Include agent connection status and control permission status
       const agentConnected = agentConnections.has(normalizedRoom) || pollingAgents.has(normalizedRoom);
@@ -1109,18 +1102,9 @@ export async function registerRoutes(
       const message = { type, userId, role, payload };
       
       // Forward to target user or broadcast
+      if (!sender) return res.status(403).json({ error: 'Join the room before sending signals' });
       const targetId = payload?.targetUserId;
-      if (targetId && room.has(targetId)) {
-        const target = room.get(targetId)!;
-        target.messages.push(message);
-      } else {
-        // Broadcast to all others
-        room.forEach((p, pId) => {
-          if (pId !== userId) {
-            p.messages.push(message);
-          }
-        });
-      }
+      relayRoomMessage(rooms.get(normalizedRoom), room, message, userId, targetId);
       
       res.json({ success: true });
     } catch (err: any) {
@@ -1141,13 +1125,16 @@ export async function registerRoutes(
       const room = pollingRooms.get(normalizedRoom);
       
       if (room) {
-        if (room.get(userId)?.role === 'artist') updateCapture(normalizedRoom, userId, null);
+        const activeSocket = rooms.get(normalizedRoom)?.get(userId)?.ws;
+        const stillConnected = activeSocket?.readyState === WebSocket.OPEN;
+        if (!stillConnected && room.get(userId)?.role === 'artist') {
+          updateCapture(normalizedRoom, userId, null);
+        }
         room.delete(userId);
         
         // Notify others
-        room.forEach(p => {
-          p.messages.push({ type: 'user-left', userId, roomId: normalizedRoom });
-        });
+        if (!stillConnected) relayRoomMessage(rooms.get(normalizedRoom), room,
+          { type: 'user-left', userId, roomId: normalizedRoom }, userId);
         
         if (room.size === 0) {
           pollingRooms.delete(normalizedRoom);
@@ -1463,21 +1450,11 @@ export async function registerRoutes(
             ws.send(JSON.stringify(captureStatus(currentRoom)));
             
             // Notify others in the room
-            room.forEach((participant, pId) => {
-              if (pId !== userId && participant.ws.readyState === WebSocket.OPEN) {
-                participant.ws.send(JSON.stringify({
-                  type: 'user-joined',
-                  userId,
-                  role,
-                  roomId: currentRoom
-                }));
-              }
-            });
+            relayRoomMessage(room, pollingRooms.get(currentRoom),
+              { type: 'user-joined', userId, role, roomId: currentRoom }, currentUserId);
 
             // Send list of existing participants to the new user
-            const participants = Array.from(room.entries())
-              .filter(([pId]) => pId !== userId)
-              .map(([pId, p]) => ({ userId: pId, role: p.role }));
+            const participants = listRoomParticipants(room, pollingRooms.get(currentRoom), currentUserId);
             
             // Include agent connection status
             const agentConnected = agentConnections.has(currentRoom) || pollingAgents.has(currentRoom);
@@ -1505,32 +1482,10 @@ export async function registerRoutes(
           case 'answer':
           case 'ice-candidate': {
             if (!currentRoom) return;
-            const room = rooms.get(currentRoom);
-            if (!room) return;
-            
             // Forward to target user or broadcast
             const targetId = payload?.targetUserId;
-            if (targetId && room.has(targetId)) {
-              const target = room.get(targetId)!;
-              if (target.ws.readyState === WebSocket.OPEN) {
-                target.ws.send(JSON.stringify({
-                  type,
-                  userId: currentUserId,
-                  payload
-                }));
-              }
-            } else {
-              // Broadcast to all others
-              room.forEach((participant, pId) => {
-                if (pId !== currentUserId && participant.ws.readyState === WebSocket.OPEN) {
-                  participant.ws.send(JSON.stringify({
-                    type,
-                    userId: currentUserId,
-                    payload
-                  }));
-                }
-              });
-            }
+            relayRoomMessage(rooms.get(currentRoom), pollingRooms.get(currentRoom),
+              { type, userId: currentUserId, payload }, currentUserId!, targetId);
             break;
           }
 

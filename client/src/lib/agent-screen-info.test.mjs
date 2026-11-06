@@ -9,6 +9,11 @@ import displayControlModule from '../../../virtual-studio-agent/src/display-cont
 import { mapVideoPointToScreen } from './remote-control-video.js';
 
 const { monitorScreenInfo } = monitorModule;
+const roomHelpers = {};
+new Function('exports', ts.transpileModule(
+  readFileSync(new URL('../../../server/signaling-room.ts', import.meta.url), 'utf8'),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } },
+).outputText)(roomHelpers);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const events = ['display-metrics-changed', 'display-added', 'display-removed'];
 
@@ -285,6 +290,7 @@ test('geometry reaches status callback without resetting active control and resc
 function signalingHarness() {
   const source = parse('../../../server/routes.ts');
   const scope = {
+    ...roomHelpers,
     agentScreenInfo: new Map(),
     controlModes: new Map(),
     rooms: new Map(),
