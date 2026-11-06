@@ -4,7 +4,7 @@ A desktop application that allows engineers to remotely control an artist's comp
 
 ## Download
 
-Download the latest release for your operating system from the [Releases page](https://github.com/YOUR_USERNAME/virtual-studio/releases/latest).
+Download the latest release for your operating system from the [Releases page](https://github.com/engineersmiley/virtual-studio-app/releases/latest).
 
 - **Windows**: Download the `.exe` installer
 - **macOS**: Download the `.dmg` file
@@ -81,6 +81,24 @@ git push && git push --tags
 
 The GitHub Actions workflow will automatically build installers for Windows, macOS, and Linux.
 
+For tagged macOS releases, configure these repository Actions secrets so the
+installers are signed with Developer ID and notarized by Apple:
+
+- `MACOS_CSC_LINK`: Base64-encoded Developer ID Application `.p12` certificate
+- `MACOS_CSC_KEY_PASSWORD`: password for that certificate
+- `APPLE_ID`: Apple Developer account email
+- `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
+- `APPLE_TEAM_ID`: Apple Developer Team ID
+
+The release workflow fails before publishing if any of these are missing. Do not
+put certificate data or passwords in source files. The macOS build creates
+separate Apple Silicon (`arm64`) and Intel (`x64`) DMG installers.
+
+If signing credentials are not available, a maintainer can manually run the
+workflow on a version tag and enable `publish_unsigned_macos`. That release is
+not notarized; users must only install it from the official release and may need
+to remove the app's quarantine attribute to open it.
+
 #### Option 2: Build Locally
 
 ```bash
@@ -108,6 +126,6 @@ On macOS, the app requires Accessibility permissions to control mouse and keyboa
 Make the AppImage executable before running:
 
 ```bash
-chmod +x Virtual.Studio.Agent-*.AppImage
-./Virtual.Studio.Agent-*.AppImage
+chmod +x Remote.Studio.Agent-*.AppImage
+./Remote.Studio.Agent-*.AppImage
 ```

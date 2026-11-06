@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('agent', {
     ipcRenderer.invoke('disconnect'),
   stopControl: () => 
     ipcRenderer.invoke('stop-control'),
+  enableFullControl: () =>
+    ipcRenderer.invoke('enable-full-control'),
   getStatus: () => 
     ipcRenderer.invoke('get-status'),
   
