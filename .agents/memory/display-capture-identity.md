@@ -62,3 +62,17 @@ That evidence also does not establish why remote video is black.
 with ordered reports and no automatic control grant. Inspect the downloaded
 installer's packaged application when release identity is in doubt. Diagnose
 frame delivery separately from mouse/keyboard authorization.
+
+Refresh verified capture eligibility when the Agent registers, not only when
+the artist changes the captured track.
+
+**Why:** Capture ownership is checked against the Agent's artist identity. A real
+HTTP reproduction showed that sharing before Agent registration published false
+eligibility; later Agent connection and compatible display reports did not
+correct that snapshot for an already-present engineer. Control stayed disabled
+until another capture event or room join.
+
+**How to apply:** Re-evaluate and broadcast the existing capture after every
+Agent registration path, to both browser transports. Do not infer a monitor
+identity, accept another artist's capture, or turn eligibility into control
+consent.

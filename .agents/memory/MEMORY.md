@@ -11,3 +11,4 @@
 - [Display capture identity](display-capture-identity.md) — keep monitor identity fail-closed and report eligibility after signaling rejoins, not from peer video state.
 - [Signaling reliability](signaling-transports.md) — one upgrade owner; stable joins determine retry health; WebSocket and polling users share a room.
 - [Stripe backfill defaults](stripe-backfill-defaults.md) — do not assume a resolved SDK backfill promise means data was synchronized.
+- [Stripe webhook ownership](stripe-webhook-ownership.md) — startup can mutate provider webhooks; keep development and production ownership isolated.

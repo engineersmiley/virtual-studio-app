@@ -172,9 +172,9 @@ test('scaled Windows Agent allows only pointer alignment until the artist enable
   await state.send({ type: 'mouse-click', captureSurface: 'monitor', captureId: 'capture-one' });
   assert.deepEqual(state.calls.at(-1), ['click', 'left']);
   await state.send({ type: 'key-press', key: 'Enter', captureSurface: 'monitor', captureId: 'capture-one' });
-  assert.deepEqual(state.calls.at(-1), ['key', 'enter', []]);
+  assert.deepEqual(structuredClone(state.calls.at(-1)), ['key', 'enter', []]);
   await state.send({ type: 'key-type', text: 'Az', captureSurface: 'monitor', captureId: 'capture-one' });
-  assert.deepEqual(state.calls.slice(-2), [['key', 'a', ['shift']], ['key', 'z']]);
+  assert.deepEqual(structuredClone(state.calls.slice(-2)), [['key', 'a', ['shift']], ['key', 'z']]);
 });
 
 for (const platform of ['darwin', 'win32', 'linux']) {
