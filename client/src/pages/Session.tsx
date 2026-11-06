@@ -407,6 +407,7 @@ function SessionContent() {
     remoteStreams,
     agentConnected: wsAgentConnected,
     displayControlSupported,
+    agentVersion,
     displayControlReason,
     displayControlCalibrationRequired,
     captureSupported,
@@ -2329,7 +2330,7 @@ function SessionContent() {
             }`}>
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${agentConnected ? 'bg-purple-400 animate-pulse' : 'bg-gray-500'}`} />
-                <span>Agent: {agentConnected ? 'Connected' : 'Not Connected'}</span>
+                <span>Agent: {agentConnected ? 'Connected' : 'Not Connected'}{agentConnected && agentVersion ? ` · ${agentVersion}` : ''}</span>
               </div>
               {(role === 'artist' || role === 'engineer') && (
                 <p className="mt-2">

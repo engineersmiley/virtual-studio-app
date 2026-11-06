@@ -1,4 +1,4 @@
-export const AGENT_VERSION = "1.20.2";
+export const AGENT_VERSION = "1.20.3";
 export const WINDOWS_AGENT_VERSION = AGENT_VERSION;
 export const MAC_AGENT_VERSION = "1.20.1";
 export const CURRENT_AGENT_VERSION = "1.20.0";

@@ -2,6 +2,19 @@
 // Keep scaleFactor as metadata; multiplying by it would double-scale Retina input.
 const { getDisplayControlState } = require('./display-control');
 
+function readScreenInfo({ screen, getControlState = () => getDisplayControlState(screen) }) {
+  const display = screen.getPrimaryDisplay();
+  const control = getControlState();
+  return {
+    screenWidth: control.width,
+    screenHeight: control.height,
+    scaleFactor: display.scaleFactor,
+    displayControlSupported: control.supported,
+    displayControlReason: control.reason,
+    controlCalibrationRequired: control.calibrationRequired,
+  };
+}
+
 function monitorScreenInfo({
   screen, publish, onError, onChange = () => {}, retryMs = 2000,
   getControlState = () => getDisplayControlState(screen),
@@ -22,16 +35,8 @@ function monitorScreenInfo({
       // Serialize requests so a slow, older update cannot overwrite a newer one.
       // Re-read after each request to catch changes that happened while it ran.
       while (!stopped) {
-        const display = screen.getPrimaryDisplay();
         const control = getControlState();
-        const info = {
-          screenWidth: control.width,
-          screenHeight: control.height,
-          scaleFactor: display.scaleFactor,
-          displayControlSupported: control.supported,
-          displayControlReason: control.reason,
-          controlCalibrationRequired: control.calibrationRequired,
-        };
+        const info = readScreenInfo({ screen, getControlState: () => control });
         const signature = JSON.stringify({ topology: control.signature, ...info });
         if (signature === lastPublished) break;
         onChange(control);
@@ -66,4 +71,4 @@ function monitorScreenInfo({
   };
 }
 
-module.exports = { monitorScreenInfo };
+module.exports = { monitorScreenInfo, readScreenInfo };

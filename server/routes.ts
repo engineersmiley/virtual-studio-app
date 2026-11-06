@@ -760,6 +760,7 @@ export async function registerRoutes(
     screenWidth: number; screenHeight: number; scaleFactor: number;
     displayControlSupported: boolean; displayControlReason: string | null;
     controlCalibrationRequired: boolean;
+    agentVersion: string | null;
   }>();
   const captureControl = new CaptureControl();
 
@@ -801,28 +802,27 @@ export async function registerRoutes(
     pollingRooms.get(code)?.forEach(p => p.messages.push(status));
   }
 
-  // Agent sends screen info for accurate mouse positioning
-  app.post('/api/agent/screen-info', (req, res) => {
-    try {
-      const { sessionCode, screenWidth, screenHeight, scaleFactor,
-        displayControlSupported, displayControlReason, controlCalibrationRequired } = req.body;
-      
-      if (!sessionCode || !screenWidth || !screenHeight) {
-        return res.status(400).json({ error: 'Session code and screen dimensions required' });
-      }
-      
-      const normalizedCode = sessionCode.toUpperCase();
-      
-      // Store screen info
+  // Both the immediate display-event POST and Agent heartbeat use this path.
+  // Broadcast only changes: unchanged heartbeat reports must not revoke consent.
+  function updateAgentScreenInfo(normalizedCode: string, payload: any) {
+      const { screenWidth, screenHeight, scaleFactor,
+        displayControlSupported, displayControlReason, controlCalibrationRequired,
+        agentVersion } = payload || {};
+      if (!Number.isFinite(screenWidth) || screenWidth <= 0 ||
+          !Number.isFinite(screenHeight) || screenHeight <= 0) return false;
       const info = {
-        screenWidth, screenHeight, scaleFactor: scaleFactor || 1,
+        screenWidth, screenHeight,
+        scaleFactor: Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1,
         displayControlSupported: displayControlSupported === true,
         displayControlReason: typeof displayControlReason === 'string' ? displayControlReason : null,
         controlCalibrationRequired: controlCalibrationRequired === true,
+        agentVersion: typeof agentVersion === 'string' &&
+          /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(agentVersion) ? agentVersion : null,
       };
+      if (JSON.stringify(agentScreenInfo.get(normalizedCode)) === JSON.stringify(info)) return true;
       agentScreenInfo.set(normalizedCode, info);
       if (!info.displayControlSupported) revokeCaptureControl(normalizedCode);
-      console.log(`[Agent] Screen info for ${normalizedCode}: ${screenWidth}x${screenHeight} (scale: ${scaleFactor})`);
+      console.log(`[Agent] Display report: version=${info.agentVersion || 'unreported'} supported=${info.displayControlSupported} calibration=${info.controlCalibrationRequired} reason=${info.displayControlReason || 'none'}`);
       
       // Notify room participants via WebSocket
       const room = rooms.get(normalizedCode);
@@ -848,6 +848,17 @@ export async function registerRoutes(
         });
       }
       
+      return true;
+  }
+
+  // Agent sends screen info for accurate mouse positioning.
+  app.post('/api/agent/screen-info', (req, res) => {
+    try {
+      const normalizedCode = typeof req.body.sessionCode === 'string'
+        ? req.body.sessionCode.toUpperCase() : '';
+      if (!normalizedCode || !updateAgentScreenInfo(normalizedCode, req.body)) {
+        return res.status(400).json({ error: 'Session code and valid screen dimensions required' });
+      }
       res.json({ success: true });
     } catch (err: any) {
       console.error('Agent screen info error:', err);
@@ -1290,6 +1301,11 @@ export async function registerRoutes(
       }
       
       agent.lastPoll = Date.now();
+      // Only a registered, enabled Agent can refresh compatibility by heartbeat.
+      // Never infer support from a connection, version, or screen dimensions.
+      if (req.body.screenInfo && typeof req.body.screenInfo === 'object') {
+        updateAgentScreenInfo(normalizedCode, req.body.screenInfo);
+      }
       const messages = [...agent.messages];
       agent.messages = [];
       

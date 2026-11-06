@@ -4,7 +4,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["wine", "wine64"]
+packages = ["wine", "wine64", "p7zip"]
 
 [[ports]]
 localPort = 5000

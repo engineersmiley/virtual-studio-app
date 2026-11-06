@@ -132,6 +132,7 @@ interface AgentStatus {
   displayControlSupported?: boolean;
   displayControlReason?: string | null;
   controlCalibrationRequired?: boolean;
+  agentVersion?: string | null;
 }
 
 interface RemoteStreamInfo {
@@ -221,7 +222,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   // Notify parent of agent status changes
   const [agentScreenInfo, setAgentScreenInfo] = useState<Pick<AgentStatus,
     'screenWidth' | 'screenHeight' | 'scaleFactor' | 'displayControlSupported' |
-    'displayControlReason' | 'controlCalibrationRequired'>>({});
+    'displayControlReason' | 'controlCalibrationRequired' | 'agentVersion'>>({});
   const [captureSupported, setCaptureSupported] = useState(false);
   const [signalingJoined, setSignalingJoined] = useState(false);
   useEffect(() => {
@@ -831,6 +832,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           displayControlSupported: message.displayControlSupported === true,
           displayControlReason: message.displayControlReason,
           controlCalibrationRequired: message.controlCalibrationRequired === true,
+          agentVersion: message.agentVersion,
         });
         break;
       }
@@ -1644,6 +1646,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     remoteStreams,
     agentConnected,
     displayControlSupported: agentScreenInfo.displayControlSupported === true,
+    agentVersion: agentScreenInfo.agentVersion,
     displayControlReason: agentScreenInfo.displayControlReason,
     displayControlCalibrationRequired: agentScreenInfo.controlCalibrationRequired === true,
     captureSupported,

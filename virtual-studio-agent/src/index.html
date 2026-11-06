@@ -230,6 +230,7 @@
       <div class="logo">🎙️</div>
       <h1>Virtual Studio Agent</h1>
       <p class="subtitle">Remote Control for Sessions</p>
+      <p class="subtitle" id="agentVersion"></p>
     </div>
     
     <div class="status-card">
@@ -391,7 +392,7 @@
             'Only mouse movement is allowed. Check that the engineer’s pointer follows the correct position across your screen. Click Enable Mouse &amp; Keyboard only after it lines up.';
           enableFullControlBtn.style.display = 'block';
           enableFullControlBtn.disabled = false;
-          enableFullControlBtn.textContent = 'Enable Mouse &amp; Keyboard';
+          enableFullControlBtn.textContent = 'Enable Mouse & Keyboard';
         } else {
           controlText.textContent = 'Control Active';
           controlInfo.innerHTML = '<strong>Remote Control Active</strong>Your engineer can now control your computer. Press the Stop button or press Escape to stop.';
@@ -405,7 +406,7 @@
         stopControlBtn.style.display = 'none';
         enableFullControlBtn.style.display = 'none';
         enableFullControlBtn.disabled = false;
-        enableFullControlBtn.textContent = 'Enable Mouse &amp; Keyboard';
+        enableFullControlBtn.textContent = 'Enable Mouse & Keyboard';
       }
     });
     
@@ -424,6 +425,8 @@
     
     async function init() {
       const status = await window.agent.getStatus();
+      document.getElementById('agentVersion').textContent =
+        status.agentVersion ? `Version ${status.agentVersion}` : '';
       if (status.connected) {
         connectionDot.classList.add('connected');
         connectionText.textContent = `Connected to ${status.session}`;

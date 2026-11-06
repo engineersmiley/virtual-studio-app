@@ -121,6 +121,7 @@ test('cleanup removes listeners, aborts pending publishing, and cancels retries'
 test('real agent connection lifecycle removes monitoring on reconnect, disconnect, session end, and quit', async t => {
   const app = new EventEmitter();
   app.requestSingleInstanceLock = () => true;
+  app.getVersion = () => '1.20.3';
   app.whenReady = () => ({ then() {} });
   const screen = new EventEmitter();
   screen.getPrimaryDisplay = () => ({
@@ -131,6 +132,8 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
   const handlers = new Map();
   const requests = [];
   const intervals = new Set();
+  let pausePoll = false;
+  let finishPoll;
   const context = createContext({
     __dirname: '',
     process: { platform: 'linux' },
@@ -139,7 +142,11 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
     clearInterval: callback => intervals.delete(callback),
     fakeHttp: async (url, options) => {
       requests.push({ url, options });
-      return { ok: true };
+      if (pausePoll && url.endsWith('/poll')) {
+        await new Promise(resolve => { finishPoll = resolve; });
+        return { ok: true, json: async () => ({ messages: [{ type: 'session-ended' }] }) };
+      }
+      return { ok: true, json: async () => ({ messages: [] }) };
     },
     require(name) {
       if (name === 'electron') return {
@@ -167,9 +174,26 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
     assert.equal(intervals.size, 1);
   };
   await connect('ABC123');
-  const firstSignal = requests.find(request => request.url.endsWith('/screen-info')).options.signal;
+  await [...intervals][0]();
+  const heartbeat = JSON.parse(requests.find(request => request.url.endsWith('/poll')).options.body);
+  assert.equal(heartbeat.screenInfo.agentVersion, '1.20.3');
+  assert.equal(heartbeat.screenInfo.displayControlSupported, true);
+  assert.equal(heartbeat.screenInfo.screenWidth, 1920);
+  assert.equal(requests.some(request => request.url.endsWith('/screen-info')), false,
+    'geometry is renewed through the Agent heartbeat, not an independent POST');
+  pausePoll = true;
+  const poll = [...intervals][0];
+  const inFlight = poll();
+  const pollCount = requests.filter(request => request.url.endsWith('/poll')).length;
+  await poll();
+  assert.equal(requests.filter(request => request.url.endsWith('/poll')).length, pollCount,
+    'slow heartbeat cannot overlap a second poll');
   await connect('DEF456');
-  assert.equal(firstSignal.aborted, true);
+  finishPoll();
+  await inFlight;
+  assert.equal(intervals.size, 1, 'old response cannot disconnect the replacement connection');
+  assert.equal(runInContext('currentSession', context), 'DEF456');
+  pausePoll = false;
   await handlers.get('disconnect')();
   for (const event of events) assert.equal(screen.listenerCount(event), 0);
   assert.equal(intervals.size, 0);
@@ -207,14 +231,17 @@ test('server broadcasts new geometry on both transports and retains it for the s
   const wsMessages = [];
   const pollingParticipant = { messages: [] };
   const stored = new Map();
-  const handler = evaluate(route.arguments[1], source, {
+  const scope = {
     agentScreenInfo: stored,
     revokeCaptureControl() {},
     rooms: new Map([['ABC123', [{ ws: { readyState: 1, send: data => wsMessages.push(JSON.parse(data)) } }]]]),
     pollingRooms: new Map([['ABC123', [pollingParticipant]]]),
     WebSocket: { OPEN: 1 },
     console: { log() {}, error() {} },
-  });
+  };
+  scope.updateAgentScreenInfo = evaluate(find(source, node => ts.isFunctionDeclaration(node)
+    && node.name?.text === 'updateAgentScreenInfo'), source, scope);
+  const handler = evaluate(route.arguments[1], source, scope);
   for (const width of [1920, 2560]) {
     handler({ body: { sessionCode: 'abc123', screenWidth: width, screenHeight: 1440, scaleFactor: 2 } }, {
       json: data => assert.equal(data.success, true),
@@ -271,6 +298,8 @@ function signalingHarness() {
     WebSocket: { OPEN: 1 },
     console: { log() {}, error() {} },
   };
+  scope.updateAgentScreenInfo = evaluate(find(source, node => ts.isFunctionDeclaration(node)
+    && node.name?.text === 'updateAgentScreenInfo'), source, scope);
   const route = (method, path) => {
     const node = find(source, node => ts.isCallExpression(node)
       && node.expression.getText(source) === `app.${method}`
@@ -312,8 +341,8 @@ function signalingHarness() {
 for (const transport of ['WebSocket', 'polling']) {
   test(`${transport} late join and reconnect replay the latest non-default geometry`, () => {
     const signaling = signalingHarness();
-    const initial = { screenWidth: 2560, screenHeight: 1440, scaleFactor: 2, displayControlSupported: false, displayControlReason: null, controlCalibrationRequired: true };
-    const updated = { screenWidth: 3440, screenHeight: 1440, scaleFactor: 1.5, displayControlSupported: false, displayControlReason: null, controlCalibrationRequired: true };
+    const initial = { screenWidth: 2560, screenHeight: 1440, scaleFactor: 2, displayControlSupported: false, displayControlReason: null, controlCalibrationRequired: true, agentVersion: '1.20.3' };
+    const updated = { screenWidth: 3440, screenHeight: 1440, scaleFactor: 1.5, displayControlSupported: false, displayControlReason: null, controlCalibrationRequired: true, agentVersion: '1.20.3' };
     const join = () => {
       if (transport === 'WebSocket') return signaling.joinWebSocket();
       signaling.joinPolling();

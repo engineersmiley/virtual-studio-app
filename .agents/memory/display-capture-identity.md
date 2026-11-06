@@ -50,3 +50,15 @@ alone cannot distinguish an older binary from another reporting failure.
 **How to apply:** After the user confirms those steps, investigate the live
 capability payload and identify the running Windows executable version before
 prescribing another reinstall or setup cycle.
+
+Verify report freshness and packaged source, not only the displayed version.
+
+**Why:** A current Windows executable and an inspected official installer can
+coexist with incomplete compatibility data retained by the live server. A
+connection indicator does not establish that a fresh display report arrived.
+That evidence also does not establish why remote video is black.
+
+**How to apply:** Keep compatibility recovery tied to ongoing Agent liveness,
+with ordered reports and no automatic control grant. Inspect the downloaded
+installer's packaged application when release identity is in doubt. Diagnose
+frame delivery separately from mouse/keyboard authorization.
