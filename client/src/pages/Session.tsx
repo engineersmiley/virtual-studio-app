@@ -1668,8 +1668,10 @@ function SessionContent() {
                       </div>
                     </div>
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-cyan-400 font-tech">Broadcasting Live</p>
-                      <p className="text-muted-foreground mt-2">Your screen is being shared with participants</p>
+                      <p className="text-2xl font-bold text-cyan-400 font-tech">{connected ? 'Broadcasting Live' : 'Screen captured — connecting…'}</p>
+                      <p className="text-muted-foreground mt-2">{connected
+                        ? 'Your screen is being shared with participants'
+                        : 'Your screen is captured locally. Waiting for a viewer connection.'}</p>
                     </div>
                   </div>
                 </>

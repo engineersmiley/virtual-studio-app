@@ -15,6 +15,7 @@ import type { SessionRole, ControlMessage, AgentToken } from "@shared/schema";
 import crypto from "crypto";
 import { CaptureControl } from "./capture-control";
 import { listRoomParticipants, relayRoomMessage } from "./signaling-room";
+import { routeWebSocketUpgrades } from "./websocket-upgrade";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -1413,7 +1414,7 @@ export async function registerRoutes(
   // Map to track WebSocket connection metadata (for authorization)
   const wsConnectionData = new WeakMap<WebSocket, { userId: string; roomId: string; role: string }>();
   
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const wss = new WebSocketServer({ noServer: true });
 
   wss.on('connection', (ws) => {
     let currentRoom: string | null = null;
@@ -1650,7 +1651,11 @@ export async function registerRoutes(
 
   // ============ AGENT WEBSOCKET SERVER ============
   
-  const agentWss = new WebSocketServer({ server: httpServer, path: '/agent' });
+  const agentWss = new WebSocketServer({ noServer: true });
+  routeWebSocketUpgrades(httpServer, new Map([
+    ['/ws', wss],
+    ['/agent', agentWss],
+  ]));
 
   agentWss.on('connection', (ws, req) => {
     let agentSession: string | null = null;

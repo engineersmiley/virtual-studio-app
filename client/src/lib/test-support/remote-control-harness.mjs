@@ -34,8 +34,23 @@ export function remoteControlHarness() {
     return id;
   };
   const clearTimeout = id => timers.delete(id);
+  // Track authorization-bound input timers separately from signaling retries
+  // and join deadlines, which are intentionally independent of control grants.
+  const inputTimers = new Set();
+  const setInputTimeout = (callback, delay) => {
+    const id = setTimeout(() => {
+      inputTimers.delete(id);
+      callback();
+    }, delay);
+    inputTimers.add(id);
+    return id;
+  };
+  const clearInputTimeout = id => {
+    inputTimers.delete(id);
+    clearTimeout(id);
+  };
   const lifetimeFactory = new Function('setTimeout', 'clearTimeout',
-    `return (${createRemoteControlLifetime.toString()})`)(setTimeout, clearTimeout);
+    `return (${createRemoteControlLifetime.toString()})`)(setInputTimeout, clearInputTimeout);
   const commands = [];
   const sockets = [];
   class Socket {
@@ -78,7 +93,7 @@ export function remoteControlHarness() {
     close: () => sockets.at(-1).close(),
     reconnect: () => api.connect(),
     unmount: () => cleanups.forEach(cleanup => cleanup()),
-    get pending() { return timers.size; },
+    get pending() { return inputTimers.size; },
     advance(ms) {
       const until = now + ms;
       for (;;) {

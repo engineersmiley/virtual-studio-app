@@ -958,6 +958,10 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
     }
+    // Retire a previous signaling transport without closing live P2P media.
+    const previous = wsRef.current;
+    wsRef.current = null;
+    previous?.close();
     
     // If already using polling, continue with it
     if (usingPollingRef.current) {
@@ -971,11 +975,44 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+    let failed = false;
+    let joined = false;
+    let stableTimer: ReturnType<typeof setTimeout> | null = null;
+    let joinTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearSocketTimers = () => {
+      if (joinTimer) clearTimeout(joinTimer);
+      if (stableTimer) clearTimeout(stableTimer);
+      joinTimer = stableTimer = null;
+    };
+    const retireSocket = () => {
+      clearSocketTimers();
+      ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+      if (wsRef.current === ws) wsRef.current = null;
+      ws.close();
+    };
+    const retryOrFallback = () => {
+      if (wsRef.current !== ws || failed) return;
+      failed = true; // error and close represent one failed attempt, not two.
+      setControlAllowed(false);
+      setSignalingJoined(false);
+      setConnected(false);
+      retireSocket();
+      if (retryCountRef.current < maxRetries) {
+        retryCountRef.current++;
+        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 5000);
+        setError(`Connecting... (attempt ${retryCountRef.current}/${maxRetries})`);
+        retryTimeoutRef.current = setTimeout(() => connect(), delay);
+      } else {
+        console.log('[WebSocket] Connection could not stay joined; switching to HTTP polling');
+        connectWithPolling();
+      }
+    };
+    // A TCP/WebSocket open without a room-state response is not a joined room.
+    joinTimer = setTimeout(retryOrFallback, 8000);
 
     ws.onopen = () => {
-      console.log('[WebSocket] Connected successfully');
-      retryCountRef.current = 0;
-      setError(null);
+      if (wsRef.current !== ws) return;
+      console.log('[WebSocket] Open; joining room');
       ws.send(JSON.stringify({
         type: 'join',
         roomId: roomId.toUpperCase(),
@@ -986,29 +1023,30 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
     ws.onmessage = async (event) => {
       if (wsRef.current !== ws || !isTransportOpen(ws)) return;
-      handleSignalingMessage(event.data);
+      const message = JSON.parse(event.data);
+      if (message.type === 'room-state' && !joined) {
+        joined = true;
+        if (joinTimer) clearTimeout(joinTimer);
+        joinTimer = null;
+        setError(null);
+        // A briefly open (or briefly joined) socket must not reset the failure
+        // budget forever. Reset only after a stable joined connection.
+        stableTimer = setTimeout(() => {
+          if (wsRef.current === ws && isTransportOpen(ws)) retryCountRef.current = 0;
+        }, 5000);
+      }
+      await handleSignalingMessage(event.data);
     };
 
     ws.onerror = (event) => {
       if (wsRef.current !== ws) return;
-      setControlAllowed(false);
       console.error('[WebSocket] Connection error:', event);
-      if (retryCountRef.current < maxRetries) {
-        retryCountRef.current++;
-        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 5000);
-        console.log(`[WebSocket] Retrying in ${delay}ms (attempt ${retryCountRef.current}/${maxRetries})`);
-        setError(`Connecting... (attempt ${retryCountRef.current}/${maxRetries})`);
-        retryTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, delay);
-      } else {
-        console.log('[WebSocket] Max retries reached, switching to HTTP polling fallback');
-        connectWithPolling();
-      }
+      retryOrFallback();
     };
     
     ws.onclose = (event) => {
       if (wsRef.current !== ws) return;
+      clearSocketTimers();
       setControlAllowed(false);
       setSignalingJoined(false);
       console.log('[WebSocket] Connection closed:', event.code, event.reason);
@@ -1016,25 +1054,15 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       // The peer connections are direct P2P and don't need WebSocket once established
       setConnected(false);
       
-      if (event.code !== 1000 && retryCountRef.current < maxRetries) {
-        retryCountRef.current++;
-        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 5000);
-        console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${retryCountRef.current}/${maxRetries})`);
-        retryTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, delay);
-      } else if (event.code !== 1000) {
-        console.log('[WebSocket] Connection lost, switching to HTTP polling fallback');
-        connectWithPolling();
-      }
+      if (event.code !== 1000) retryOrFallback();
     };
 
     return () => {
-      if (retryTimeoutRef.current) {
+      if (wsRef.current === ws && retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
       }
-      ws.close();
+      retireSocket();
     };
   }, [roomId, userId, role, createPeerConnection, closePeerConnection, closeAllPeerConnections, connectWithPolling, handleSignalingMessage]);
 
