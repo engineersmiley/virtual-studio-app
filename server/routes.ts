@@ -746,6 +746,9 @@ export async function registerRoutes(
         });
       }
       
+      // Capture can predate the Agent. Its owner is only verifiable after this
+      // registration; refresh existing viewers instead of waiting for a reshare.
+      broadcastCaptureStatus(normalizedCode);
       res.json({ 
         connected: true, 
         sessionCode: normalizedCode,
@@ -795,13 +798,17 @@ export async function registerRoutes(
     return { type: 'capture-status', supported: !!liveCapture(code) };
   }
 
-  function updateCapture(code: string, userId: string, payload: any) {
-    if (captureControl.update(code, userId, payload)) revokeCaptureControl(code);
+  function broadcastCaptureStatus(code: string) {
     const status = captureStatus(code);
     rooms.get(code)?.forEach(p => {
       if (p.ws.readyState === WebSocket.OPEN) p.ws.send(JSON.stringify(status));
     });
     pollingRooms.get(code)?.forEach(p => p.messages.push(status));
+  }
+
+  function updateCapture(code: string, userId: string, payload: any) {
+    if (captureControl.update(code, userId, payload)) revokeCaptureControl(code);
+    broadcastCaptureStatus(code);
   }
 
   // Both the immediate display-event POST and Agent heartbeat use this path.
@@ -1264,6 +1271,7 @@ export async function registerRoutes(
         });
       }
       
+      broadcastCaptureStatus(normalizedCode);
       res.json({ success: true, sessionCode: normalizedCode });
     } catch (err: any) {
       console.error('Agent connect error:', err);
@@ -1688,6 +1696,7 @@ export async function registerRoutes(
       userId: agentUserId,
       controlEnabled: false,
     });
+    broadcastCaptureStatus(sessionCode);
 
     console.log(`Agent connected to session ${sessionCode}`);
 
