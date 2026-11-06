@@ -53,8 +53,10 @@ async function optimizeSendersForLowLatency(pc: RTCPeerConnection): Promise<void
     }
     
     if (sender.track?.kind === 'video') {
-      // Video optimizations for low latency
-      params.encodings[0].maxBitrate = 8000000; // 8 Mbps max for quality
+      // Desktop text needs resolution more than high frame rates. Under congestion
+      // let the browser reduce frame rate before making controls unreadable.
+      params.degradationPreference = 'maintain-resolution';
+      params.encodings[0].maxBitrate = 16000000; // Upper bound, not reserved bandwidth
       (params.encodings[0] as any).priority = 'high';
       (params.encodings[0] as any).networkPriority = 'high';
       try {
@@ -1052,9 +1054,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       if (!audioOnly) {
         displayStream = await navigator.mediaDevices.getDisplayMedia({
           video: { 
-            width: { ideal: 1920 }, 
-            height: { ideal: 1080 }, 
-            frameRate: { ideal: 60 }
+            width: { ideal: 3840 },
+            height: { ideal: 2160 },
+            frameRate: { ideal: 30, max: 30 }
           },
           audio: {
             echoCancellation: false,
@@ -1069,6 +1071,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           surfaceSwitching: 'exclude',
         } as DisplayMediaStreamOptions);
         videoTrack = displayStream.getVideoTracks()[0];
+        if (videoTrack) videoTrack.contentHint = 'detail';
       } else {
         displayStream = await navigator.mediaDevices.getDisplayMedia({
           video: true,

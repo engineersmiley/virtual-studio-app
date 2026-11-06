@@ -1943,7 +1943,7 @@ function SessionContent() {
                     </button>
                     {wsControlMode === 'alignment' ? (
                       <span className="px-2 py-1 text-[10px] text-amber-300" data-testid="control-alignment-status">
-                        Cursor test only — artist must enable clicks &amp; keyboard
+                        Cursor test only — artist: open the desktop Agent and click “Enable Mouse &amp; Keyboard”
                       </span>
                     ) : (
                       <>
