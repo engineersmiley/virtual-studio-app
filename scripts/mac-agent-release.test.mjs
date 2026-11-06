@@ -39,8 +39,8 @@ test('tagged macOS releases require code signing and notarization credentials', 
 test('release version and Mac download links match the published artifacts', () => {
   assert.match(downloadConfig, new RegExp(`AGENT_VERSION = "${agent.version}"`));
   assert.match(downloadConfig, /WINDOWS_AGENT_VERSION = AGENT_VERSION/);
-  assert.match(downloadConfig, /\/v\$\{WINDOWS_AGENT_VERSION\}/);
-  assert.match(downloadConfig, /windows: `\$\{WINDOWS_RELEASE_BASE\}\/Remote\.Studio\.Agent\.Setup\.exe`/);
+  assert.match(downloadConfig, /\/windows-v\$\{WINDOWS_AGENT_VERSION\}/);
+  assert.match(downloadConfig, /windows: `\$\{WINDOWS_RELEASE_BASE\}\/Virtual\.Studio\.Agent\.Setup\.exe`/);
   assert.match(downloadConfig, /CURRENT_AGENT_VERSION = "1\.20\.0"/);
   assert.match(downloadConfig, /macos-v\$\{MAC_AGENT_VERSION\}/);
   assert.match(downloadConfig, /Virtual\.Studio\.Agent-arm64\.dmg/);
