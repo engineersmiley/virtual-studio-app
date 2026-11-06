@@ -3,6 +3,20 @@ import test from 'node:test';
 import { remoteControlHarness } from './test-support/remote-control-harness.mjs';
 import { createRemoteControlLifetime } from './remote-control-lifetime.js';
 
+test('click flushes the newest throttled pointer position before clicking', () => {
+  const remote = remoteControlHarness();
+  remote.api.sendFullControlCommand({ type: 'mouse-move', x: 10, y: 10 });
+  remote.advance(1);
+  remote.api.sendFullControlCommand({ type: 'mouse-move', x: 100, y: 200 });
+  remote.api.sendFullControlCommand({ type: 'mouse-click', button: 'left' });
+  assert.deepEqual(remote.commands.map(c => [c.type, c.x, c.y]), [
+    ['mouse-move', 10, 10], ['mouse-move', 100, 200], ['mouse-click', undefined, undefined],
+  ]);
+  remote.advance(50);
+  assert.equal(remote.commands.length, 3, 'stale trailing movement cannot jump after a click');
+  remote.unmount();
+});
+
 test('revocation blocks even a retained sender before React rerenders', () => {
   const remote = remoteControlHarness();
   const retainedSender = remote.api.sendFullControlCommand;

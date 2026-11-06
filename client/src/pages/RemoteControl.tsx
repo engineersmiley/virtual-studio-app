@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand, Copy, Check } from "lucide-react";
 import { Link } from "wouter";
-import { AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS, WINDOWS_AGENT_VERSION } from "@/lib/agent-downloads";
+import { AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS, WINDOWS_AGENT_VERSION, MAC_AGENT_VERSION, CURRENT_AGENT_VERSION, LEGACY_AGENT_VERSION } from "@/lib/agent-downloads";
 
 const APPLE_SILICON_GATEKEEPER_COMMAND =
   'xattr -dr com.apple.quarantine "/Applications/Virtual Studio Agent.app"';
@@ -89,8 +89,8 @@ export default function RemoteControl() {
                     data-testid="button-download-agent-mac"
                   >
                     <Apple className="w-8 h-8" />
-                    <span className="font-semibold">macOS 11+</span>
-                    <span className="text-xs opacity-70">Current .dmg installer</span>
+                    <span className="font-semibold">Mac Intel</span>
+                    <span className="text-xs opacity-70">v{MAC_AGENT_VERSION} · Intel DMG</span>
                   </Button>
                 </a>
                 <a
@@ -102,10 +102,10 @@ export default function RemoteControl() {
                   <Button 
                     size="sm" 
                     variant="outline"
-                    className="w-full text-xs"
+                    className="w-full h-auto py-2 text-xs whitespace-normal text-center"
                     data-testid="button-download-agent-mac-legacy"
                   >
-                    <span>macOS 10.11-10.14 (Legacy .zip)</span>
+                    <span>Legacy Mac · v{LEGACY_AGENT_VERSION}<br />macOS 10.11-10.14 · ZIP</span>
                   </Button>
                 </a>
               </div>
@@ -127,7 +127,7 @@ export default function RemoteControl() {
                   >
                     <Apple className="w-8 h-8" />
                     <span className="w-full text-center whitespace-normal break-words font-semibold">Newer Mac · Apple Silicon</span>
-                    <span className="w-full text-xs text-center opacity-70 whitespace-normal break-words">M1 and newer · native DMG · v1.20.1</span>
+                    <span className="w-full text-xs text-center opacity-70 whitespace-normal break-words">M1 and newer · native DMG · v{MAC_AGENT_VERSION}</span>
                   </Button>
                 </a>
               </div>
@@ -144,7 +144,7 @@ export default function RemoteControl() {
                 >
                   <Terminal className="w-8 h-8" />
                   <span className="font-semibold">Linux</span>
-                  <span className="text-xs opacity-70">.AppImage file</span>
+                  <span className="text-xs opacity-70">v{CURRENT_AGENT_VERSION} · x64 AppImage</span>
                 </Button>
               </a>
             </div>
@@ -164,7 +164,7 @@ export default function RemoteControl() {
               data-testid="section-mac-apple-silicon-gatekeeper"
             >
               <p className="text-sm font-semibold text-yellow-100">
-                macOS may block this unsigned and not notarized Apple Silicon app
+                macOS may block these unsigned and not notarized Mac apps
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Only use these steps if you trust this download from the official Virtual Studio GitHub release.
@@ -203,7 +203,9 @@ export default function RemoteControl() {
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-4 text-center">
-              Download the installer for your operating system above. Windows v{WINDOWS_AGENT_VERSION}; Apple Silicon Mac v1.20.1.
+              Current Windows, Intel Mac, Apple Silicon Mac, and Linux downloads: v{CURRENT_AGENT_VERSION}.
+              Before updating, fully quit the Agent (including its Windows tray icon), install, then reopen it.
+              Updating interrupts active remote control.
             </p>
             <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
               <p className="text-xs text-yellow-200/80 text-center">

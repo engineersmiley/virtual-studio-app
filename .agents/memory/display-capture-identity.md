@@ -76,3 +76,13 @@ until another capture event or room join.
 Agent registration path, to both browser transports. Do not infer a monitor
 identity, accept another artist's capture, or turn eligibility into control
 consent.
+
+Keep the artist's working Windows display scale while testing remote input.
+
+**Why:** The user confirmed Mac-to-Windows control, clicks and typing worked
+after the correct running Agent and the artist-approved cursor alignment flow.
+Changing Windows from 150% to 100% instead made the engineer's video blank.
+
+**How to apply:** Do not repeat the 100% scaling workaround or reinstall loop
+without new evidence. Preserve cursor-only alignment followed by explicit
+artist approval for full mouse/keyboard control.

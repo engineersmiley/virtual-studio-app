@@ -229,6 +229,11 @@ function evaluate(node, scope) {
 }
 
 function signaling() {
+  const queueModule = {};
+  new Function('exports', ts.transpileModule(
+    readFileSync(new URL('../../../server/control-message-queue.ts', import.meta.url), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+  ).outputText)(queueModule);
   const received = [];
   const artist = { userId: 'artist', role: 'artist', messages: [], ws: { readyState: 1, send() {} } };
   const engineer = { userId: 'engineer', role: 'engineer', messages: [], ws: { readyState: 1, send() {} } };
@@ -237,6 +242,7 @@ function signaling() {
     readyState: 1, send: text => received.push(JSON.parse(text)),
   } };
   const scope = {
+    enqueueControlMessage: queueModule.enqueueControlMessage,
     captureControl: new CaptureControl(),
     rooms: new Map([['ROOM', participants]]),
     pollingRooms: new Map([['ROOM', participants]]),

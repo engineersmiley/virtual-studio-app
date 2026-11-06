@@ -16,6 +16,8 @@ import crypto from "crypto";
 import { CaptureControl } from "./capture-control";
 import { listRoomParticipants, relayRoomMessage } from "./signaling-room";
 import { routeWebSocketUpgrades } from "./websocket-upgrade";
+import { startSocketKeepalive } from "./socket-keepalive";
+import { enqueueControlMessage } from "./control-message-queue";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -917,6 +919,7 @@ export async function registerRoutes(
           } else {
             console.log(`[Polling] User ${userId} timed out after ${POLL_TIMEOUT}ms - sending user-left`);
             if (participant.role === 'artist') updateCapture(roomId, userId, null);
+            else if (participant.role === 'engineer') revokeCaptureControl(roomId);
             room.delete(userId);
             // Notify other participants
             relayRoomMessage(wsRoom, room, { type: 'user-left', userId, roomId }, userId);
@@ -1099,7 +1102,7 @@ export async function registerRoutes(
         if (httpAgent) {
           const controlMessage = { type, ...payload, ...capture, sessionCode: normalizedRoom, verifiedUserId: userId };
           console.log('[Control Polling] Queueing for HTTP agent:', type, 'session:', normalizedRoom);
-          httpAgent.messages.push(controlMessage);
+          enqueueControlMessage(httpAgent.messages, controlMessage);
           return res.json({ success: true });
         }
         
@@ -1423,6 +1426,7 @@ export async function registerRoutes(
   const wsConnectionData = new WeakMap<WebSocket, { userId: string; roomId: string; role: string }>();
   
   const wss = new WebSocketServer({ noServer: true });
+  startSocketKeepalive(wss);
 
   wss.on('connection', (ws) => {
     let currentRoom: string | null = null;
@@ -1555,6 +1559,9 @@ export async function registerRoutes(
           if (currentEntry && currentEntry.ws !== ws) {
             // User has reconnected with a new WebSocket, don't send user-left
             console.log(`[WS] Old socket closed for ${currentUserId} but user already reconnected - skipping user-left`);
+            wsConnectionData.delete(ws);
+            currentRoom = null;
+            currentUserId = null;
             return;
           }
           
@@ -1566,6 +1573,9 @@ export async function registerRoutes(
           if (stillActiveViaPolling) {
             console.log(`[WS] WebSocket closed for ${currentUserId} but user still active via polling - skipping user-left`);
             room.delete(currentUserId);
+            wsConnectionData.delete(ws);
+            currentRoom = null;
+            currentUserId = null;
             return;
           }
           
@@ -1653,13 +1663,30 @@ export async function registerRoutes(
       currentUserId = null;
     }
 
-    ws.on('close', handleLeave);
-    ws.on('error', handleLeave);
+    ws.on('close', (code, reason) => {
+      console.log(`[WS] Closed room=${currentRoom || 'none'} code=${code} reason=${reason.toString().slice(0, 160)}`);
+      const connection = wsConnectionData.get(ws);
+      const currentEntry = currentRoom && currentUserId
+        ? rooms.get(currentRoom)?.get(currentUserId) : undefined;
+      // A departed socket immediately loses its grant, but a brief signaling
+      // interruption must not end the whole room/Agent before reconnection.
+      if (currentRoom && currentUserId && currentEntry?.ws === ws) {
+        if (connection?.role === 'artist') updateCapture(currentRoom, currentUserId, null);
+        else if (connection?.role === 'engineer') revokeCaptureControl(currentRoom);
+      }
+      const departure = setTimeout(handleLeave, 15000);
+      departure.unref();
+    });
+    ws.on('error', error => {
+      console.error('[WS] Signaling socket error:', error.message);
+      ws.terminate(); // The close path performs the single cleanup.
+    });
   });
 
   // ============ AGENT WEBSOCKET SERVER ============
   
   const agentWss = new WebSocketServer({ noServer: true });
+  startSocketKeepalive(agentWss);
   routeWebSocketUpgrades(httpServer, new Map([
     ['/ws', wss],
     ['/agent', agentWss],
@@ -1926,7 +1953,7 @@ export async function registerRoutes(
           if (agent?.ws.readyState === WebSocket.OPEN) {
             agent.ws.send(JSON.stringify(controlMessage));
           } else if (httpAgent) {
-            httpAgent.messages.push(controlMessage);
+            enqueueControlMessage(httpAgent.messages, controlMessage);
           }
         }
       } catch (err) {

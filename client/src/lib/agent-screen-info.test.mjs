@@ -138,11 +138,13 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
   const requests = [];
   const intervals = new Set();
   let pausePoll = false;
+  let now = 1000;
   let finishPoll;
   const context = createContext({
     __dirname: '',
     process: { platform: 'linux' },
     console: { log() {}, error() {} },
+    Date: { now: () => now },
     setInterval: callback => { intervals.add(callback); return callback; },
     clearInterval: callback => intervals.delete(callback),
     fakeHttp: async (url, options) => {
@@ -186,7 +188,23 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
   assert.equal(heartbeat.screenInfo.screenWidth, 1920);
   assert.equal(requests.some(request => request.url.endsWith('/screen-info')), false,
     'geometry is renewed through the Agent heartbeat, not an independent POST');
+  const count = () => requests.filter(request => request.url.endsWith('/poll')).length;
+  const initialCount = count();
+  now += 100;
+  await [...intervals][0]();
+  assert.equal(count(), initialCount, 'idle Agent keeps the 500ms request cadence');
+  runInContext('controlEnabled = true', context);
+  await [...intervals][0]();
+  assert.equal(count(), initialCount + 1, 'authorized cursor/full control polls at 33ms cadence');
+  now += 20;
+  await [...intervals][0]();
+  assert.equal(count(), initialCount + 1, 'active polls remain bounded and non-overlapping');
+  now += 13;
+  await [...intervals][0]();
+  assert.equal(count(), initialCount + 2);
+  runInContext('controlEnabled = false', context);
   pausePoll = true;
+  now += 500;
   const poll = [...intervals][0];
   const inFlight = poll();
   const pollCount = requests.filter(request => request.url.endsWith('/poll')).length;

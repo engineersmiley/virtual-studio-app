@@ -1599,7 +1599,22 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         }
         return;
       }
+      // A newer immediate move supersedes any older trailing move.
+      controlLifetime.cancel('move');
+      pendingMouseMoveRef.current = null;
+      mouseMoveQueuedRef.current = false;
       lastMouseMoveRef.current = now;
+    } else if (pendingMouseMoveRef.current) {
+      // Clicks have no coordinates of their own. Flush the latest pointer
+      // position first instead of clicking where the previous frame landed.
+      const point = pendingMouseMoveRef.current;
+      controlLifetime.cancel('move');
+      pendingMouseMoveRef.current = null;
+      mouseMoveQueuedRef.current = false;
+      wsRef.current!.send(JSON.stringify({
+        type: 'mouse-move', ...point, sessionCode: roomId, userId,
+      }));
+      lastMouseMoveRef.current = Date.now();
     }
     
     const payload = {
