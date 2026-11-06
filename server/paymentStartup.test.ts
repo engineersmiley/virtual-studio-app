@@ -2,6 +2,37 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import express from "express";
 import { createPaymentStartup } from "./paymentStartup";
+import { resolveStripeCredentialSource } from "./stripeClient";
+
+test("Replit development always selects its development Stripe connection over shared keys", () => {
+  assert.equal(resolveStripeCredentialSource({
+    REPL_ID: "development-repl",
+    REPLIT_CONNECTORS_HOSTNAME: "connectors.example",
+    REPL_IDENTITY: "identity-placeholder",
+    STRIPE_SECRET_KEY: "live-key-placeholder",
+    VITE_STRIPE_PUBLISHABLE_KEY: "live-publishable-placeholder",
+  }), "development-connector");
+});
+
+test("local environment keys remain supported outside Replit", () => {
+  assert.equal(resolveStripeCredentialSource({
+    STRIPE_SECRET_KEY: "local-key-placeholder",
+    VITE_STRIPE_PUBLISHABLE_KEY: "local-publishable-placeholder",
+  }), "environment");
+});
+
+test("production uses configured production keys and otherwise its production connector", () => {
+  assert.equal(resolveStripeCredentialSource({
+    REPLIT_DEPLOYMENT: "1",
+    STRIPE_SECRET_KEY: "production-key-placeholder",
+    VITE_STRIPE_PUBLISHABLE_KEY: "production-publishable-placeholder",
+  }), "environment");
+  assert.equal(resolveStripeCredentialSource({
+    REPLIT_DEPLOYMENT: "1",
+    REPLIT_CONNECTORS_HOSTNAME: "connectors.example",
+    WEB_REPL_RENEWAL: "deployment-identity-placeholder",
+  }), "production-connector");
+});
 
 const env = { DATABASE_URL: "postgres://fake:secret@local/test", REPLIT_DOMAINS: "example.test" };
 function fixture(failure?: string, backfill?: () => Promise<void>) {
