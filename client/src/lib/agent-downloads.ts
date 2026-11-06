@@ -8,10 +8,11 @@ const RELEASE_DOWNLOAD_BASE = "https://github.com/engineersmiley/virtual-studio-
 const PREVIOUS_RELEASE_BASE = `${RELEASE_DOWNLOAD_BASE}/v${LEGACY_AGENT_VERSION}`;
 const MAC_RELEASE_BASE = `${RELEASE_DOWNLOAD_BASE}/v${MAC_AGENT_VERSION}`;
 const APPLE_SILICON_RELEASE_BASE = `${RELEASE_DOWNLOAD_BASE}/macos-v${MAC_AGENT_VERSION}`;
-const WINDOWS_RELEASE_BASE = `${RELEASE_DOWNLOAD_BASE}/windows-v${WINDOWS_AGENT_VERSION}`;
+// The existing release workflow uses v* tags and retains its historical asset name.
+const WINDOWS_RELEASE_BASE = `${RELEASE_DOWNLOAD_BASE}/v${WINDOWS_AGENT_VERSION}`;
 
 export const AGENT_DOWNLOAD_URLS = {
-  windows: `${WINDOWS_RELEASE_BASE}/Virtual.Studio.Agent.Setup.exe`,
+  windows: `${WINDOWS_RELEASE_BASE}/Remote.Studio.Agent.Setup.exe`,
   macCurrent: `${PREVIOUS_RELEASE_BASE}/Remote.Studio.Agent.dmg`,
   macAppleSilicon: `${APPLE_SILICON_RELEASE_BASE}/Virtual.Studio.Agent-arm64.dmg`,
   macIntel: `${MAC_RELEASE_BASE}/Virtual.Studio.Agent-x64.dmg`,

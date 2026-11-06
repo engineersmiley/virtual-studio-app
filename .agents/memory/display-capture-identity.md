@@ -9,9 +9,9 @@ single-display/entire-screen restriction permitted by the product task.
 
 **Why:** Standard browser screen capture does not expose a reliable Electron display
 ID. Equal-sized monitors, mixed scales, and negative desktop origins make guessing
-unsafe. Physical Windows/Linux high-DPI input conversion has not been verified;
-100% scaling is the supported boundary there. Simulated platform tests are not
-native hardware certification.
+unsafe. Scaled Windows/Linux input requires a native-dimension cross-check and
+an artist-approved cursor-only alignment stage before clicks or keys are enabled.
+Simulated platform tests are not native hardware certification.
 
 **How to apply:** Preserve fail-closed capture identity and topology revocation until
 a reliable artist-to-agent display pairing flow and native coordinate verification
@@ -27,3 +27,14 @@ can leave an active full-screen share unreported.
 **How to apply:** Re-publish the current live capture state after each successful
 signaling join or rejoin. Keep explicit monitor identification and topology checks
 fail-closed.
+
+Ship required Agent capability changes with an actually available installer, not
+only website changes or a locally updated download URL.
+
+**Why:** A connected older Agent can still stream video but lack the capability
+fields required by the website, leaving Control permanently disabled. Republishing
+the website cannot upgrade the desktop process running on the artist's machine.
+
+**How to apply:** Check the public release assets and the released Agent's protocol,
+not just the workspace version. Explain separately when the website must be
+republished and when the artist must quit, install, and reopen the Agent.
