@@ -251,6 +251,8 @@ function signaling() {
     agentScreenInfo: new Map([['ROOM', { displayControlSupported: true }]]),
     controlPermissions: new Map([['ROOM', true]]),
     controlModes: new Map(),
+    shouldDropBufferedMouseMove: (type, bufferedAmount) =>
+      type === 'mouse-move' && Number.isFinite(bufferedAmount) && bufferedAmount > 8 * 1024,
     pollingControlMessageTypes: new Set(['control-request', 'control-end', 'mouse-move', 'mouse-click']),
     controlMessageTypes: new Set(['control-request', 'control-end', 'mouse-move', 'mouse-click']),
     wsConnectionData: new WeakMap(),

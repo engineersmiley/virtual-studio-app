@@ -22,11 +22,23 @@ or the capture/Agent becomes invalid. An established socket should switch
 promptly to the fallback transport so recovery completes within the departure
 grace.
 
+Prefer the desktop Agent's authenticated WebSocket for low-latency input, with
+polling retained as recovery. Reconnect between completed polls so queued input
+is not lost or duplicated. Coalesce or drop only stale cursor samples; preserve
+clicks, keys, and the original approval and capture boundaries. A transport
+change alone must not grant or revoke control.
+
 **Why:** Production showed an engineer WebSocket closing while the Agent and
 artist capture stayed connected; immediately sending `control-end` caused the
 Agent to become inactive during polling fallback. Preserving the grant only
 through transport recovery avoids that loss without keeping input active after
 the artist's screen capture changes.
+Repeated HTTP polling and queued cursor samples can add delay, while dropping
+discrete actions or weakening grant boundaries would make control unreliable
+or unsafe.
+**How to apply:** Send Agent input on the ordered WebSocket while it is open.
+Keep the existing polling fallback and enforce the same room, capture, and
+engineer authorization checks on both transports.
 Explicitly ending/leaving a room still stops control. Server restarts and
 publishing currently lose in-memory signaling state; do not promise seamless
 or uninterrupted sessions across those events.
