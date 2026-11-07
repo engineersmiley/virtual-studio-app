@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "_sRyC2p9z6ERaBDr4cFZ8"
+uri = "file://generated-artifacts/virtual-studio-overview.pptx"
+type = "slides"
+title = "Virtual Studio — Product Overview"
+description = "An eight-slide PowerPoint introducing Virtual Studio, its session workflow, remote-control capabilities, desktop agent, Pro membership, and reliability focus."
+logical_id = "c3dc901d-4447-42bb-9abb-e640263fae8c"
+content_hash = "sha256:d0464ae6d31248e54755a9b312412410fce06d1968f354011ad520f568723629"
+size = 3484211
+mtime_ms = 1793471570036
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:35038730-b6ec-454e-ba3e-0a4a428d5762/c3dc901d-4447-42bb-9abb-e640263fae8c/812cd0fb-8223-41fe-a476-135740492c49"
+storage_version_token = "1793471618033160"
+content_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"

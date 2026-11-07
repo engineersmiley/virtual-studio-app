@@ -3,6 +3,77 @@ const path = require('path');
 const WebSocket = require('ws');
 const https = require('https');
 const { exec } = require('child_process');
+const { monitorScreenInfo, readScreenInfo } = require('./screen-info');
+const { getDisplayControlState, mapInputPoint, canControlCapture } = require('./display-control');
+const { getAgentPollCadence } = require('./poll-cadence');
+
+let approvedDisplaySignature = null;
+let approvedCaptureId = null;
+let displayControlGeneration = 0;
+let controlStage = 'none';
+let robotModule;
+const inputMessageTypes = new Set([
+  'mouse-move', 'mouse-click', 'mouse-double-click', 'mouse-scroll', 'key-press', 'key-type',
+]);
+
+function getRobotModule() {
+  if (robotModule !== undefined) return robotModule;
+  try {
+    robotModule = require('@jitsi/robotjs');
+  } catch (error) {
+    robotModule = null;
+    console.error('Failed to load robotjs:', error.message);
+  }
+  return robotModule;
+}
+
+function getCurrentDisplayControlState() {
+  const display = screen.getPrimaryDisplay();
+  let inputScreenSize = null;
+  if (process.platform !== 'darwin' && display.scaleFactor !== 1) {
+    try {
+      inputScreenSize = getRobotModule()?.getScreenSize?.() || null;
+    } catch (error) {
+      console.error('[Agent] Could not inspect native input screen size:', error.message);
+    }
+  }
+  return getDisplayControlState(screen, process.platform, inputScreenSize);
+}
+
+async function sendControlResponse(allowed, mode = 'none', captureId = null) {
+  const responseMessage = {
+    type: 'control-response',
+    allowed,
+    mode,
+    captureId: allowed ? captureId : undefined,
+  };
+  if (usePolling && currentSession) {
+    await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionCode: currentSession,
+        token: currentToken,
+        message: responseMessage,
+      }),
+    });
+  } else if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ ...responseMessage, sessionCode: currentSession }));
+  }
+}
+
+function revokeDisplayControl() {
+  const wasEnabled = controlEnabled;
+  controlEnabled = false;
+  controlStage = 'none';
+  approvedDisplaySignature = null;
+  approvedCaptureId = null;
+  mainWindow?.webContents.send('control-status', { enabled: false, mode: 'none' });
+  if (wasEnabled && currentSession) {
+    void sendControlResponse(false).catch(error =>
+      console.error('[Agent] Failed to report stopped control:', error.message));
+  }
+}
 
 // Use AppleScript for keyboard on macOS (works in fullscreen apps)
 function sendKeyWithAppleScript(key, modifiers = []) {
@@ -18,6 +89,8 @@ function sendKeyWithAppleScript(key, modifiers = []) {
   
   let script;
   const keyCode = keyCodeMap[key.toLowerCase()];
+  
+  console.log('[AppleScript] Sending key:', key, 'with modifiers:', modifiers);
   
   if (keyCode !== undefined) {
     const modStr = modifiers.map(m => {
@@ -44,21 +117,47 @@ function sendKeyWithAppleScript(key, modifiers = []) {
       ? `tell application "System Events" to keystroke "${key}" using {${modStr}}`
       : `tell application "System Events" to keystroke "${key}"`;
   } else {
+    console.log('[AppleScript] Unknown key:', key);
     return false;
   }
   
-  exec(`osascript -e '${script}'`, (err) => {
-    if (err) console.error('[AppleScript] Error:', err.message);
+  // Use double quotes for shell to handle special characters better
+  const cmd = `osascript -e "${script.replace(/"/g, '\\"')}"`;
+  console.log('[AppleScript] Executing:', cmd);
+  
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) {
+      console.error('[AppleScript] Key error:', err.message);
+      console.error('[AppleScript] stderr:', stderr);
+    } else {
+      console.log('[AppleScript] Key success');
+    }
   });
   return true;
 }
 
 function typeTextWithAppleScript(text) {
   if (process.platform !== 'darwin') return false;
-  const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "'\\''");
+  console.log('[AppleScript] Typing text:', text);
+  
+  // Escape for AppleScript string (inside double quotes)
+  const escaped = text
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+  
   const script = `tell application "System Events" to keystroke "${escaped}"`;
-  exec(`osascript -e '${script}'`, (err) => {
-    if (err) console.error('[AppleScript] Type error:', err.message);
+  
+  // Use double quotes for the shell command to avoid single quote issues
+  const cmd = `osascript -e "${script.replace(/"/g, '\\"')}"`;
+  console.log('[AppleScript] Executing:', cmd);
+  
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) {
+      console.error('[AppleScript] Type error:', err.message);
+      console.error('[AppleScript] stderr:', stderr);
+    } else {
+      console.log('[AppleScript] Type success');
+    }
   });
   return true;
 }
@@ -137,42 +236,63 @@ Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateScrollWheelEvent(N
   return true;
 }
 
-// Get the actual screen size for accurate mouse positioning
-function getScreenSize() {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  return {
-    width: primaryDisplay.size.width,
-    height: primaryDisplay.size.height,
-    scaleFactor: primaryDisplay.scaleFactor
-  };
-}
-
 // HTTP request helper for legacy Electron (no fetch API)
 function httpRequest(url, options = {}) {
+  // Electron's older Node runtime does not keep HTTPS connections alive by
+  // default. Reusing TLS connections avoids a fresh handshake for every move.
+  if (!httpRequest.keepAliveAgent) {
+    httpRequest.keepAliveAgent = new https.Agent({
+      keepAlive: true, maxSockets: 4, maxFreeSockets: 2,
+    });
+  }
   return new Promise((resolve, reject) => {
+    let deadline;
+    const finish = (callback, value) => {
+      clearTimeout(deadline);
+      callback(value);
+    };
     const urlObj = new URL(url);
     const reqOptions = {
       hostname: urlObj.hostname,
       port: urlObj.port || 443,
       path: urlObj.pathname + urlObj.search,
       method: options.method || 'GET',
-      headers: options.headers || {}
+      agent: httpRequest.keepAliveAgent,
+      headers: options.headers || {},
+      signal: options.signal
     };
 
     const req = https.request(reqOptions, (res) => {
       let data = '';
+      res.on('error', error => finish(reject, error));
+      res.on('aborted', () => finish(reject, new Error('Server closed the response before it finished')));
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        resolve({
+        finish(resolve, {
           ok: res.statusCode >= 200 && res.statusCode < 300,
           status: res.statusCode,
-          json: () => Promise.resolve(JSON.parse(data)),
+          json: async () => {
+            try {
+              return JSON.parse(data);
+            } catch {
+              throw new Error(`Server returned an unreadable response (HTTP ${res.statusCode}). Please try again.`);
+            }
+          },
           text: () => Promise.resolve(data)
         });
       });
     });
 
-    req.on('error', reject);
+    req.on('error', error => finish(reject, error));
+    if (options.timeoutMs) {
+      // A wall-clock deadline also bounds DNS, TLS, and a response that never
+      // finishes. Socket inactivity timeouts alone do not cover all of these.
+      deadline = setTimeout(() => {
+        const error = new Error('Connection timed out. Check your internet connection and try again.');
+        finish(reject, error);
+        req.destroy(error);
+      }, options.timeoutMs);
+    }
     
     if (options.body) {
       req.write(options.body);
@@ -197,7 +317,18 @@ let controlEnabled = false;
 let currentSession = null;
 let currentToken = null;
 let pollingInterval = null;
+let agentPollInFlight = false;
+let agentSocketReconnectTimer = null;
 let usePolling = false;
+let stopScreenInfoMonitor = null;
+let connectionGeneration = 0;
+
+function stopScreenInfoUpdates() {
+  if (stopScreenInfoMonitor) {
+    stopScreenInfoMonitor();
+    stopScreenInfoMonitor = null;
+  }
+}
 
 const VIRTUAL_STUDIO_URL = 'wss://virtualstudio.sale';
 const VIRTUAL_STUDIO_HTTP = 'https://virtualstudio.sale';
@@ -240,7 +371,7 @@ function createTray() {
   
   const contextMenu = Menu.buildFromTemplate([
     { 
-      label: 'Open Virtual Studio Agent', 
+      label: 'Open Virtual Studio Agent',
       click: () => mainWindow.show() 
     },
     { type: 'separator' },
@@ -290,110 +421,305 @@ async function checkAccessibilityPermissions() {
 }
 
 let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 10; // Disconnect after 5 seconds of errors
+const MAX_CONSECUTIVE_ERRORS = 10; // Disconnect after ten consecutive failed polls
 
-async function connectViaPolling(sessionCode) {
+function getCurrentAgentScreenInfo() {
+  return {
+    ...readScreenInfo({ screen, getControlState: getCurrentDisplayControlState }),
+    agentVersion: app.getVersion(),
+  };
+}
+
+function sendCurrentAgentScreenInfo(info = getCurrentAgentScreenInfo()) {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !currentSession) return false;
   try {
-    // Simple mode - no token needed, just session code
+    ws.send(JSON.stringify({
+      type: 'screen-info',
+      screenInfo: { ...info, agentVersion: app.getVersion() },
+    }));
+    return true;
+  } catch (error) {
+    console.error('[Agent] Failed to send screen info over WebSocket:', error.message);
+    return false;
+  }
+}
+
+function startAgentPolling(sessionCode, generation) {
+  if (pollingInterval || !usePolling) return;
+  let lastPollStartedAt = -Infinity;
+
+  const poll = async () => {
+    if (generation !== connectionGeneration || !usePolling || agentPollInFlight) return;
+    const now = Date.now();
+    // Poll only as a fallback; sample at up to 60 fps while control is active.
+    if (now - lastPollStartedAt < getAgentPollCadence(controlEnabled).minimumRequestIntervalMs) return;
+    if (!currentSession || !isConnected) {
+      stopScreenInfoUpdates();
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = null;
+      return;
+    }
+
+    agentPollInFlight = true;
+    lastPollStartedAt = now;
+    try {
+      const pollResponse = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        timeoutMs: 5000,
+        body: JSON.stringify({
+          sessionCode,
+          token: currentToken,
+          screenInfo: getCurrentAgentScreenInfo(),
+        }),
+      });
+      if (generation !== connectionGeneration || !usePolling) return;
+
+      if (pollResponse.ok) {
+        consecutiveErrors = 0;
+        const data = await pollResponse.json();
+        for (const message of data.messages || []) {
+          if (generation !== connectionGeneration || !usePolling) break;
+          if (message.type !== 'mouse-move') console.log(`[Agent] Processing message: ${message.type}`);
+          await handleControlMessage(message);
+        }
+      } else if (pollResponse.status === 404) {
+        console.log('[Agent] Session not found (404) - disconnecting');
+        await handleControlMessage({ type: 'session-ended', reason: 'Session no longer exists' });
+      } else {
+        consecutiveErrors++;
+        console.log(`[Agent] Poll error (${pollResponse.status}), consecutive: ${consecutiveErrors}`);
+      }
+    } catch (err) {
+      if (generation !== connectionGeneration || !usePolling) return;
+      consecutiveErrors++;
+      console.error(`[Agent] Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, err.message);
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.log('[Agent] Too many errors - auto-disconnecting');
+        await handleControlMessage({ type: 'session-ended', reason: 'Connection lost' });
+      }
+    } finally {
+      agentPollInFlight = false;
+    }
+  };
+
+  pollingInterval = setInterval(poll, getAgentPollCadence(false).timerIntervalMs);
+  void poll();
+}
+
+function connectAgentWebSocket(sessionCode, token, generation) {
+  if (!token) return Promise.resolve(false);
+  return new Promise(resolve => {
+    let settled = false;
+    let opened = false;
+    let timeout;
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+
+    let socket;
+    try {
+      const url = `${VIRTUAL_STUDIO_URL}/agent?session=${encodeURIComponent(sessionCode)}`;
+      socket = new WebSocket(url, { headers: { Authorization: `Bearer ${token}` } });
+      ws = socket;
+    } catch (error) {
+      console.warn('[Agent] WebSocket unavailable; using polling fallback:', error.message);
+      finish(false);
+      return;
+    }
+
+    socket.on('open', () => {
+      if (settled && !opened) {
+        socket.close();
+        return;
+      }
+      if (generation !== connectionGeneration) {
+        socket.close();
+        finish(false);
+        return;
+      }
+
+      opened = true;
+      usePolling = false;
+      consecutiveErrors = 0;
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = null;
+      if (agentSocketReconnectTimer) clearTimeout(agentSocketReconnectTimer);
+      agentSocketReconnectTimer = null;
+      mainWindow.webContents.send('connection-status', {
+        connected: true, session: sessionCode, mode: 'websocket',
+      });
+      updateTrayMenu();
+      sendCurrentAgentScreenInfo();
+      console.log(`[Agent] Connected to session ${sessionCode} via WebSocket`);
+      finish(true);
+    });
+
+    socket.on('message', data => {
+      if (generation !== connectionGeneration || ws !== socket) return;
+      try {
+        const message = JSON.parse(data.toString());
+        void handleControlMessage(message);
+      } catch (error) {
+        console.error('[Agent] Invalid WebSocket message:', error.message);
+      }
+    });
+
+    socket.on('close', () => {
+      if (ws !== socket) {
+        if (!opened) finish(false);
+        return;
+      }
+      ws = null;
+      if (!opened) {
+        finish(false);
+        return;
+      }
+      if (generation !== connectionGeneration || !isConnected) return;
+      usePolling = true;
+      console.warn('[Agent] WebSocket closed; switching to polling fallback');
+      mainWindow.webContents.send('connection-status', {
+        connected: true, session: sessionCode, mode: 'polling',
+      });
+      startAgentPolling(sessionCode, generation);
+      scheduleAgentWebSocketReconnect(sessionCode, generation);
+    });
+
+    socket.on('error', error => {
+      console.warn('[Agent] WebSocket error:', error.message);
+      if (!opened) {
+        finish(false);
+        socket.terminate();
+      }
+    });
+
+    timeout = setTimeout(() => {
+      if (opened) return;
+      console.warn('[Agent] WebSocket connect timed out; using polling fallback');
+      finish(false);
+      socket.terminate();
+    }, 5000);
+  });
+}
+
+function scheduleAgentWebSocketReconnect(sessionCode, generation, delay = 5000) {
+  if (agentSocketReconnectTimer || !currentToken || !usePolling || !isConnected) return;
+  agentSocketReconnectTimer = setTimeout(async () => {
+    agentSocketReconnectTimer = null;
+    if (generation !== connectionGeneration || !isConnected || !usePolling) return;
+    if (agentPollInFlight) {
+      scheduleAgentWebSocketReconnect(sessionCode, generation, 500);
+      return;
+    }
+
+    // Pause polling only between requests so queued controls are either
+    // delivered by that poll or replayed over the WebSocket, never lost.
+    usePolling = false;
+    const connected = await connectAgentWebSocket(sessionCode, currentToken, generation);
+    if (generation !== connectionGeneration || !isConnected) return;
+    if (!connected) {
+      usePolling = true;
+      scheduleAgentWebSocketReconnect(sessionCode, generation, 10000);
+    }
+  }, delay);
+}
+
+async function connectViaPolling(sessionCode, generation) {
+  try {
     const response = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/simple-connect`, {
       method: 'POST',
+      timeoutMs: 10000,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionCode })
     });
+    if (generation !== connectionGeneration) return { success: false, error: 'Connection cancelled' };
     
     if (!response.ok) {
       const data = await response.json();
       throw new Error(data.error || 'Failed to connect');
     }
+
+    const connectionData = await response.json();
+    if (generation !== connectionGeneration) return { success: false, error: 'Connection cancelled' };
     
     usePolling = true;
     isConnected = true;
     currentSession = sessionCode;
-    currentToken = null; // No token needed in simple mode
+    currentToken = connectionData.websocketToken || null;
     consecutiveErrors = 0;
     
-    // Get and send screen size to the session
-    const screenSize = getScreenSize();
-    console.log(`[Agent] Screen size: ${screenSize.width}x${screenSize.height} (scale: ${screenSize.scaleFactor})`);
+    // Watch topology locally so approval is revoked immediately on changes.
+    stopScreenInfoMonitor = monitorScreenInfo({
+      screen,
+      getControlState: getCurrentDisplayControlState,
+      onChange: (state) => {
+        ++displayControlGeneration;
+        if (approvedDisplaySignature && approvedDisplaySignature !== state.signature) {
+          revokeDisplayControl();
+        }
+      },
+      publish: async info => {
+        if (usePolling) return { ok: true };
+        return sendCurrentAgentScreenInfo(info)
+          ? { ok: true }
+          : { ok: false, status: 503 };
+      },
+      onError: (err) => console.error('[Agent] Failed to inspect display; will retry:', err.message)
+    });
     
-    // Send screen size to server so engineers get accurate coordinates
-    try {
-      await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/screen-info`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          sessionCode, 
-          screenWidth: screenSize.width,
-          screenHeight: screenSize.height,
-          scaleFactor: screenSize.scaleFactor
-        })
-      });
-    } catch (err) {
-      console.log('[Agent] Failed to send screen info:', err.message);
+    const websocketConnected = await connectAgentWebSocket(
+      sessionCode, connectionData.websocketToken, generation,
+    );
+    if (generation !== connectionGeneration) {
+      if (ws) ws.close();
+      return { success: false, error: 'Connection cancelled' };
     }
-    
-    mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
-    updateTrayMenu();
-    console.log(`[Agent] Connected to session ${sessionCode} via polling`);
-    
-    // Start polling for messages
-    pollingInterval = setInterval(async () => {
-      // Safety check - if already disconnected, stop polling
-      if (!currentSession || !isConnected) {
-        console.log('[Agent] Polling stopped - no longer connected');
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
-          pollingInterval = null;
-        }
-        return;
-      }
-      
-      try {
-        // Poll without token - simple mode
-        const pollResponse = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionCode: currentSession })
-        });
-        
-        if (pollResponse.ok) {
-          consecutiveErrors = 0; // Reset on success
-          const data = await pollResponse.json();
-          for (const message of data.messages) {
-            console.log(`[Agent] Processing message: ${message.type}`);
-            await handleControlMessage(message);
-          }
-        } else if (pollResponse.status === 404) {
-          // Session no longer exists - disconnect
-          console.log('[Agent] Session not found (404) - disconnecting');
-          await handleControlMessage({ type: 'session-ended', reason: 'Session no longer exists' });
-        } else {
-          consecutiveErrors++;
-          console.log(`[Agent] Poll error (${pollResponse.status}), consecutive: ${consecutiveErrors}`);
-        }
-      } catch (err) {
-        consecutiveErrors++;
-        console.error(`[Agent] Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, err.message);
-        
-        // Auto-disconnect after too many consecutive errors
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log('[Agent] Too many errors - auto-disconnecting');
-          await handleControlMessage({ type: 'session-ended', reason: 'Connection lost' });
-        }
-      }
-    }, 500);
-    
+
+    if (!websocketConnected) {
+      usePolling = true;
+      mainWindow.webContents.send('connection-status', {
+        connected: true, session: sessionCode, mode: 'polling',
+      });
+      updateTrayMenu();
+      console.log(`[Agent] Connected to session ${sessionCode} via polling fallback`);
+      startAgentPolling(sessionCode, generation);
+      scheduleAgentWebSocketReconnect(sessionCode, generation);
+    }
+    return { success: true };
   } catch (error) {
+    if (generation !== connectionGeneration) return { success: false, error: 'Connection cancelled' };
+    stopScreenInfoUpdates();
+    isConnected = false;
+    currentSession = null;
+    currentToken = null;
+    usePolling = false;
+    updateTrayMenu();
     console.error('[Agent] HTTP connection error:', error);
+    mainWindow.webContents.send('connection-status', { connected: false });
     mainWindow.webContents.send('error', error.message);
+    return { success: false, error: error.message };
   }
 }
 
 function connectToServer(sessionCode) {
+  const generation = ++connectionGeneration;
+  revokeDisplayControl();
+  isConnected = false;
+  currentSession = null;
+  currentToken = null;
+  usePolling = false;
+  stopScreenInfoUpdates();
   // Close any existing connections
   if (ws) {
     ws.close();
     ws = null;
+  }
+  if (agentSocketReconnectTimer) {
+    clearTimeout(agentSocketReconnectTimer);
+    agentSocketReconnectTimer = null;
   }
   if (pollingInterval) {
     clearInterval(pollingInterval);
@@ -401,10 +727,27 @@ function connectToServer(sessionCode) {
   }
   
   // Use HTTP polling directly - no token needed, simpler and more reliable
-  connectViaPolling(sessionCode);
+  return connectViaPolling(sessionCode, generation);
 }
 
 async function handleControlMessage(message) {
+  if (inputMessageTypes.has(message.type)) {
+    const display = getCurrentDisplayControlState();
+    if (!controlEnabled || !display.supported || display.signature !== approvedDisplaySignature ||
+        !canControlCapture(message) || message.captureId !== approvedCaptureId) {
+      revokeDisplayControl();
+      return;
+    }
+    // Scaled displays start in a move-only alignment stage. The Agent enforces
+    // this independently of the browser and server permission checks.
+    if (controlStage === 'alignment' && message.type !== 'mouse-move') return;
+    if (message.type === 'mouse-move') {
+      if (!Number.isFinite(message.x) || !Number.isFinite(message.y)) return;
+      const mapped = mapInputPoint(message.x, message.y, display);
+      message.x = mapped.x;
+      message.y = mapped.y;
+    }
+  }
   // Log received control commands (skip mouse-move to avoid spam)
   if (message.type !== 'mouse-move') {
     console.log('[Agent] Received control command:', message.type, JSON.stringify(message));
@@ -412,62 +755,89 @@ async function handleControlMessage(message) {
   
   let robot = null;
   let robotFailed = false;
-  try {
-    robot = require('@jitsi/robotjs');
-  } catch (e) {
-    console.error('Failed to load robotjs, will use AppleScript fallback on macOS:', e.message);
-    robotFailed = true;
-    // Don't return - continue to try AppleScript on macOS
-    if (process.platform !== 'darwin') {
-      console.error('No fallback available on non-macOS platforms');
-      return;
+  // Session cleanup must work even if the native input dependency is unavailable.
+  if (message.type !== 'session-ended') {
+    robot = getRobotModule();
+    if (!robot) {
+      console.error('Failed to load robotjs, will use AppleScript fallback on macOS');
+      robotFailed = true;
+      // Don't return - continue to try AppleScript on macOS
+      if (process.platform !== 'darwin') {
+        console.error('No fallback available on non-macOS platforms');
+        return;
+      }
     }
   }
   
   try {
     switch (message.type) {
       case 'control-request':
+        const requestedDisplay = getCurrentDisplayControlState();
+        const requestedGeneration = displayControlGeneration;
+        if (!requestedDisplay.supported || !canControlCapture(message)) {
+          revokeDisplayControl();
+          await sendControlResponse(false);
+          await dialog.showMessageBox(mainWindow, {
+            type: 'warning',
+            title: 'Screen sharing cannot be controlled',
+            message: requestedDisplay.reason || 'Share your entire screen before requesting control. Window, tab, audio-only, and unidentified captures are view-only.',
+            buttons: ['OK'],
+          });
+          break;
+        }
         // Always process control requests regardless of current state
         const result = await dialog.showMessageBox(mainWindow, {
           type: 'question',
           title: 'Remote Control Request',
           message: `${message.fromName || 'An engineer'} wants to control your computer.`,
-          detail: 'They will be able to move your mouse and type on your keyboard. You can stop control anytime by pressing Escape.',
-          buttons: ['Allow', 'Deny']
+          detail: requestedDisplay.calibrationRequired
+            ? 'This scaled display needs a cursor alignment check. Allowing now lets the engineer move the cursor only. Clicks and keyboard remain blocked until you verify the cursor and enable full control in this Agent window.'
+            : 'They will be able to move your mouse and type on your keyboard. You can stop control anytime by pressing Escape.',
+          buttons: requestedDisplay.calibrationRequired
+            ? ['Allow Cursor Test', 'Deny']
+            : ['Allow', 'Deny']
         });
         
-        controlEnabled = result.response === 0;
+        const currentDisplay = getCurrentDisplayControlState();
+        controlEnabled = result.response === 0 && currentDisplay.supported &&
+          requestedGeneration === displayControlGeneration &&
+          currentDisplay.signature === requestedDisplay.signature;
+        controlStage = controlEnabled
+          ? (currentDisplay.calibrationRequired ? 'alignment' : 'full')
+          : 'none';
+        approvedDisplaySignature = controlEnabled ? currentDisplay.signature : null;
+        approvedCaptureId = controlEnabled ? message.captureId : null;
         
-        // Send response via appropriate channel
-        if (usePolling) {
-          await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: currentToken,
-              sessionCode: currentSession,
-              message: { type: 'control-response', allowed: controlEnabled }
-            })
-          });
-        } else if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ 
-            type: 'control-response', 
-            allowed: controlEnabled,
-            sessionCode: currentSession 
-          }));
-        }
-        mainWindow.webContents.send('control-status', { enabled: controlEnabled });
+        await sendControlResponse(controlEnabled, controlStage, approvedCaptureId);
+        mainWindow.webContents.send('control-status', { enabled: controlEnabled, mode: controlStage });
+        updateTrayMenu();
         break;
       
       case 'control-end':
         // Always process control end requests
-        controlEnabled = false;
-        mainWindow.webContents.send('control-status', { enabled: false });
+        ++displayControlGeneration;
+        revokeDisplayControl();
         break;
       
       case 'session-ended':
         // Session ended (artist left), auto-disconnect
         console.log('Session ended:', message.reason);
+        ++connectionGeneration;
+        stopScreenInfoUpdates();
+        if (agentSocketReconnectTimer) {
+          clearTimeout(agentSocketReconnectTimer);
+          agentSocketReconnectTimer = null;
+        }
+        const sessionToCleanup = currentSession;
+        if (sessionToCleanup) {
+          httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionCode: sessionToCleanup }),
+            timeoutMs: 3000,
+          }).catch(error =>
+            console.error('[Agent] Server cleanup after session end failed:', error.message));
+        }
         
         // CRITICAL: Stop polling immediately to prevent further requests
         if (pollingInterval) {
@@ -481,6 +851,7 @@ async function handleControlMessage(message) {
         
         // Reset all connection state
         controlEnabled = false;
+        controlStage = 'none';
         isConnected = false;
         usePolling = false;
         const endedSession = currentSession;
@@ -489,7 +860,7 @@ async function handleControlMessage(message) {
         
         updateTrayMenu();
         mainWindow.webContents.send('connection-status', { connected: false });
-        mainWindow.webContents.send('control-status', { enabled: false });
+        mainWindow.webContents.send('control-status', { enabled: false, mode: 'none' });
         mainWindow.webContents.send('session-ended', { reason: message.reason || 'Session ended' });
         
         // Show notification to user (non-blocking)
@@ -596,7 +967,7 @@ async function handleControlMessage(message) {
           // Use AppleScript on macOS (works in fullscreen), robotjs elsewhere
           if (process.platform === 'darwin') {
             typeTextWithAppleScript(text);
-          } else {
+          } else if (robot && !robotFailed) {
             // Windows/Linux: type character by character for reliability
             for (let i = 0; i < text.length; i++) {
               const char = text[i];
@@ -614,6 +985,8 @@ async function handleControlMessage(message) {
                 robot.typeString(char);
               }
             }
+          } else {
+            console.log('[Agent] Cannot type - robotjs not available');
           }
         }
         break;
@@ -673,7 +1046,7 @@ function updateTrayMenu() {
   if (tray) {
     const contextMenu = Menu.buildFromTemplate([
       { 
-        label: 'Open Virtual Studio Agent', 
+        label: 'Open Virtual Studio Agent',
         click: () => mainWindow.show() 
       },
       { type: 'separator' },
@@ -717,6 +1090,11 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('before-quit', () => {
+  ++connectionGeneration;
+  stopScreenInfoUpdates();
+});
+
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
@@ -726,17 +1104,25 @@ app.on('activate', () => {
 });
 
 ipcMain.handle('connect', async (event, { sessionCode }) => {
+  if (typeof sessionCode !== 'string' || !/^[A-Z0-9]{6}$/.test(sessionCode)) {
+    return { success: false, error: 'Please enter a valid 6-character session code' };
+  }
   const hasPermissions = await checkAccessibilityPermissions();
   if (!hasPermissions) {
     return { success: false, error: 'Accessibility permissions required' };
   }
   
-  connectToServer(sessionCode);
-  return { success: true };
+  return await connectToServer(sessionCode);
 });
 
 ipcMain.handle('disconnect', async () => {
   console.log('[Agent] Disconnect requested');
+  ++connectionGeneration;
+  stopScreenInfoUpdates();
+  if (agentSocketReconnectTimer) {
+    clearTimeout(agentSocketReconnectTimer);
+    agentSocketReconnectTimer = null;
+  }
   
   // Stop polling first to prevent any more requests
   if (pollingInterval) {
@@ -747,12 +1133,13 @@ ipcMain.handle('disconnect', async () => {
   
   const sessionToDisconnect = currentSession;
   
-  // Notify server of disconnect (don't wait for response)
-  if (usePolling && sessionToDisconnect) {
+  // Notify server of disconnect regardless of transport.
+  if (sessionToDisconnect) {
     httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionCode: sessionToDisconnect })
+      body: JSON.stringify({ sessionCode: sessionToDisconnect }),
+      timeoutMs: 3000,
     }).catch(err => {
       console.error('[Agent] Server disconnect notification error:', err.message);
     });
@@ -771,6 +1158,7 @@ ipcMain.handle('disconnect', async () => {
   // Reset all state
   isConnected = false;
   controlEnabled = false;
+  controlStage = 'none';
   currentSession = null;
   currentToken = null;
   usePolling = false;
@@ -781,7 +1169,7 @@ ipcMain.handle('disconnect', async () => {
   // Notify UI of disconnection immediately
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('connection-status', { connected: false });
-    mainWindow.webContents.send('control-status', { enabled: false });
+    mainWindow.webContents.send('control-status', { enabled: false, mode: 'none' });
   }
   
   console.log('[Agent] Disconnected successfully');
@@ -789,21 +1177,43 @@ ipcMain.handle('disconnect', async () => {
 });
 
 ipcMain.handle('stop-control', () => {
-  controlEnabled = false;
-  if (ws && isConnected) {
-    ws.send(JSON.stringify({ 
-      type: 'control-stopped', 
-      sessionCode: currentSession 
-    }));
+  revokeDisplayControl();
+  updateTrayMenu();
+  return { success: true };
+});
+
+ipcMain.handle('enable-full-control', async () => {
+  if (!controlEnabled || controlStage !== 'alignment') {
+    return { success: false, error: 'No cursor alignment test is active.' };
   }
-  mainWindow.webContents.send('control-status', { enabled: false });
+  const display = getCurrentDisplayControlState();
+  if (!display.supported || display.signature !== approvedDisplaySignature) {
+    revokeDisplayControl();
+    updateTrayMenu();
+    return { success: false, error: 'Display settings changed. Start a new control request.' };
+  }
+  controlStage = 'full';
+  mainWindow?.webContents.send('control-status', { enabled: true, mode: 'full' });
+  updateTrayMenu();
+  try {
+    await sendControlResponse(true, 'full', approvedCaptureId);
+  } catch (error) {
+    // Keep the local Agent in the more restrictive mode if the server did not
+    // confirm the upgrade.
+    controlStage = 'alignment';
+    mainWindow?.webContents.send('control-status', { enabled: true, mode: 'alignment' });
+    updateTrayMenu();
+    return { success: false, error: error.message };
+  }
   return { success: true };
 });
 
 ipcMain.handle('get-status', () => {
   return {
+    agentVersion: app.getVersion(),
     connected: isConnected,
     controlEnabled,
+    controlStage,
     session: currentSession
   };
 });

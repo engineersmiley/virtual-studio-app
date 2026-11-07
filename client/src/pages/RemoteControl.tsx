@@ -1,25 +1,27 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand } from "lucide-react";
+import { Monitor, Shield, Users, ArrowLeft, Laptop, Zap, Settings, CheckCircle, AppWindow, Apple, Terminal, Smartphone, MousePointer, Keyboard, Hand, Copy, Check } from "lucide-react";
 import { Link } from "wouter";
-import { SubscriptionGate } from "@/components/SubscriptionGate";
+import { AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS, WINDOWS_AGENT_VERSION, MAC_AGENT_VERSION, CURRENT_AGENT_VERSION, LEGACY_AGENT_VERSION } from "@/lib/agent-downloads";
 
-const AGENT_VERSION = "1.2.2";
-
-// Download URLs - GitHub releases
-const GITHUB_REPO = "engineersmiley/virtual-studio-app";
-const DOWNLOAD_URLS = {
-  windows: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.Setup.exe`,
-  mac: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.dmg`,
-  // Legacy build - works on macOS 10.11+ (El Capitan), hosted on Google Drive
-  macLegacy: `https://drive.google.com/file/d/1hYhSn10ICENwN4om5ZcCXWmi2epI2Zlo/view?usp=drive_link`,
-  linux: `https://github.com/${GITHUB_REPO}/releases/latest/download/Virtual.Studio.Agent.AppImage`,
-};
+const APPLE_SILICON_GATEKEEPER_COMMAND =
+  'xattr -dr com.apple.quarantine "/Applications/Virtual Studio Agent.app"';
 
 export default function RemoteControl() {
+  const [commandCopyStatus, setCommandCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+
+  const copyGatekeeperCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(APPLE_SILICON_GATEKEEPER_COMMAND);
+      setCommandCopyStatus("copied");
+    } catch {
+      setCommandCopyStatus("failed");
+    }
+  };
+
   return (
-    <SubscriptionGate>
     <div className="min-h-screen bg-background">
       <div className="container max-w-4xl mx-auto px-4 py-8">
         <Link href="/">
@@ -45,7 +47,7 @@ export default function RemoteControl() {
             <CardTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
               Virtual Studio Agent
-              <Badge variant="outline" className="ml-2">v{AGENT_VERSION}</Badge>
+              <Badge variant="outline" className="ml-2">Windows v{WINDOWS_AGENT_VERSION}</Badge>
             </CardTitle>
             <CardDescription>
               Control your artist's computer directly from Virtual Studio with audio streaming included - all in one integrated experience.
@@ -57,7 +59,7 @@ export default function RemoteControl() {
                 Download the Virtual Studio Agent for your operating system. After installation, enter your session code to connect with your collaborators.
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <a 
                 href={DOWNLOAD_URLS.windows}
                 target="_blank"
@@ -71,12 +73,12 @@ export default function RemoteControl() {
                 >
                   <AppWindow className="w-8 h-8" />
                   <span className="font-semibold">Windows</span>
-                  <span className="text-xs opacity-70">.exe installer</span>
+                  <span className="text-xs opacity-70">v{WINDOWS_AGENT_VERSION} · .exe installer</span>
                 </Button>
               </a>
               <div className="flex flex-col gap-2">
-                <a 
-                  href={DOWNLOAD_URLS.mac}
+                <a
+                  href={DOWNLOAD_URLS.macCurrent}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full"
@@ -87,11 +89,11 @@ export default function RemoteControl() {
                     data-testid="button-download-agent-mac"
                   >
                     <Apple className="w-8 h-8" />
-                    <span className="font-semibold">macOS 11+</span>
-                    <span className="text-xs opacity-70">.dmg installer</span>
+                    <span className="font-semibold">Mac Intel</span>
+                    <span className="text-xs opacity-70">v{MAC_AGENT_VERSION} · Intel DMG</span>
                   </Button>
                 </a>
-                <a 
+                <a
                   href={DOWNLOAD_URLS.macLegacy}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -100,10 +102,32 @@ export default function RemoteControl() {
                   <Button 
                     size="sm" 
                     variant="outline"
-                    className="w-full text-xs"
+                    className="w-full h-auto py-2 text-xs whitespace-normal text-center"
                     data-testid="button-download-agent-mac-legacy"
                   >
-                    <span>macOS 10.11-10.14 (Legacy .zip)</span>
+                    <span>Legacy Mac · v{LEGACY_AGENT_VERSION}<br />macOS 10.11-10.14 · ZIP</span>
+                  </Button>
+                </a>
+              </div>
+              <div
+                className="flex flex-col gap-2"
+                data-testid="section-mac-apple-silicon-download"
+              >
+                <a
+                  href={DOWNLOAD_URLS.macAppleSilicon}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full"
+                >
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full h-auto py-4 flex-col gap-2"
+                    data-testid="button-download-agent-mac-apple-silicon"
+                  >
+                    <Apple className="w-8 h-8" />
+                    <span className="w-full text-center whitespace-normal break-words font-semibold">Newer Mac · Apple Silicon</span>
+                    <span className="w-full text-xs text-center opacity-70 whitespace-normal break-words">M1 and newer · native DMG · v{MAC_AGENT_VERSION}</span>
                   </Button>
                 </a>
               </div>
@@ -120,12 +144,68 @@ export default function RemoteControl() {
                 >
                   <Terminal className="w-8 h-8" />
                   <span className="font-semibold">Linux</span>
-                  <span className="text-xs opacity-70">.AppImage file</span>
+                  <span className="text-xs opacity-70">v{CURRENT_AGENT_VERSION} · x64 AppImage</span>
                 </Button>
               </a>
             </div>
+            <div
+              className="mt-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-4"
+              data-testid="section-windows-control-alignment"
+            >
+              <p className="text-sm font-semibold text-cyan-100">
+                Windows display scaling: verify cursor alignment
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                On scaled displays such as 150%, the artist first approves a cursor-only test. The engineer moves the pointer and confirms it matches the artist’s screen. Then the artist clicks “Enable Mouse &amp; Keyboard.” If the pointer is offset, stop control and do not enable clicks or typing.
+              </p>
+            </div>
+            <div
+              className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4"
+              data-testid="section-mac-apple-silicon-gatekeeper"
+            >
+              <p className="text-sm font-semibold text-yellow-100">
+                macOS may block these unsigned and not notarized Mac apps
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Only use these steps if you trust this download from the official Virtual Studio GitHub release.
+              </p>
+              <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
+                <li>Open the DMG, drag Virtual Studio Agent into Applications, then eject the DMG.</li>
+                <li>Open Terminal, paste the command below, and press Return.</li>
+                <li>Open Virtual Studio Agent from Applications.</li>
+              </ol>
+              <div className="mt-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                <code className="min-w-0 flex-1 overflow-x-auto break-all rounded bg-background/80 px-3 py-2 text-xs">
+                  {APPLE_SILICON_GATEKEEPER_COMMAND}
+                </code>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={copyGatekeeperCommand}
+                  data-testid="button-copy-mac-quarantine-command"
+                >
+                  {commandCopyStatus === "copied" ? (
+                    <Check className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Copy className="mr-2 h-4 w-4" />
+                  )}
+                  {commandCopyStatus === "copied" ? "Copied" : "Copy command"}
+                </Button>
+              </div>
+              {commandCopyStatus !== "idle" && (
+                <p className="mt-2 text-xs text-muted-foreground" role="status">
+                  {commandCopyStatus === "copied"
+                    ? "Command copied. Paste it into Terminal."
+                    : "Could not copy automatically. Select and copy the command above."}
+                </p>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-4 text-center">
-              Version {AGENT_VERSION} - Download the installer for your operating system above
+              Windows, Intel Mac, Apple Silicon Mac, and Linux downloads: v{CURRENT_AGENT_VERSION}.
+              Before updating, fully quit the Agent (including its Windows tray icon), install, then reopen it.
+              Updating interrupts active remote control.
             </p>
             <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
               <p className="text-xs text-yellow-200/80 text-center">
@@ -415,6 +495,5 @@ export default function RemoteControl() {
         </div>
       </div>
     </div>
-    </SubscriptionGate>
   );
 }

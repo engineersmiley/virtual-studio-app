@@ -230,6 +230,7 @@
       <div class="logo">🎙️</div>
       <h1>Virtual Studio Agent</h1>
       <p class="subtitle">Remote Control for Sessions</p>
+      <p class="subtitle" id="agentVersion"></p>
     </div>
     
     <div class="status-card">
@@ -264,6 +265,10 @@
         <strong>Waiting for Control Request</strong>
         When the engineer requests control, you'll see a prompt to allow or deny it.
       </div>
+
+      <button class="btn btn-primary" id="enableFullControlBtn" style="margin-top: 12px; display: none;">
+        Enable Mouse &amp; Keyboard
+      </button>
       
       <button class="btn btn-danger" id="stopControlBtn" style="margin-top: 15px; display: none;">
         Stop Remote Control
@@ -290,6 +295,7 @@
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const stopControlBtn = document.getElementById('stopControlBtn');
+    const enableFullControlBtn = document.getElementById('enableFullControlBtn');
     const connectForm = document.getElementById('connectForm');
     const connectedView = document.getElementById('connectedView');
     const connectionDot = document.getElementById('connectionDot');
@@ -321,6 +327,7 @@
         }
       } catch (error) {
         showError('Connection error: ' + error.message);
+      } finally {
         connectBtn.disabled = false;
         connectBtn.textContent = 'Connect to Session';
       }
@@ -342,8 +349,24 @@
     stopControlBtn.addEventListener('click', async () => {
       await window.agent.stopControl();
     });
+
+    enableFullControlBtn.addEventListener('click', async () => {
+      enableFullControlBtn.disabled = true;
+      enableFullControlBtn.textContent = 'Enabling...';
+      const result = await window.agent.enableFullControl();
+      if (!result?.success) {
+        enableFullControlBtn.disabled = false;
+        enableFullControlBtn.textContent = 'Enable Mouse & Keyboard';
+        controlInfo.innerHTML = '<strong>Alignment check still active</strong>';
+        controlInfo.append(document.createTextNode(
+          result?.error || 'Could not enable full control. Try again or stop remote control.'
+        ));
+      }
+    });
     
     window.agent.onConnectionStatus((data) => {
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect to Session';
       if (data.connected) {
         connectionDot.classList.add('connected');
         connectionText.textContent = `Connected to ${data.session}`;
@@ -359,25 +382,41 @@
         controlDot.classList.remove('control-active');
         controlText.textContent = 'Control Inactive';
         stopControlBtn.style.display = 'none';
+        enableFullControlBtn.style.display = 'none';
       }
     });
     
     window.agent.onControlStatus((data) => {
       if (data.enabled) {
         controlDot.classList.add('control-active');
-        controlText.textContent = 'Control Active';
-        controlInfo.innerHTML = '<strong>Remote Control Active</strong>Your engineer can now control your computer. Press the Stop button or press Escape to stop.';
+        if (data.mode === 'alignment') {
+          controlText.textContent = 'Cursor Test';
+          controlInfo.innerHTML = '<strong>Cursor alignment test</strong>' +
+            'Only mouse movement is allowed. Check that the engineer’s pointer follows the correct position across your screen. Click Enable Mouse &amp; Keyboard only after it lines up.';
+          enableFullControlBtn.style.display = 'block';
+          enableFullControlBtn.disabled = false;
+          enableFullControlBtn.textContent = 'Enable Mouse & Keyboard';
+        } else {
+          controlText.textContent = 'Control Active';
+          controlInfo.innerHTML = '<strong>Remote Control Active</strong>Your engineer can now control your computer. Press the Stop button or press Escape to stop.';
+          enableFullControlBtn.style.display = 'none';
+        }
         stopControlBtn.style.display = 'block';
       } else {
         controlDot.classList.remove('control-active');
         controlText.textContent = 'Control Inactive';
         controlInfo.innerHTML = '<strong>Waiting for Control Request</strong>When the engineer requests control, you\'ll see a prompt to allow or deny it.';
         stopControlBtn.style.display = 'none';
+        enableFullControlBtn.style.display = 'none';
+        enableFullControlBtn.disabled = false;
+        enableFullControlBtn.textContent = 'Enable Mouse & Keyboard';
       }
     });
     
     window.agent.onError((error) => {
       showError(error);
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect to Session';
     });
     
     function showError(message) {
@@ -391,6 +430,8 @@
     
     async function init() {
       const status = await window.agent.getStatus();
+      document.getElementById('agentVersion').textContent =
+        status.agentVersion ? `Version ${status.agentVersion}` : '';
       if (status.connected) {
         connectionDot.classList.add('connected');
         connectionText.textContent = `Connected to ${status.session}`;
@@ -399,8 +440,13 @@
         
         if (status.controlEnabled) {
           controlDot.classList.add('control-active');
-          controlText.textContent = 'Control Active';
+          controlText.textContent = status.controlStage === 'alignment' ? 'Cursor Test' : 'Control Active';
           stopControlBtn.style.display = 'block';
+          if (status.controlStage === 'alignment') {
+            controlInfo.innerHTML = '<strong>Cursor alignment test</strong>' +
+              'Only mouse movement is allowed. Check that the engineer’s pointer follows the correct position across your screen. Click Enable Mouse &amp; Keyboard only after it lines up.';
+            enableFullControlBtn.style.display = 'block';
+          }
         }
       }
     }

@@ -5,6 +5,8 @@ import { createServer } from "http";
 import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from './stripeClient';
 import { WebhookHandlers } from './webhookHandlers';
+import { pool } from "./db";
+import { createPaymentStartup } from "./paymentStartup";
 
 const app = express();
 const httpServer = createServer(app);
@@ -15,51 +17,9 @@ declare module "http" {
   }
 }
 
-async function initStripe() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    console.log('DATABASE_URL not set, skipping Stripe init');
-    return;
-  }
-
-  try {
-    console.log('Initializing Stripe schema...');
-    await runMigrations({ databaseUrl });
-    console.log('Stripe schema ready');
-
-    const stripeSync = await getStripeSync();
-
-    console.log('Setting up managed webhook...');
-    // Use custom domain for production, fallback to REPLIT_DOMAINS for dev
-    const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
-    const webhookBaseUrl = isProduction 
-      ? 'https://virtualstudio.sale'
-      : `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-    try {
-      const result = await stripeSync.findOrCreateManagedWebhook(
-        `${webhookBaseUrl}/api/stripe/webhook`
-      );
-      if (result?.webhook?.url) {
-        console.log(`Webhook configured: ${result.webhook.url}`);
-      } else {
-        console.log('Webhook setup complete');
-      }
-    } catch (webhookErr: any) {
-      console.log('Webhook setup skipped (may already exist):', webhookErr.message);
-    }
-
-    stripeSync.syncBackfill()
-      .then(() => console.log('Stripe data synced'))
-      .catch((err: any) => console.error('Error syncing Stripe data:', err));
-  } catch (error) {
-    console.error('Failed to initialize Stripe:', error);
-  }
-}
-
-// Initialize Stripe (wrapped in IIFE for CommonJS compatibility)
-(async () => {
-  await initStripe();
-})();
+const paymentStartup = createPaymentStartup({ runMigrations, getStripeSync });
+// Deliberately not awaited: Stripe readiness must never block core availability.
+void paymentStartup.start();
 
 app.post(
   '/api/stripe/webhook',
@@ -130,6 +90,17 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Registered before the SPA fallback, so a 200 HTML page cannot mask failure.
+  app.get("/api/health/payments", paymentStartup.handler);
+  app.get("/api/health", async (_req, res) => {
+    try {
+      await pool.query("SELECT 1");
+      res.status(200).json({ status: "ok" });
+    } catch {
+      res.status(503).json({ status: "unavailable" });
+    }
+  });
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

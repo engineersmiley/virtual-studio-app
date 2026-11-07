@@ -7,7 +7,7 @@ import {
   Disc, ListMusic, Zap, Headphones, Eye, PenTool, Download,
   Crown, Check, CreditCard, Loader2
 } from "lucide-react";
-import logoImage from "@assets/generated_images/large_virtual_studio_globe_logo.png";
+import logoImage from "@assets/generated_images/large_virtual_studio_globe_logo.webp";
 import { motion } from "framer-motion";
 import { api } from "@shared/routes";
 import type { SessionRole } from "@shared/schema";
@@ -72,7 +72,9 @@ export default function Home() {
     }
   };
 
-  const isSubscribed = subscriptionData?.hasSubscription;
+  // In development mode, bypass subscription check for testing
+  const isDev = import.meta.env.DEV;
+  const isSubscribed = isDev || subscriptionData?.hasSubscription;
 
   const justSubscribed = searchString.includes('subscribed=true');
   const cancelled = searchString.includes('cancelled=true');
@@ -222,7 +224,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="glass-panel rounded-2xl p-6 text-left">
               <Monitor className="w-10 h-10 text-primary mb-4" />
-              <h3 className="font-display font-bold text-lg mb-2">Virtual Recording</h3>
+              <h3 className="font-display font-bold text-lg mb-2">Remote Recording</h3>
               <p className="text-sm text-muted-foreground">Capture your creative vision in stunning clarity</p>
             </div>
             <div className="glass-panel rounded-2xl p-6 text-left">
@@ -298,7 +300,7 @@ export default function Home() {
                       className="bg-gradient-to-r from-secondary to-primary"
                     >
                       <Download className="w-4 h-4 mr-2" />
-                      Remote Control Agent
+                      Virtual Studio Agent
                     </Button>
                   </Link>
                   <Button 
@@ -544,7 +546,7 @@ export default function Home() {
             <ListMusic size={20} /> Recording Library
           </Link>
           <Link href="/remote-control" className="flex items-center gap-2 hover:text-primary transition-colors" data-testid="link-remote-control">
-            <Monitor size={20} /> Remote Control
+            <Download size={20} /> Download Desktop App
           </Link>
           {isInstallable && !isInstalled && !isIOSDevice && (
             <button

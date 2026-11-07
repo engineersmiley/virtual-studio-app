@@ -1,0 +1,88 @@
+name: Repository protection monitor
+
+on:
+  schedule:
+    # Every six hours, off the top-of-hour scheduling peak (UTC).
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: repository-protection-monitor
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.repository == 'engineersmiley/virtual-studio-app' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Configure this environment to allow deployments from main ONLY.
+    # Never use a repository-wide secret for the Administration credential.
+    environment: repository-protection-audit
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+          sparse-checkout: scripts/audit-repository-protection.mjs
+          sparse-checkout-cone-mode: false
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.12.0'
+      - name: Audit live merge protection (read only)
+        # No npm install, lifecycle scripts, PR checkout, or third-party code
+        # runs in this step. This credential cannot write protection settings.
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPOSITORY_PROTECTION_TOKEN }}
+        run: node scripts/audit-repository-protection.mjs
+
+  notify:
+    needs: audit
+    if: always() && needs.audit.result == 'failure' && github.repository == 'engineersmiley/virtual-studio-app' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Separate, short-lived token for notification. No Administration secret,
+    # environment access, source checkout, or repository code in this job.
+    permissions:
+      issues: write
+    steps:
+      - name: Alert maintainer about failed protection verification
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const title = '[Protection monitor] main merge protection could not be verified';
+            const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const body = [
+              '@engineersmiley: the scheduled read-only audit FAILED. Merge protection on `main` has NOT been verified.',
+              '',
+              `Audit details and exact failure: ${run}`,
+              '',
+              'Required policy: `PR TypeScript check` from GitHub Actions (app 15368), up-to-date branches, and administrator enforcement.',
+              '',
+              '**Authentication/setup failure:** For a missing token or HTTP 401/403, replace the environment secret `REPOSITORY_PROTECTION_TOKEN` with a valid credential for this repository with Administration: read (not write); check expiry, SSO, and rate limits.',
+              '**Drift/404:** Confirm repository access, then manually restore the main branch protection rule at https://github.com/engineersmiley/virtual-studio-app/settings/branches.',
+              '**Network/429/5xx:** Retry after connectivity or GitHub recovers. A failed request is never a passing audit.',
+              '',
+              'Run **Repository protection monitor** manually on `main` after fixing the cause, confirm it passes, then close this issue. No protection settings were changed.',
+              'Runbook: https://github.com/engineersmiley/virtual-studio-app/blob/main/docs/repository-protection-audit.md',
+            ].join('\n');
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', creator: 'github-actions[bot]', per_page: 100,
+            });
+            const existing = issues.find(issue => !issue.pull_request && issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: existing.number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner, repo, title, body, assignees: ['engineersmiley'],
+              });
+            }
+            core.notice(`Maintainer alert sent. Failed audit: ${run}`);

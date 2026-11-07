@@ -6,15 +6,18 @@ import { Visualizer } from '@/components/Visualizer';
 import { AudioDeviceSelector } from '@/components/AudioDeviceSelector';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { PhoneControl } from '@/components/PhoneControl';
+import { VirtualKeyboard } from '@/components/VirtualKeyboard';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
+import { isSyntheticClickAfterTouch, mapVideoPointToScreen } from '@/lib/remote-control-video.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
   Users, Radio, ArrowLeft, CheckCircle, AlertTriangle, X,
   Video, VideoOff, Eye, PenTool, Zap, MousePointer2, Move, Maximize, Minimize,
-  Volume2, VolumeX, Music, RefreshCw
+  Volume2, VolumeX, Music, RefreshCw, Keyboard
 } from 'lucide-react';
 import type { SessionRole } from '@shared/schema';
 
@@ -122,6 +125,9 @@ function SessionContent() {
   const [controlPending, setControlPending] = useState(false);
   const [tokenLoading, setTokenLoading] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [showKeyboardInput, setShowKeyboardInput] = useState(false);
+  const [showFullscreenKeyboard, setShowFullscreenKeyboard] = useState(false);
+  const keyboardInputRef = useRef<HTMLInputElement>(null);
   
   // Simple remote control toggle (for artists)
   const [remoteControlAllowed, setRemoteControlAllowed] = useState(false);
@@ -144,12 +150,16 @@ function SessionContent() {
   // Agent screen dimensions for accurate mouse positioning
   const [agentScreenSize, setAgentScreenSize] = useState({ width: 1920, height: 1080 });
   
+  // Pointer lock for fullscreen cursor confinement
+  const virtualCursorRef = useRef({ x: 960, y: 540 }); // Virtual cursor position when pointer is locked
+  
   // Producer audio state - track status per user: pending (not tried), playing, blocked
   const [audioStatus, setAudioStatus] = useState<Map<string, 'pending' | 'playing' | 'blocked'>>(new Map());
   const producerAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   
   // Touch guard to prevent double triggers (touch + synthetic click)
   const lastTouchTimeRef = useRef<number>(0);
+  const lastRemoteVideoTouchTimeRef = useRef<number>(0);
   const TOUCH_DELAY_MS = 500; // Ignore clicks within 500ms of touch
   
   const { toast } = useToast();
@@ -239,14 +249,15 @@ function SessionContent() {
   }, []);
   
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const lastTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number; identifier: number; moved: boolean } | null>(null);
+  const fullscreenTouchRef = useRef<{ x: number; y: number; time: number; moved: boolean } | null>(null);
   const lastMouseMoveRef = useRef<number>(0);
   const MOUSE_THROTTLE_MS = 16; // ~60fps for smooth movement
   
@@ -267,47 +278,28 @@ function SessionContent() {
     }, 2000);
   }, []);
 
+
   // Fullscreen toggle - iOS requires video element, others use container
   const toggleFullscreen = useCallback(() => {
     const container = videoContainerRef.current;
     const video = remoteVideoRef.current;
     if (!container) return;
     
-    // Check if already in fullscreen (any mode)
-    const isCurrentlyFullscreen = !!(
+    // Check if already in fullscreen - use React state for CSS-based fullscreen on mobile
+    const isNativeFullscreen = !!(
       document.fullscreenElement || 
       (document as any).webkitFullscreenElement ||
       (video as any)?.webkitDisplayingFullscreen
     );
+    const isMobile = /iPad|iPhone|iPod|Android/i.test(navigator.userAgent);
+    
+    // Use React state for mobile CSS fullscreen, native APIs for desktop
+    const isCurrentlyFullscreen = isMobile ? isFullscreen : isNativeFullscreen;
     
     if (!isCurrentlyFullscreen) {
-      // Mobile devices: Use CSS fullscreen (more reliable than native fullscreen APIs)
-      const isMobile = /iPad|iPhone|iPod|Android/i.test(navigator.userAgent);
-      
       if (isMobile) {
-        // Use CSS-based "fullscreen" for mobile - more reliable
-        container.style.cssText = `
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: 0 !important;
-          width: 100vw !important;
-          height: 100vh !important;
-          z-index: 99999 !important;
-          background-color: black !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-        `;
-        // Also make video fill the container
-        if (video) {
-          video.style.cssText = `
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: contain !important;
-          `;
-        }
+        // Mobile: Just set state - the overlay component handles the fullscreen UI
+        document.body.style.overflow = 'hidden';
         setIsFullscreen(true);
         return;
       }
@@ -324,6 +316,12 @@ function SessionContent() {
       
       enterFullscreen(container).then(() => {
         setIsFullscreen(true);
+        // Request pointer lock for engineers with control enabled to confine cursor
+        if (role === 'engineer' && controlEnabled && fullscreenVideoRef.current) {
+          setTimeout(() => {
+            fullscreenVideoRef.current?.requestPointerLock();
+          }, 100); // Small delay to ensure fullscreen is ready
+        }
       }).catch((err: any) => {
         console.log('Fullscreen API not available:', err.message);
         // Fallback: maximize in viewport with CSS (works on all devices)
@@ -351,8 +349,18 @@ function SessionContent() {
         setIsFullscreen(true);
       });
     } else {
-      // Exit fullscreen
-      if (document.exitFullscreen) {
+      // Exit fullscreen - restore body styles
+      document.body.style.overflow = '';
+      
+      // Exit pointer lock first
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+      
+      if (isMobile) {
+        // Mobile: Just reset state - overlay will unmount
+        setIsFullscreen(false);
+      } else if (document.exitFullscreen) {
         document.exitFullscreen().then(() => setIsFullscreen(false));
       } else if ((document as any).webkitExitFullscreen) {
         (document as any).webkitExitFullscreen();
@@ -369,12 +377,17 @@ function SessionContent() {
         setIsFullscreen(false);
       }
     }
-  }, []);
+  }, [isFullscreen]);
 
   // Listen for fullscreen changes (including webkit)
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement || !!(document as any).webkitFullscreenElement);
+      const inFullscreen = !!document.fullscreenElement || !!(document as any).webkitFullscreenElement;
+      setIsFullscreen(inFullscreen);
+      // Exit pointer lock when exiting fullscreen
+      if (!inFullscreen && document.pointerLockElement) {
+        document.exitPointerLock();
+      }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
@@ -383,7 +396,7 @@ function SessionContent() {
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
   }, []);
-
+  
   const {
     connected,
     participants,
@@ -393,13 +406,20 @@ function SessionContent() {
     hasRemoteStream,
     remoteStreams,
     agentConnected: wsAgentConnected,
+    displayControlSupported,
+    agentVersion,
+    displayControlReason,
+    displayControlCalibrationRequired,
+    captureSupported,
     controlAllowed: wsControlAllowed,
     controlPending: wsControlPending,
+    controlMode: wsControlMode,
     audioConfirmations,
     isMicActive,
     connect,
     disconnect,
     startSharing,
+    setScreenShareFrameRate,
     stopSharing,
     startMic,
     stopMic,
@@ -407,6 +427,8 @@ function SessionContent() {
     requestFullControl,
     endFullControl,
     sendFullControlCommand,
+    queueFullControlClick,
+    cancelPendingControlClicks,
     confirmAudio,
     unconfirmAudio,
   } = useWebRTC({
@@ -430,6 +452,11 @@ function SessionContent() {
     },
   });
 
+  useEffect(() => {
+    if (role !== 'artist') return;
+    void setScreenShareFrameRate(wsControlAllowed);
+  }, [role, wsControlAllowed, setScreenShareFrameRate]);
+
   // Start session timer when connected
   useEffect(() => {
     if (connected && !sessionStartTime) {
@@ -447,19 +474,64 @@ function SessionContent() {
     return () => clearInterval(interval);
   }, [sessionStartTime]);
 
+  // Sync fullscreen video srcObject when entering fullscreen or stream changes
+  useEffect(() => {
+    if (isFullscreen && remoteVideoRef.current?.srcObject) {
+      // Use requestAnimationFrame to ensure the fullscreen video element is mounted
+      const syncVideo = () => {
+        if (fullscreenVideoRef.current && remoteVideoRef.current?.srcObject) {
+          fullscreenVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
+          fullscreenVideoRef.current.play().catch(() => {});
+        }
+      };
+      // Try immediately and after a short delay to handle React render timing
+      syncVideo();
+      const timer = setTimeout(syncVideo, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isFullscreen, hasRemoteStream]);
+
   // Direct screen touch control - touch on video to control computer
   const controlEnabled = fullControlActive || wsControlAllowed;
+
+  useEffect(() => {
+    if (wsControlMode === 'alignment') {
+      setShowKeyboardInput(false);
+      cancelPendingControlClicks();
+    }
+  }, [wsControlMode, cancelPendingControlClicks]);
+
+  // Cancel the previous view's pending input on view changes and session teardown.
+  useEffect(() => {
+    return cancelPendingControlClicks;
+  }, [isFullscreen, hasRemoteStream, cancelPendingControlClicks]);
   
   const handleVideoTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartRef.current = null;
     if (!controlEnabled) return;
     const touch = e.touches[0];
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    if (e.touches.length !== 1 || !touch) return;
+    touchStartRef.current = {
+      x: touch.clientX, y: touch.clientY, time: Date.now(),
+      identifier: touch.identifier, moved: false,
+    };
   }, [controlEnabled]);
   
   const handleVideoTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!controlEnabled || !lastTouchRef.current) return;
+    const gesture = touchStartRef.current;
+    const touch = e.touches[0];
+    if (!controlEnabled || e.touches.length !== 1 || !touch ||
+        touch.identifier !== gesture?.identifier) {
+      touchStartRef.current = null;
+      return;
+    }
+    if (!gesture) return;
     e.preventDefault();
+
+    // Track the entire gesture, including moves skipped by the command throttle.
+    if (Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= 15) {
+      gesture.moved = true;
+    }
     
     // Throttle touch move to reduce lag (~60fps)
     const now = Date.now();
@@ -469,46 +541,61 @@ function SessionContent() {
     const video = remoteVideoRef.current;
     if (!video) return;
     
-    const touch = e.touches[0];
     const rect = video.getBoundingClientRect();
     
-    // Calculate position relative to video
-    const x = Math.max(0, Math.min(agentScreenSize.width, ((touch.clientX - rect.left) / rect.width) * agentScreenSize.width));
-    const y = Math.max(0, Math.min(agentScreenSize.height, ((touch.clientY - rect.top) / rect.height) * agentScreenSize.height));
+    const { x, y } = mapVideoPointToScreen(
+      touch.clientX,
+      touch.clientY,
+      rect,
+      video.videoWidth,
+      video.videoHeight,
+      agentScreenSize,
+    );
     
+    virtualCursorRef.current = { x, y };
     sendFullControlCommand({ type: 'mouse-move', x, y });
-    lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
   }, [controlEnabled, sendFullControlCommand, agentScreenSize]);
   
   const handleVideoTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (!controlEnabled || !touchStartRef.current) return;
+    const gesture = touchStartRef.current;
+    touchStartRef.current = null;
+    // Suppress synthetic clicks for taps, drags, and rejected multi-touch gestures.
+    lastRemoteVideoTouchTimeRef.current = Date.now();
+    if (!controlEnabled) return;
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    if (!gesture || gesture.moved || e.touches.length !== 0 ||
+        e.changedTouches.length !== 1 || !touch || touch.identifier !== gesture.identifier) return;
     
     const video = remoteVideoRef.current;
     if (!video) return;
     
-    const touch = e.changedTouches[0];
     const rect = video.getBoundingClientRect();
-    const touchDuration = Date.now() - touchStartRef.current.time;
-    const moveDistance = Math.sqrt(
-      Math.pow(touch.clientX - touchStartRef.current.x, 2) +
-      Math.pow(touch.clientY - touchStartRef.current.y, 2)
-    );
+    const touchDuration = Date.now() - gesture.time;
+    const moveDistance = Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y);
     
     // If it was a tap (not much movement), click at that position
     if (moveDistance < 15 && touchDuration < 400) {
-      const x = ((touch.clientX - rect.left) / rect.width) * agentScreenSize.width;
-      const y = ((touch.clientY - rect.top) / rect.height) * agentScreenSize.height;
+      const { x, y } = mapVideoPointToScreen(
+        touch.clientX,
+        touch.clientY,
+        rect,
+        video.videoWidth,
+        video.videoHeight,
+        agentScreenSize,
+      );
       
       // Move to position then click
+      virtualCursorRef.current = { x, y };
       sendFullControlCommand({ type: 'mouse-move', x, y });
-      setTimeout(() => {
-        sendFullControlCommand({ type: 'mouse-click', button: 'left' });
-      }, 50);
+      queueFullControlClick(video);
     }
-    
+  }, [controlEnabled, sendFullControlCommand, queueFullControlClick, agentScreenSize]);
+
+  const handleVideoTouchCancel = useCallback(() => {
     touchStartRef.current = null;
-    lastTouchRef.current = null;
-  }, [controlEnabled, sendFullControlCommand, agentScreenSize]);
+    lastRemoteVideoTouchTimeRef.current = Date.now();
+  }, []);
 
   // Get ALL audio-only streams (no video) - from any role (producers, engineers teaching, etc.)
   const audioOnlyStreams = Array.from(remoteStreams.values()).filter(
@@ -606,7 +693,7 @@ function SessionContent() {
   
   // Keyboard capture when control mode is active - send keystrokes to agent
   useEffect(() => {
-    if (!fullControlActive) return;
+    if (!fullControlActive || wsControlMode === 'alignment') return;
     
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't capture keys if user is typing in an input/textarea
@@ -638,7 +725,7 @@ function SessionContent() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fullControlActive, sendFullControlCommand]);
+  }, [fullControlActive, wsControlMode, sendFullControlCommand]);
 
   useEffect(() => {
     if (roomId) {
@@ -672,10 +759,10 @@ function SessionContent() {
             description: sources.join(" + ") 
           });
         } else {
+          // Still works - just no audio detected
           toast({ 
-            title: "No Audio Sources", 
-            description: "Check your audio device settings",
-            variant: "destructive"
+            title: "Sharing Started (Video Only)", 
+            description: "No audio captured - check mic permissions"
           });
         }
       }
@@ -1244,52 +1331,297 @@ function SessionContent() {
         </div>
       )}
 
+      {/* Fullscreen Overlay - works for both mobile and desktop */}
+      {isFullscreen && (
+        <div 
+          className={`fixed inset-0 z-[99999] bg-black flex items-center justify-center touch-none ${
+            role === 'engineer' && controlEnabled ? '[&_*]:cursor-none cursor-none' : ''
+          }`}
+          style={{ touchAction: 'none' }}
+        >
+          {/* Top controls bar */}
+          <div className="absolute top-4 left-4 right-4 z-[100000] flex items-center justify-between">
+            {/* Left side controls for engineer */}
+            {role === 'engineer' && controlEnabled && (
+              <div className="flex items-center gap-2">
+                {/* Keyboard button - toggles virtual keyboard */}
+                <button
+                  onClick={() => setShowFullscreenKeyboard(!showFullscreenKeyboard)}
+                  className={`p-3 rounded-full text-white transition-colors ${
+                    showFullscreenKeyboard ? 'bg-cyan-500/50' : 'bg-white/20 hover:bg-white/30'
+                  }`}
+                  data-testid="button-keyboard-fullscreen"
+                >
+                  <Keyboard size={24} />
+                </button>
+                {/* Left-click button */}
+                <button
+                  onClick={() => {
+                    sendFullControlCommand({ type: 'mouse-click', button: 'left' });
+                  }}
+                  className="px-3 py-2 rounded-full bg-cyan-500/40 text-white hover:bg-cyan-500/60 transition-colors text-sm font-medium"
+                  data-testid="button-leftclick-fullscreen"
+                >
+                  L-Click
+                </button>
+                {/* Right-click button */}
+                <button
+                  onClick={() => {
+                    sendFullControlCommand({ type: 'mouse-click', button: 'right' });
+                  }}
+                  className="px-3 py-2 rounded-full bg-purple-500/40 text-white hover:bg-purple-500/60 transition-colors text-sm font-medium"
+                  data-testid="button-rightclick-fullscreen"
+                >
+                  R-Click
+                </button>
+              </div>
+            )}
+            <div className="flex-1" />
+            {/* Exit button */}
+            <button
+              onClick={handleClickWithTouchGuard(toggleFullscreen)}
+              onTouchEnd={handleTouchWithGuard(toggleFullscreen)}
+              className="p-3 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors"
+              data-testid="button-exit-fullscreen-overlay"
+            >
+              <Minimize size={24} />
+            </button>
+          </div>
+          
+          {/* Virtual Keyboard in fullscreen */}
+          {role === 'engineer' && controlEnabled && showFullscreenKeyboard && (
+            <div className="absolute top-20 left-4 right-4 z-[100000] max-w-4xl mx-auto">
+              <VirtualKeyboard
+                onKeyPress={(key, modifiers) => {
+                  sendFullControlCommand({ type: 'key-press', key, modifiers: modifiers || {} });
+                }}
+                onType={(text) => {
+                  sendFullControlCommand({ type: 'key-type', text });
+                }}
+                onClose={() => setShowFullscreenKeyboard(false)}
+              />
+            </div>
+          )}
+          
+          {/* Fullscreen video with click handling for remote control */}
+          <video
+            ref={fullscreenVideoRef}
+            autoPlay
+            playsInline
+            muted={videoAudioMuted}
+            className="w-full h-full object-contain touch-none"
+            onClick={(e) => {
+              if (role === 'engineer' && controlEnabled) {
+                if (isSyntheticClickAfterTouch(
+                  lastRemoteVideoTouchTimeRef.current,
+                  Date.now(),
+                  TOUCH_DELAY_MS,
+                )) {
+                  return;
+                }
+
+                const video = e.currentTarget;
+                // Locked client coordinates can stay fixed while the remote cursor moves.
+                const locked = document.pointerLockElement === video;
+                const { x, y } = locked
+                  ? virtualCursorRef.current
+                  : mapVideoPointToScreen(
+                    e.clientX,
+                    e.clientY,
+                    video.getBoundingClientRect(),
+                    video.videoWidth,
+                    video.videoHeight,
+                    agentScreenSize,
+                  );
+                virtualCursorRef.current = { x, y };
+
+                // Seed the cursor before acquisition; lock changes must not reset it.
+                if (!document.pointerLockElement && typeof video.requestPointerLock === 'function') {
+                  try {
+                    // Capture is optional; keep absolute input working if acquisition fails.
+                    video.requestPointerLock()?.catch(() => {});
+                  } catch {
+                    // Some browsers throw synchronously instead of returning a rejected promise.
+                  }
+                }
+
+                sendFullControlCommand({ type: 'mouse-move', x, y });
+                queueFullControlClick(video);
+              }
+            }}
+            onMouseMove={(e) => {
+              // Send mouse position on desktop
+              if (role === 'engineer' && controlEnabled) {
+                let x: number, y: number;
+                
+                if (document.pointerLockElement === e.currentTarget) {
+                  // Use relative movement when pointer is locked
+                  const sensitivity = 1.5; // Adjust cursor speed
+                  // Allow cursor to go slightly beyond bounds to reach dock/edges
+                  const overreach = 100; // Extra pixels to ensure dock/edge access
+                  virtualCursorRef.current.x = Math.max(-overreach, Math.min(agentScreenSize.width + overreach, 
+                    virtualCursorRef.current.x + e.movementX * sensitivity));
+                  virtualCursorRef.current.y = Math.max(-overreach, Math.min(agentScreenSize.height + overreach, 
+                    virtualCursorRef.current.y + e.movementY * sensitivity));
+                  // The agent will clamp to actual screen bounds
+                  x = virtualCursorRef.current.x;
+                  y = virtualCursorRef.current.y;
+                } else {
+                  // Use absolute position when not locked
+                  const video = e.currentTarget;
+                  const rect = video.getBoundingClientRect();
+                  ({ x, y } = mapVideoPointToScreen(
+                    e.clientX,
+                    e.clientY,
+                    rect,
+                    video.videoWidth,
+                    video.videoHeight,
+                    agentScreenSize,
+                  ));
+                }
+                
+                virtualCursorRef.current = { x, y };
+                sendFullControlCommand({ type: 'mouse-move', x, y });
+              }
+            }}
+            onTouchStart={(e) => {
+              // Prevent scrolling when engineer is controlling
+              fullscreenTouchRef.current = null;
+              if (role === 'engineer' && controlEnabled) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                if (e.touches.length !== 1 || !touch) return;
+                fullscreenTouchRef.current = {
+                  x: touch.clientX, y: touch.clientY, time: Date.now(), moved: false,
+                };
+              }
+            }}
+            onTouchMove={(e) => {
+              // Prevent scrolling and send mouse move commands
+              if (role === 'engineer' && controlEnabled) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                if (!touch) return;
+                const gesture = fullscreenTouchRef.current;
+                if (gesture && (e.touches.length !== 1 ||
+                    Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= 15)) {
+                  gesture.moved = true;
+                }
+                const video = e.currentTarget;
+                const rect = video.getBoundingClientRect();
+                const { x, y } = mapVideoPointToScreen(
+                  touch.clientX,
+                  touch.clientY,
+                  rect,
+                  video.videoWidth,
+                  video.videoHeight,
+                  agentScreenSize,
+                );
+                virtualCursorRef.current = { x, y };
+                sendFullControlCommand({ type: 'mouse-move', x, y });
+              }
+            }}
+            onTouchEnd={(e) => {
+              const gesture = fullscreenTouchRef.current;
+              fullscreenTouchRef.current = null;
+              if (role === 'engineer' && controlEnabled) {
+                e.preventDefault();
+                // Suppress the browser's synthetic click after taps AND drags.
+                lastRemoteVideoTouchTimeRef.current = Date.now();
+                const touch = e.changedTouches[0];
+                if (!touch || !gesture || gesture.moved || e.touches.length !== 0 ||
+                    Date.now() - gesture.time >= 400 ||
+                    Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= 15) return;
+                const video = e.currentTarget;
+                const rect = video.getBoundingClientRect();
+                const { x, y } = mapVideoPointToScreen(
+                  touch.clientX,
+                  touch.clientY,
+                  rect,
+                  video.videoWidth,
+                  video.videoHeight,
+                  agentScreenSize,
+                );
+                virtualCursorRef.current = { x, y };
+                sendFullControlCommand({ type: 'mouse-move', x, y });
+                queueFullControlClick(video);
+              }
+            }}
+            onTouchCancel={() => {
+              fullscreenTouchRef.current = null;
+              lastRemoteVideoTouchTimeRef.current = Date.now();
+            }}
+            style={{ cursor: 'none' }}
+          />
+          
+          {/* Audio enable prompt in fullscreen */}
+          {videoAudioMuted && hasRemoteStream && (
+            <button 
+              onClick={handleClickWithTouchGuard(handleToggleAudio)}
+              onTouchEnd={handleAudioTouch}
+              className="absolute bottom-20 left-1/2 transform -translate-x-1/2 flex items-center gap-3 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-purple-600 text-white font-bold shadow-lg hover:scale-105 transition-all animate-pulse"
+              data-testid="button-enable-audio-fullscreen"
+            >
+              <Volume2 size={24} />
+              <span className="text-lg">Tap to Enable Audio</span>
+            </button>
+          )}
+          
+          {/* Prominent Exit Fullscreen button at bottom for mobile - only show when audio prompt is not visible */}
+          {!(videoAudioMuted && hasRemoteStream) && (
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 md:hidden">
+              <Button
+                variant="outline"
+                onClick={handleClickWithTouchGuard(toggleFullscreen)}
+                onTouchEnd={handleTouchWithGuard(toggleFullscreen)}
+                className="gap-2"
+                data-testid="button-exit-fullscreen-bottom"
+              >
+                <Minimize size={18} />
+                Exit Fullscreen
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Video/Stream Area */}
         <div className="lg:col-span-2 glass-panel rounded-2xl p-3 lg:p-6 flex flex-col gap-4">
           <div 
             ref={videoContainerRef}
-            className="rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px]"
+            className={`rounded-xl overflow-hidden bg-black/50 relative min-h-[200px] lg:min-h-[400px] ${
+              role === 'engineer' && controlEnabled ? '[&_*]:cursor-none cursor-none' : ''
+            }`}
             onClick={(e) => {
+              // A touch ending outside the video can target this shared ancestor.
+              if (isSyntheticClickAfterTouch(
+                lastRemoteVideoTouchTimeRef.current,
+                Date.now(),
+                TOUCH_DELAY_MS,
+              )) {
+                return;
+              }
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
                 const video = remoteVideoRef.current;
-                const container = e.currentTarget.getBoundingClientRect();
-                
-                const videoRatio = video.videoWidth / video.videoHeight;
-                const containerRatio = container.width / container.height;
-                
-                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                
-                if (videoRatio > containerRatio) {
-                  videoDisplayWidth = container.width;
-                  videoDisplayHeight = container.width / videoRatio;
-                  offsetX = 0;
-                  offsetY = (container.height - videoDisplayHeight) / 2;
-                } else {
-                  videoDisplayHeight = container.height;
-                  videoDisplayWidth = container.height * videoRatio;
-                  offsetX = (container.width - videoDisplayWidth) / 2;
-                  offsetY = 0;
-                }
-                
-                const clickX = e.clientX - container.left - offsetX;
-                const clickY = e.clientY - container.top - offsetY;
-                
-                const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
-                const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
+                const { x, y } = mapVideoPointToScreen(
+                  e.clientX,
+                  e.clientY,
+                  video.getBoundingClientRect(),
+                  video.videoWidth,
+                  video.videoHeight,
+                  agentScreenSize,
+                );
                 
                 // Full control mode - send mouse commands to agent
                 if (controlEnabled) {
-                  const x = normX * agentScreenSize.width;
-                  const y = normY * agentScreenSize.height;
+                  virtualCursorRef.current = { x, y };
                   sendFullControlCommand({ type: 'mouse-move', x, y });
-                  setTimeout(() => {
-                    sendFullControlCommand({ type: 'mouse-click', button: 'left' });
-                  }, 50);
+                  queueFullControlClick(video);
                 } else if (controlMode) {
                   // Pointer mode - show pointer on artist's screen
-                  sendControlEvent('click', normX, normY);
+                  sendControlEvent('click', x / agentScreenSize.width, y / agentScreenSize.height);
                 }
               }
             }}
@@ -1301,39 +1633,22 @@ function SessionContent() {
                 lastMouseMoveRef.current = now;
                 
                 const video = remoteVideoRef.current;
-                const container = e.currentTarget.getBoundingClientRect();
-                
-                const videoRatio = video.videoWidth / video.videoHeight;
-                const containerRatio = container.width / container.height;
-                
-                let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                
-                if (videoRatio > containerRatio) {
-                  videoDisplayWidth = container.width;
-                  videoDisplayHeight = container.width / videoRatio;
-                  offsetX = 0;
-                  offsetY = (container.height - videoDisplayHeight) / 2;
-                } else {
-                  videoDisplayHeight = container.height;
-                  videoDisplayWidth = container.height * videoRatio;
-                  offsetX = (container.width - videoDisplayWidth) / 2;
-                  offsetY = 0;
-                }
-                
-                const moveX = e.clientX - container.left - offsetX;
-                const moveY = e.clientY - container.top - offsetY;
-                
-                const normX = Math.max(0, Math.min(1, moveX / videoDisplayWidth));
-                const normY = Math.max(0, Math.min(1, moveY / videoDisplayHeight));
+                const { x, y } = mapVideoPointToScreen(
+                  e.clientX,
+                  e.clientY,
+                  video.getBoundingClientRect(),
+                  video.videoWidth,
+                  video.videoHeight,
+                  agentScreenSize,
+                );
                 
                 // Full control mode - send mouse move to agent
                 if (controlEnabled) {
-                  const x = normX * agentScreenSize.width;
-                  const y = normY * agentScreenSize.height;
+                  virtualCursorRef.current = { x, y };
                   sendFullControlCommand({ type: 'mouse-move', x, y });
                 } else if (controlMode) {
                   // Pointer mode - show pointer on artist's screen
-                  sendControlEvent('pointer', normX, normY);
+                  sendControlEvent('pointer', x / agentScreenSize.width, y / agentScreenSize.height);
                 }
               }
             }}
@@ -1359,8 +1674,10 @@ function SessionContent() {
                       </div>
                     </div>
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-cyan-400 font-tech">Broadcasting Live</p>
-                      <p className="text-muted-foreground mt-2">Your screen is being shared with participants</p>
+                      <p className="text-2xl font-bold text-cyan-400 font-tech">{connected ? 'Broadcasting Live' : 'Screen captured — connecting…'}</p>
+                      <p className="text-muted-foreground mt-2">{connected
+                        ? 'Your screen is being shared with participants'
+                        : 'Your screen is captured locally. Waiting for a viewer connection.'}</p>
                     </div>
                   </div>
                 </>
@@ -1382,42 +1699,35 @@ function SessionContent() {
                   onTouchStart={handleVideoTouchStart}
                   onTouchMove={handleVideoTouchMove}
                   onTouchEnd={handleVideoTouchEnd}
+                  onTouchCancel={handleVideoTouchCancel}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (isSyntheticClickAfterTouch(
+                      lastRemoteVideoTouchTimeRef.current,
+                      Date.now(),
+                      TOUCH_DELAY_MS,
+                    )) {
+                      return;
+                    }
+
                     if (role === 'engineer' && controlEnabled && remoteVideoRef.current) {
                       const video = remoteVideoRef.current;
                       const rect = video.getBoundingClientRect();
-                      const videoRatio = video.videoWidth / video.videoHeight || 16/9;
-                      const containerRatio = rect.width / rect.height;
-                      
-                      let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-                      if (videoRatio > containerRatio) {
-                        videoDisplayWidth = rect.width;
-                        videoDisplayHeight = rect.width / videoRatio;
-                        offsetX = 0;
-                        offsetY = (rect.height - videoDisplayHeight) / 2;
-                      } else {
-                        videoDisplayHeight = rect.height;
-                        videoDisplayWidth = rect.height * videoRatio;
-                        offsetX = (rect.width - videoDisplayWidth) / 2;
-                        offsetY = 0;
-                      }
-                      
-                      const clickX = e.clientX - rect.left - offsetX;
-                      const clickY = e.clientY - rect.top - offsetY;
-                      const normX = Math.max(0, Math.min(1, clickX / videoDisplayWidth));
-                      const normY = Math.max(0, Math.min(1, clickY / videoDisplayHeight));
-                      
-                      const x = normX * agentScreenSize.width;
-                      const y = normY * agentScreenSize.height;
+                      const { x, y } = mapVideoPointToScreen(
+                        e.clientX,
+                        e.clientY,
+                        rect,
+                        video.videoWidth,
+                        video.videoHeight,
+                        agentScreenSize,
+                      );
+                      virtualCursorRef.current = { x, y };
                       sendFullControlCommand({ type: 'mouse-move', x, y });
-                      setTimeout(() => {
-                        sendFullControlCommand({ type: 'mouse-click', button: 'left' });
-                      }, 50);
+                      queueFullControlClick(video);
                     }
                   }}
-                  style={{ cursor: 'default' }}
+                  style={{ cursor: hasRemoteStream ? 'none' : 'default' }}
                 />
                 {!hasRemoteStream && !isSharing && !remoteVideoRef.current?.srcObject && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
@@ -1635,21 +1945,67 @@ function SessionContent() {
                 
                 {/* Remote Control - always show for engineer, but disabled if no agent */}
                 {fullControlActive ? (
-                  <button onClick={endFullControl} data-testid="button-end-control"
-                    className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1">
-                    <MousePointer2 size={12} /> End Control
-                  </button>
+                  <>
+                    <button onClick={endFullControl} data-testid="button-end-control"
+                      className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors flex items-center gap-1">
+                      <MousePointer2 size={12} /> End Control
+                    </button>
+                    {wsControlMode === 'alignment' ? (
+                      <span className="px-2 py-1 text-[10px] text-amber-300" data-testid="control-alignment-status">
+                        Cursor test only — artist: open the desktop Agent and click “Enable Mouse &amp; Keyboard”
+                      </span>
+                    ) : (
+                      <>
+                    {/* Keyboard toggle button - desktop only (mobile uses fullscreen controls) */}
+                    <button 
+                      onClick={() => {
+                        setShowKeyboardInput(!showKeyboardInput);
+                        if (!showKeyboardInput) {
+                          setTimeout(() => keyboardInputRef.current?.focus(), 100);
+                        }
+                      }}
+                      data-testid="button-toggle-keyboard"
+                      className={`hidden md:flex px-2 py-1 rounded text-xs font-medium border transition-colors items-center gap-1 ${
+                        showKeyboardInput 
+                          ? 'bg-cyan-500/30 text-cyan-300 border-cyan-500/50' 
+                          : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50 hover:bg-cyan-500/30'
+                      }`}
+                      title="Type text to send to artist's computer"
+                    >
+                      <Keyboard size={12} /> Type
+                    </button>
+                    {/* Left Click - desktop only (mobile uses fullscreen controls) */}
+                    <button 
+                      onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'left' })}
+                      data-testid="button-left-click"
+                      className="hidden md:flex px-2 py-1 rounded text-xs font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 hover:bg-cyan-500/30 transition-colors items-center gap-1"
+                      title="Left click"
+                    >
+                      L-Click
+                    </button>
+                    {/* Right Click - desktop only (mobile uses fullscreen controls) */}
+                    <button 
+                      onClick={() => sendFullControlCommand({ type: 'mouse-click', button: 'right' })}
+                      data-testid="button-right-click"
+                      className="hidden md:flex px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/50 hover:bg-purple-500/30 transition-colors items-center gap-1"
+                      title="Right click"
+                    >
+                      R-Click
+                    </button>
+                      </>
+                    )}
+                  </>
                 ) : (
                   <button 
                     onClick={() => agentConnected && requestFullControl('Engineer')} 
-                    disabled={controlPending || !agentConnected} 
+                    disabled={controlPending || !agentConnected || !displayControlSupported || !captureSupported}
                     data-testid="button-request-control"
                     className={`px-2 py-1 rounded text-xs font-medium border transition-colors flex items-center gap-1 disabled:opacity-50 ${
                       agentConnected 
                         ? 'bg-purple-500/20 text-purple-400 border-purple-500/50 hover:bg-purple-500/30'
                         : 'bg-gray-500/20 text-gray-400 border-gray-500/50 cursor-not-allowed'
                     }`}
-                    title={agentConnected ? "Request to control artist's screen" : "Artist must run Virtual Studio Agent first"}>
+                    title={displayControlReason || (agentConnected ? "Share the entire screen on a single-display computer before requesting control" : "Artist must run Virtual Studio Agent first")}>
                     <MousePointer2 size={12} /> {controlPending ? 'Waiting...' : agentConnected ? 'Control' : 'No Agent'}
                   </button>
                 )}
@@ -1691,6 +2047,21 @@ function SessionContent() {
                   </>
                 )}
               </>
+            )}
+            
+            {/* Virtual Keyboard for Engineer - desktop only (mobile uses fullscreen controls) */}
+            {canRecord && fullControlActive && showKeyboardInput && (
+              <div className="hidden md:block w-full mt-2">
+                <VirtualKeyboard
+                  onKeyPress={(key, modifiers) => {
+                    sendFullControlCommand({ type: 'key-press', key, modifiers: modifiers || {} });
+                  }}
+                  onType={(text) => {
+                    sendFullControlCommand({ type: 'key-type', text });
+                  }}
+                  onClose={() => setShowKeyboardInput(false)}
+                />
+              </div>
             )}
             
             {/* Producer Action Buttons */}
@@ -1967,8 +2338,17 @@ function SessionContent() {
             }`}>
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${agentConnected ? 'bg-purple-400 animate-pulse' : 'bg-gray-500'}`} />
-                <span>Agent: {agentConnected ? 'Connected' : 'Not Connected'}</span>
+                <span>Agent: {agentConnected ? 'Connected' : 'Not Connected'}{agentConnected && agentVersion ? ` · ${agentVersion}` : ''}</span>
               </div>
+              {(role === 'artist' || role === 'engineer') && (
+                <p className="mt-2">
+                  {displayControlReason || (displayControlCalibrationRequired
+                    ? 'Scaled displays start with cursor movement only. The artist must confirm the cursor is aligned in the Agent before clicks and keyboard input unlock.'
+                    : 'Full remote control requires one connected display and an entire-screen share. Window, tab, audio-only, and unidentified shares are view-only.')}
+                  {agentConnected && !displayControlSupported && !displayControlReason && ' The running Agent has not confirmed display compatibility. Completely quit and reopen the current Agent version; installing it without restarting may leave an older process running.'}
+                  {agentConnected && displayControlSupported && !captureSupported && ' Waiting for an identified entire-screen share from the artist.'}
+                </p>
+              )}
               {!agentConnected && role === 'artist' && (
                 <p className="mt-1 text-[10px] opacity-70">Click Ctrl button above, then run agent on your computer</p>
               )}
@@ -2137,9 +2517,6 @@ function SessionContent() {
 }
 
 export default function Session() {
-  return (
-    <SubscriptionGate>
-      <SessionContent />
-    </SubscriptionGate>
-  );
+  // Bypass subscription gate for now to debug black screen issue
+  return <SessionContent />;
 }

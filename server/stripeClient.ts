@@ -1,10 +1,33 @@
 import Stripe from 'stripe';
+import { scopePaymentMethodBackfill } from './stripeBackfill';
 
 let connectionSettings: any;
 
+export type StripeCredentialSource = "environment" | "development-connector" | "production-connector";
+
+export function resolveStripeCredentialSource(env: NodeJS.ProcessEnv): StripeCredentialSource {
+  const isProduction = env.REPLIT_DEPLOYMENT === "1";
+  const hasEnvironmentKey = Boolean(env.STRIPE_SECRET_KEY || env.VITE_STRIPE_PUBLISHABLE_KEY);
+  const isReplitRuntime = Boolean(
+    env.REPL_ID || env.REPLIT_CONNECTORS_HOSTNAME || env.REPL_IDENTITY ||
+    env.WEB_REPL_RENEWAL || env.REPLIT_DOMAINS || env.REPLIT_DEV_DOMAIN,
+  );
+
+  // In a Replit development workspace, never let shared environment secrets
+  // override the separate development Stripe connection. StripeSync can
+  // mutate provider webhooks during initialization, so falling back to live
+  // keys from development is unsafe.
+  if (!isProduction && isReplitRuntime) return "development-connector";
+  if (hasEnvironmentKey) return "environment";
+  return isProduction ? "production-connector" : "development-connector";
+}
+
 async function getCredentials() {
-  // Prefer environment variables (live keys) over connector API
-  if (process.env.STRIPE_SECRET_KEY && process.env.VITE_STRIPE_PUBLISHABLE_KEY) {
+  const source = resolveStripeCredentialSource(process.env);
+  if (source === "environment") {
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.VITE_STRIPE_PUBLISHABLE_KEY) {
+      throw new Error("Incomplete Stripe environment credentials");
+    }
     console.log('Using Stripe keys from environment variables');
     return {
       publishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY,
@@ -20,13 +43,12 @@ async function getCredentials() {
       ? 'depl ' + process.env.WEB_REPL_RENEWAL
       : null;
 
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
-  }
+  if (!hostname) throw new Error('Replit connector hostname unavailable');
+  if (!xReplitToken) throw new Error('Replit connector identity unavailable');
 
   const connectorName = 'stripe';
-  const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
-  const targetEnvironment = isProduction ? 'production' : 'development';
+  const targetEnvironment = source === "production-connector" ? "production" : "development";
+  console.log(`Using Stripe ${targetEnvironment} connection from Replit connector`);
 
   const url = new URL(`https://${hostname}/api/v2/connection`);
   url.searchParams.set('include_secrets', 'true');
@@ -85,6 +107,7 @@ export async function getStripeSync() {
       },
       stripeSecretKey: secretKey,
     });
+    scopePaymentMethodBackfill(stripeSync, new Stripe(secretKey));
   }
   return stripeSync;
 }

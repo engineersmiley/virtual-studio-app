@@ -7,7 +7,44 @@ on:
   workflow_dispatch:
 
 jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Check TypeScript
+        run: npm run check
+
+      - name: Test remote video input
+        run: npm test
+
+      - name: Build root web app
+        run: npm run build
+
+      - name: Check smoke runner failure handling
+        run: npm run test:production:runner
+
+      - name: Install disposable database tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql
+
+      - name: Smoke test production startup
+        run: npm run test:production
+
+      - name: Check application schema compatibility
+        run: npm run test:schema
+
   build-mac-legacy:
+    needs: [typecheck]
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -31,7 +68,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: remote-studio-agent-mac-legacy
+          name: virtual-studio-agent-mac-legacy
           path: virtual-studio-agent/dist/*.zip
 
   release:
@@ -45,26 +82,26 @@ jobs:
       - name: Download macOS Legacy artifact
         uses: actions/download-artifact@v4
         with:
-          name: remote-studio-agent-mac-legacy
+          name: virtual-studio-agent-mac-legacy
           path: ./dist
 
       - name: Rename file
         run: |
           cd dist
-          for f in *.zip; do mv "$f" "Remote.Studio.Agent.Legacy.zip" 2>/dev/null || true; done
+          for f in *.zip; do mv "$f" "Virtual.Studio.Agent.Legacy.zip" 2>/dev/null || true; done
           ls -la
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Remote Studio Agent Legacy ${{ github.ref_name }}
+          name: Virtual Studio Agent Legacy ${{ github.ref_name }}
           body: |
-            ## Remote Studio Agent Legacy ${{ github.ref_name }}
+            ## Virtual Studio Agent Legacy ${{ github.ref_name }}
             
             For older macOS (10.11 - 10.14):
-            - **macOS Legacy**: Remote.Studio.Agent.Legacy.zip
+            - **macOS Legacy**: Virtual.Studio.Agent.Legacy.zip
           files: |
-            dist/Remote.Studio.Agent.Legacy.zip
+            dist/Virtual.Studio.Agent.Legacy.zip
           draft: false
           prerelease: false
         env:

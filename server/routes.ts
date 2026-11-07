@@ -13,6 +13,11 @@ import { getStripePublishableKey, getUncachableStripeClient } from "./stripeClie
 import { sendWelcomeEmail } from "./gmailService";
 import type { SessionRole, ControlMessage, AgentToken } from "@shared/schema";
 import crypto from "crypto";
+import { CaptureControl } from "./capture-control";
+import { listRoomParticipants, relayRoomMessage } from "./signaling-room";
+import { routeWebSocketUpgrades } from "./websocket-upgrade";
+import { startSocketKeepalive } from "./socket-keepalive";
+import { enqueueControlMessage, shouldDropBufferedMouseMove } from "./control-message-queue";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -52,6 +57,7 @@ interface AgentConnection {
 const agentConnections = new Map<string, AgentConnection>(); // sessionCode -> agent
 const agentTokens = new Map<string, AgentToken>(); // token -> AgentToken data
 const controlPermissions = new Map<string, boolean>(); // sessionCode -> control allowed
+const controlModes = new Map<string, 'alignment' | 'full'>(); // sessionCode -> active input stage
 
 // Simple remote control enabled sessions (no token needed)
 const remoteControlEnabled = new Map<string, { artistUserId: string; enabledAt: number }>(); // sessionCode -> data
@@ -66,9 +72,17 @@ export async function registerRoutes(
 
   // ============ SUBSCRIPTION VERIFICATION HELPER ============
   
+  // Emails with permanent unlimited access (founders/admins)
+  const UNLIMITED_ACCESS_EMAILS = [
+    'engineersmiley@gmail.com',
+    'washhousestudios@gmail.com'
+  ];
+  
   async function verifySubscription(emailHeader: string | string[] | undefined): Promise<boolean> {
     const email = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader;
     if (!email) return false;
+    // Check unlimited access whitelist first
+    if (UNLIMITED_ACCESS_EMAILS.includes(email.toLowerCase())) return true;
     const user = await storage.getUserByEmail(email);
     if (!user) return false;
     // Check promo code first
@@ -95,7 +109,7 @@ export async function registerRoutes(
       res.status(201).json(session);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       throw err;
     }
@@ -287,6 +301,15 @@ export async function registerRoutes(
         return res.json({ hasSubscription: false });
       }
 
+      // Check unlimited access whitelist first
+      if (UNLIMITED_ACCESS_EMAILS.includes(email.toLowerCase())) {
+        return res.json({ 
+          hasSubscription: true, 
+          status: 'unlimited',
+          email 
+        });
+      }
+
       // First check our database
       const user = await storage.getUserByEmail(email);
       
@@ -459,6 +482,11 @@ export async function registerRoutes(
       console.error('Promo deactivate error:', err);
       res.status(500).json({ error: 'Failed to deactivate promo code' });
     }
+  });
+
+  // Do not expose subscriber records until a real admin-authentication boundary exists.
+  app.get('/api/admin/subscribers', (_req, res) => {
+    res.status(503).json({ error: 'Subscriber listing requires authenticated admin access' });
   });
 
   app.get('/api/stripe/prices', async (req, res) => {
@@ -691,13 +719,14 @@ export async function registerRoutes(
         return res.status(409).json({ error: 'Agent already connected to this session' });
       }
       
-      // Register polling agent
+      const websocketToken = crypto.randomBytes(32).toString('hex');
       pollingAgents.set(normalizedCode, {
         sessionCode: normalizedCode,
         userId: rcData.artistUserId,
         controlEnabled: false,
         lastPoll: Date.now(),
-        messages: []
+        messages: [],
+        websocketToken,
       });
       
       console.log(`Agent simple-connected to session ${normalizedCode} (registered in pollingAgents)`);
@@ -720,10 +749,14 @@ export async function registerRoutes(
         });
       }
       
+      // Capture can predate the Agent. Its owner is only verifiable after this
+      // registration; refresh existing viewers instead of waiting for a reshare.
+      broadcastCaptureStatus(normalizedCode);
       res.json({ 
         connected: true, 
         sessionCode: normalizedCode,
-        artistUserId: rcData.artistUserId
+        artistUserId: rcData.artistUserId,
+        websocketToken,
       });
     } catch (err: any) {
       console.error('Agent simple connect error:', err);
@@ -732,22 +765,91 @@ export async function registerRoutes(
   });
 
   // Store screen info from agents
-  const agentScreenInfo = new Map<string, { screenWidth: number; screenHeight: number; scaleFactor: number }>();
+  const agentScreenInfo = new Map<string, {
+    screenWidth: number; screenHeight: number; scaleFactor: number;
+    displayControlSupported: boolean; displayControlReason: string | null;
+    controlCalibrationRequired: boolean;
+    agentVersion: string | null;
+  }>();
+  const captureControl = new CaptureControl();
 
-  // Agent sends screen info for accurate mouse positioning
-  app.post('/api/agent/screen-info', (req, res) => {
-    try {
-      const { sessionCode, screenWidth, screenHeight, scaleFactor } = req.body;
-      
-      if (!sessionCode || !screenWidth || !screenHeight) {
-        return res.status(400).json({ error: 'Session code and screen dimensions required' });
+  function liveCapture(code: string) {
+    const artistId = agentConnections.get(code)?.userId || pollingAgents.get(code)?.userId;
+    return captureControl.get(code, artistId, id =>
+      rooms.get(code)?.get(id)?.role === 'artist' ||
+      pollingRooms.get(code)?.get(id)?.role === 'artist');
+  }
+
+  function broadcastControlState(code: string, allowed: boolean, mode?: string | null) {
+    const status = {
+      type: 'control-response',
+      allowed,
+      mode: allowed ? (mode === 'alignment' ? 'alignment' : 'full') : null,
+    };
+    rooms.get(code)?.forEach(p => {
+      if (p.ws.readyState === WebSocket.OPEN) p.ws.send(JSON.stringify(status));
+    });
+    pollingRooms.get(code)?.forEach(p => p.messages.push(status));
+  }
+
+  function revokeCaptureControl(code: string) {
+    controlPermissions.set(code, false);
+    controlModes.delete(code);
+    const message = { type: 'control-end', sessionCode: code };
+    const agent = agentConnections.get(code);
+    if (agent?.ws.readyState === WebSocket.OPEN) agent.ws.send(JSON.stringify(message));
+    const pollingAgent = pollingAgents.get(code);
+    if (pollingAgent) {
+      pollingAgent.controlEnabled = false;
+      if (agent?.ws.readyState !== WebSocket.OPEN) {
+        pollingAgent.messages.push(message);
       }
-      
-      const normalizedCode = sessionCode.toUpperCase();
-      
-      // Store screen info
-      agentScreenInfo.set(normalizedCode, { screenWidth, screenHeight, scaleFactor: scaleFactor || 1 });
-      console.log(`[Agent] Screen info for ${normalizedCode}: ${screenWidth}x${screenHeight} (scale: ${scaleFactor})`);
+    }
+    const status = { type: 'control-response', allowed: false };
+    rooms.get(code)?.forEach(p => {
+      if (p.ws.readyState === WebSocket.OPEN) p.ws.send(JSON.stringify(status));
+    });
+    pollingRooms.get(code)?.forEach(p => p.messages.push(status));
+  }
+
+  function captureStatus(code: string) {
+    return { type: 'capture-status', supported: !!liveCapture(code) };
+  }
+
+  function broadcastCaptureStatus(code: string) {
+    const status = captureStatus(code);
+    rooms.get(code)?.forEach(p => {
+      if (p.ws.readyState === WebSocket.OPEN) p.ws.send(JSON.stringify(status));
+    });
+    pollingRooms.get(code)?.forEach(p => p.messages.push(status));
+  }
+
+  function updateCapture(code: string, userId: string, payload: any) {
+    if (captureControl.update(code, userId, payload)) revokeCaptureControl(code);
+    broadcastCaptureStatus(code);
+  }
+
+  // Both the immediate display-event POST and Agent heartbeat use this path.
+  // Broadcast only changes: unchanged heartbeat reports must not revoke consent.
+  function updateAgentScreenInfo(normalizedCode: string, payload: any) {
+      const { screenWidth, screenHeight, scaleFactor,
+        displayControlSupported, displayControlReason, controlCalibrationRequired,
+        agentVersion } = payload || {};
+      if (!Number.isFinite(screenWidth) || screenWidth <= 0 ||
+          !Number.isFinite(screenHeight) || screenHeight <= 0) return false;
+      const info = {
+        screenWidth, screenHeight,
+        scaleFactor: Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1,
+        displayControlSupported: displayControlSupported === true,
+        displayControlReason: typeof displayControlReason === 'string' ? displayControlReason : null,
+        controlCalibrationRequired: controlCalibrationRequired === true,
+        agentVersion: typeof agentVersion === 'string' &&
+          /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(agentVersion) ? agentVersion : null,
+      };
+      if (JSON.stringify(agentScreenInfo.get(normalizedCode)) === JSON.stringify(info)) return true;
+      agentScreenInfo.set(normalizedCode, info);
+      if (!info.displayControlSupported) revokeCaptureControl(normalizedCode);
+      console.log(`[Agent] Display report: version=${info.agentVersion || 'unreported'} supported=${info.displayControlSupported} calibration=${info.controlCalibrationRequired} reason=${info.displayControlReason || 'none'}`);
       
       // Notify room participants via WebSocket
       const room = rooms.get(normalizedCode);
@@ -756,9 +858,7 @@ export async function registerRoutes(
           if (participant.ws.readyState === WebSocket.OPEN) {
             participant.ws.send(JSON.stringify({ 
               type: 'agent-screen-info', 
-              screenWidth, 
-              screenHeight, 
-              scaleFactor 
+              ...info,
             }));
           }
         });
@@ -770,13 +870,22 @@ export async function registerRoutes(
         pollingRoom.forEach(p => {
           p.messages.push({ 
             type: 'agent-screen-info', 
-            screenWidth, 
-            screenHeight, 
-            scaleFactor 
+            ...info,
           });
         });
       }
       
+      return true;
+  }
+
+  // Agent sends screen info for accurate mouse positioning.
+  app.post('/api/agent/screen-info', (req, res) => {
+    try {
+      const normalizedCode = typeof req.body.sessionCode === 'string'
+        ? req.body.sessionCode.toUpperCase() : '';
+      if (!normalizedCode || !updateAgentScreenInfo(normalizedCode, req.body)) {
+        return res.status(400).json({ error: 'Session code and valid screen dimensions required' });
+      }
       res.json({ success: true });
     } catch (err: any) {
       console.error('Agent screen info error:', err);
@@ -813,23 +922,23 @@ export async function registerRoutes(
   setInterval(() => {
     const now = Date.now();
     pollingRooms.forEach((room, roomId) => {
-      room.forEach((participant, odId) => {
+      room.forEach((participant, userId) => {
         if (now - participant.lastPoll > POLL_TIMEOUT) {
           // Check if user is still connected via WebSocket before marking as left
           const wsRoom = rooms.get(roomId);
-          const stillConnectedViaWS = wsRoom && Array.from(wsRoom.values()).some(p => p.odId === participant.userId);
+          const stillConnectedViaWS = wsRoom?.get(userId)?.ws.readyState === WebSocket.OPEN;
           
           if (stillConnectedViaWS) {
             // User switched to WebSocket, just clean up polling entry silently
-            console.log(`[Polling] User ${participant.userId} still on WebSocket, removing stale polling entry`);
-            room.delete(participant.userId);
+            console.log(`[Polling] User ${userId} still on WebSocket, removing stale polling entry`);
+            room.delete(userId);
           } else {
-            console.log(`[Polling] User ${participant.userId} timed out after ${POLL_TIMEOUT}ms - sending user-left`);
-            room.delete(participant.userId);
+            console.log(`[Polling] User ${userId} timed out after ${POLL_TIMEOUT}ms - sending user-left`);
+            if (participant.role === 'artist') updateCapture(roomId, userId, null);
+            else if (participant.role === 'engineer') revokeCaptureControl(roomId);
+            room.delete(userId);
             // Notify other participants
-            room.forEach(p => {
-              p.messages.push({ type: 'user-left', userId: participant.userId, roomId });
-            });
+            relayRoomMessage(wsRoom, room, { type: 'user-left', userId, roomId }, userId);
           }
           
           if (room.size === 0) {
@@ -857,24 +966,28 @@ export async function registerRoutes(
       const room = pollingRooms.get(normalizedRoom)!;
       
       // Get existing participants before adding new one
-      const existingParticipants = Array.from(room.entries())
-        .filter(([pId]) => pId !== userId)
-        .map(([pId, p]) => ({ userId: pId, role: p.role }));
+      const existingParticipants = listRoomParticipants(rooms.get(normalizedRoom), room, userId);
       
       // Add or update participant
+      if (role === 'artist') updateCapture(normalizedRoom, userId, null);
       room.set(userId, {
         userId,
         role,
         lastPoll: Date.now(),
         messages: []
       });
+
+      // Replay the latest geometry on every join, including polling reconnects.
+      // Use the regular message queue so the existing client handler applies it.
+      const screenInfo = agentScreenInfo.get(normalizedRoom);
+      if (screenInfo) {
+        room.get(userId)!.messages.push({ type: 'agent-screen-info', ...screenInfo });
+      }
+      room.get(userId)!.messages.push(captureStatus(normalizedRoom));
       
       // Notify others that user joined
-      room.forEach((p, pId) => {
-        if (pId !== userId) {
-          p.messages.push({ type: 'user-joined', userId, role, roomId: normalizedRoom });
-        }
-      });
+      relayRoomMessage(rooms.get(normalizedRoom), room,
+        { type: 'user-joined', userId, role, roomId: normalizedRoom }, userId);
       
       res.json({ 
         success: true, 
@@ -910,15 +1023,14 @@ export async function registerRoutes(
       participant.messages = [];
       
       // Get current participants
-      const participants = Array.from(room.entries())
-        .filter(([pId]) => pId !== userId)
-        .map(([pId, p]) => ({ userId: pId, role: p.role }));
+      const participants = listRoomParticipants(rooms.get(normalizedRoom), room, userId);
       
       // Include agent connection status and control permission status
       const agentConnected = agentConnections.has(normalizedRoom) || pollingAgents.has(normalizedRoom);
       const controlActive = controlPermissions.get(normalizedRoom) || false;
+      const controlMode = controlModes.get(normalizedRoom) || null;
       
-      res.json({ messages, participants, agentConnected, controlActive });
+      res.json({ messages, participants, agentConnected, controlActive, controlMode });
     } catch (err: any) {
       console.error('Polling poll error:', err);
       res.status(500).json({ error: err.message });
@@ -953,6 +1065,11 @@ export async function registerRoutes(
       if (sender) {
         sender.lastPoll = Date.now();
       }
+      if (type === 'capture-state') {
+        if (sender?.role !== 'artist') return res.status(403).json({ error: 'Artist required' });
+        updateCapture(normalizedRoom, userId, payload);
+        return res.json({ success: true });
+      }
       
       // Handle control commands - forward to agent
       if (pollingControlMessageTypes.has(type)) {
@@ -965,22 +1082,37 @@ export async function registerRoutes(
         // Find the agent for this session - check both WebSocket and polling agents
         const wsAgent = agentConnections.get(normalizedRoom);
         const httpAgent = pollingAgents.get(normalizedRoom);
+        const capture = liveCapture(normalizedRoom);
+        if (type !== 'control-end' &&
+            (!capture || agentScreenInfo.get(normalizedRoom)?.displayControlSupported !== true)) {
+          return res.json({ success: false, reason: 'Share an entire screen with one supported display connected' });
+        }
         
         // For control requests and ends, always forward. For other commands, check permission
         if (type !== 'control-request' && type !== 'control-end' && !controlPermissions.get(normalizedRoom)) {
           console.log('[Control Polling] Blocked: control not permitted');
           return res.json({ success: false, reason: 'control not permitted' });
         }
+
+        if (controlModes.get(normalizedRoom) === 'alignment' &&
+            type !== 'mouse-move' && type !== 'control-end') {
+          return res.json({ success: false, reason: 'cursor alignment is still in progress' });
+        }
         
         // Clear control permission when control-end is received
         if (type === 'control-end') {
           controlPermissions.set(normalizedRoom, false);
+          controlModes.delete(normalizedRoom);
+          broadcastControlState(normalizedRoom, false);
           console.log('[Control Polling] Engineer ended control for session:', normalizedRoom);
         }
         
         // Try WebSocket agent first
         if (wsAgent && wsAgent.ws.readyState === WebSocket.OPEN) {
-          const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
+          if (shouldDropBufferedMouseMove(type, wsAgent.ws.bufferedAmount)) {
+            return res.json({ success: true, droppedStaleMove: true });
+          }
+          const controlMessage = { type, ...payload, ...capture, sessionCode: normalizedRoom, verifiedUserId: userId };
           console.log('[Control Polling] Forwarding to WS agent:', type, 'session:', normalizedRoom);
           wsAgent.ws.send(JSON.stringify(controlMessage));
           return res.json({ success: true });
@@ -988,9 +1120,9 @@ export async function registerRoutes(
         
         // Fallback to HTTP polling agent
         if (httpAgent) {
-          const controlMessage = { type, ...payload, sessionCode: normalizedRoom, verifiedUserId: userId };
+          const controlMessage = { type, ...payload, ...capture, sessionCode: normalizedRoom, verifiedUserId: userId };
           console.log('[Control Polling] Queueing for HTTP agent:', type, 'session:', normalizedRoom);
-          httpAgent.messages.push(controlMessage);
+          enqueueControlMessage(httpAgent.messages, controlMessage);
           return res.json({ success: true });
         }
         
@@ -1001,18 +1133,9 @@ export async function registerRoutes(
       const message = { type, userId, role, payload };
       
       // Forward to target user or broadcast
+      if (!sender) return res.status(403).json({ error: 'Join the room before sending signals' });
       const targetId = payload?.targetUserId;
-      if (targetId && room.has(targetId)) {
-        const target = room.get(targetId)!;
-        target.messages.push(message);
-      } else {
-        // Broadcast to all others
-        room.forEach((p, pId) => {
-          if (pId !== userId) {
-            p.messages.push(message);
-          }
-        });
-      }
+      relayRoomMessage(rooms.get(normalizedRoom), room, message, userId, targetId);
       
       res.json({ success: true });
     } catch (err: any) {
@@ -1033,12 +1156,20 @@ export async function registerRoutes(
       const room = pollingRooms.get(normalizedRoom);
       
       if (room) {
+        const activeSocket = rooms.get(normalizedRoom)?.get(userId)?.ws;
+        const stillConnected = activeSocket?.readyState === WebSocket.OPEN;
+        const leavingParticipant = room.get(userId);
+        if (!stillConnected && room.get(userId)?.role === 'artist') {
+          updateCapture(normalizedRoom, userId, null);
+        }
+        if (!stillConnected && leavingParticipant?.role === 'engineer') {
+          revokeCaptureControl(normalizedRoom);
+        }
         room.delete(userId);
         
         // Notify others
-        room.forEach(p => {
-          p.messages.push({ type: 'user-left', userId, roomId: normalizedRoom });
-        });
+        if (!stillConnected) relayRoomMessage(rooms.get(normalizedRoom), room,
+          { type: 'user-left', userId, roomId: normalizedRoom }, userId);
         
         if (room.size === 0) {
           pollingRooms.delete(normalizedRoom);
@@ -1060,6 +1191,7 @@ export async function registerRoutes(
     controlEnabled: boolean;
     lastPoll: number;
     messages: any[];
+    websocketToken: string;
     pendingDisconnect?: boolean; // Set when session ends, prevents cleanup until message delivered
   }
   
@@ -1070,6 +1202,14 @@ export async function registerRoutes(
   setInterval(() => {
     const now = Date.now();
     pollingAgents.forEach((agent, sessionCode) => {
+      // The polling registration remains available as a fallback lease while
+      // the same Agent uses its persistent WebSocket for low-latency control.
+      const websocketAgent = agentConnections.get(sessionCode);
+      if (websocketAgent?.ws.readyState === WebSocket.OPEN) {
+        agent.lastPoll = now;
+        return;
+      }
+
       // Don't cleanup agents with pending disconnect - they need to receive the session-ended message first
       if (agent.pendingDisconnect) {
         // If pending for too long (2 minutes), cleanup anyway
@@ -1081,6 +1221,10 @@ export async function registerRoutes(
       
       if (now - agent.lastPoll > AGENT_POLL_TIMEOUT) {
         pollingAgents.delete(sessionCode);
+        agentConnections.delete(sessionCode);
+        controlPermissions.set(sessionCode, false);
+        controlModes.delete(sessionCode);
+        broadcastControlState(sessionCode, false);
         // Notify room that agent disconnected
         const room = rooms.get(sessionCode);
         if (room) {
@@ -1146,7 +1290,8 @@ export async function registerRoutes(
         userId: userId,
         controlEnabled: false,
         lastPoll: Date.now(),
-        messages: []
+        messages: [],
+        websocketToken: crypto.randomBytes(32).toString('hex'),
       });
       
       console.log(`Agent connected via polling to session ${normalizedCode}`);
@@ -1167,7 +1312,12 @@ export async function registerRoutes(
         });
       }
       
-      res.json({ success: true, sessionCode: normalizedCode });
+      broadcastCaptureStatus(normalizedCode);
+      res.json({
+        success: true,
+        sessionCode: normalizedCode,
+        websocketToken: pollingAgents.get(normalizedCode)?.websocketToken,
+      });
     } catch (err: any) {
       console.error('Agent connect error:', err);
       res.status(500).json({ error: err.message });
@@ -1192,6 +1342,11 @@ export async function registerRoutes(
       }
       
       agent.lastPoll = Date.now();
+      // Only a registered, enabled Agent can refresh compatibility by heartbeat.
+      // Never infer support from a connection, version, or screen dimensions.
+      if (req.body.screenInfo && typeof req.body.screenInfo === 'object') {
+        updateAgentScreenInfo(normalizedCode, req.body.screenInfo);
+      }
       const messages = [...agent.messages];
       agent.messages = [];
       
@@ -1224,23 +1379,33 @@ export async function registerRoutes(
       
       // Handle message type
       if (message.type === 'control-response') {
-        // Forward to room participants
+        message.allowed = message.allowed === true &&
+          !!liveCapture(normalizedCode) &&
+          message.captureId === liveCapture(normalizedCode)?.captureId &&
+          agentScreenInfo.get(normalizedCode)?.displayControlSupported === true;
+        const mode = message.allowed && message.mode === 'alignment' ? 'alignment' : 'full';
         const room = rooms.get(normalizedCode);
         if (room) {
-          room.forEach((participant) => {
+          room.forEach(participant => {
             if (participant.ws.readyState === WebSocket.OPEN) {
               participant.ws.send(JSON.stringify({
                 type: 'control-response',
                 allowed: message.allowed,
-                fromAgent: true
+                mode: message.allowed ? mode : null,
+                fromAgent: true,
               }));
             }
           });
         }
         const pollingRoom = pollingRooms.get(normalizedCode);
         if (pollingRoom) {
-          pollingRoom.forEach(p => {
-            p.messages.push({ type: 'control-response', allowed: message.allowed, fromAgent: true });
+          pollingRoom.forEach(participant => {
+            participant.messages.push({
+              type: 'control-response',
+              allowed: message.allowed,
+              mode: message.allowed ? mode : null,
+              fromAgent: true,
+            });
           });
         }
         
@@ -1248,10 +1413,12 @@ export async function registerRoutes(
         if (message.allowed) {
           agent.controlEnabled = true;
           controlPermissions.set(normalizedCode, true);
+          controlModes.set(normalizedCode, mode);
           console.log('[Agent Polling] Control granted for session:', normalizedCode);
         } else {
           agent.controlEnabled = false;
           controlPermissions.set(normalizedCode, false);
+          controlModes.delete(normalizedCode);
           console.log('[Agent Polling] Control denied for session:', normalizedCode);
         }
       }
@@ -1268,8 +1435,24 @@ export async function registerRoutes(
     try {
       const { token, sessionCode } = req.body;
       const normalizedCode = sessionCode?.toUpperCase();
-      
+      const agent = agentConnections.get(normalizedCode);
+      const pollingAgent = pollingAgents.get(normalizedCode);
+      if (!agent && !pollingAgent) {
+        return res.json({ success: true });
+      }
+      if (agent || pollingAgent) {
+        revokeCaptureControl(normalizedCode);
+      }
+      if (agent) {
+        agentConnections.delete(normalizedCode);
+        if (agent.ws.readyState === WebSocket.OPEN) {
+          agent.ws.close(1000, 'Agent disconnected');
+        }
+      }
       pollingAgents.delete(normalizedCode);
+      controlPermissions.set(normalizedCode, false);
+      controlModes.delete(normalizedCode);
+      broadcastControlState(normalizedCode, false);
       
       // Notify room
       const room = rooms.get(normalizedCode);
@@ -1299,7 +1482,8 @@ export async function registerRoutes(
   // Map to track WebSocket connection metadata (for authorization)
   const wsConnectionData = new WeakMap<WebSocket, { userId: string; roomId: string; role: string }>();
   
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const wss = new WebSocketServer({ noServer: true });
+  startSocketKeepalive(wss);
 
   wss.on('connection', (ws) => {
     let currentRoom: string | null = null;
@@ -1308,6 +1492,14 @@ export async function registerRoutes(
     ws.on('message', (data) => {
       try {
         const message = JSON.parse(data.toString());
+        if (message.type === 'capture-state') {
+          const conn = wsConnectionData.get(ws);
+          if (!conn) return;
+          const member = rooms.get(conn.roomId)?.get(conn.userId);
+          if (member?.role !== 'artist' || member.ws !== ws) return;
+          updateCapture(conn.roomId, conn.userId, message.payload);
+          return;
+        }
         const { type, roomId, userId, role, payload } = message;
 
         switch (type) {
@@ -1323,36 +1515,36 @@ export async function registerRoutes(
             }
             
             const room = rooms.get(currentRoom)!;
+            if (role === 'artist') updateCapture(currentRoom, currentUserId, null);
             room.set(currentUserId, { ws, role, userId: currentUserId });
+            ws.send(JSON.stringify(captureStatus(currentRoom)));
             
             // Notify others in the room
-            room.forEach((participant, pId) => {
-              if (pId !== userId && participant.ws.readyState === WebSocket.OPEN) {
-                participant.ws.send(JSON.stringify({
-                  type: 'user-joined',
-                  userId,
-                  role,
-                  roomId: currentRoom
-                }));
-              }
-            });
+            relayRoomMessage(room, pollingRooms.get(currentRoom),
+              { type: 'user-joined', userId, role, roomId: currentRoom }, currentUserId);
 
             // Send list of existing participants to the new user
-            const participants = Array.from(room.entries())
-              .filter(([pId]) => pId !== userId)
-              .map(([pId, p]) => ({ userId: pId, role: p.role }));
+            const participants = listRoomParticipants(room, pollingRooms.get(currentRoom), currentUserId);
             
             // Include agent connection status
             const agentConnected = agentConnections.has(currentRoom) || pollingAgents.has(currentRoom);
             const controlActive = controlPermissions.get(currentRoom) || false;
+            const controlMode = controlModes.get(currentRoom) || null;
             
             ws.send(JSON.stringify({
               type: 'room-state',
               roomId: currentRoom,
               participants,
               agentConnected,
-              controlActive
+              controlActive,
+              controlMode,
             }));
+
+            // The agent may have published before this participant connected.
+            const screenInfo = agentScreenInfo.get(currentRoom);
+            if (screenInfo) {
+              ws.send(JSON.stringify({ type: 'agent-screen-info', ...screenInfo }));
+            }
             break;
           }
 
@@ -1360,37 +1552,15 @@ export async function registerRoutes(
           case 'answer':
           case 'ice-candidate': {
             if (!currentRoom) return;
-            const room = rooms.get(currentRoom);
-            if (!room) return;
-            
             // Forward to target user or broadcast
             const targetId = payload?.targetUserId;
-            if (targetId && room.has(targetId)) {
-              const target = room.get(targetId)!;
-              if (target.ws.readyState === WebSocket.OPEN) {
-                target.ws.send(JSON.stringify({
-                  type,
-                  userId: currentUserId,
-                  payload
-                }));
-              }
-            } else {
-              // Broadcast to all others
-              room.forEach((participant, pId) => {
-                if (pId !== currentUserId && participant.ws.readyState === WebSocket.OPEN) {
-                  participant.ws.send(JSON.stringify({
-                    type,
-                    userId: currentUserId,
-                    payload
-                  }));
-                }
-              });
-            }
+            relayRoomMessage(rooms.get(currentRoom), pollingRooms.get(currentRoom),
+              { type, userId: currentUserId, payload }, currentUserId!, targetId);
             break;
           }
 
           case 'leave': {
-            handleLeave();
+            handleLeave(true);
             break;
           }
           
@@ -1432,7 +1602,7 @@ export async function registerRoutes(
       }
     });
 
-    function handleLeave() {
+    function handleLeave(explicitLeave = false) {
       if (currentRoom && currentUserId) {
         // Get the role before cleaning up
         const connData = wsConnectionData.get(ws);
@@ -1446,6 +1616,9 @@ export async function registerRoutes(
           if (currentEntry && currentEntry.ws !== ws) {
             // User has reconnected with a new WebSocket, don't send user-left
             console.log(`[WS] Old socket closed for ${currentUserId} but user already reconnected - skipping user-left`);
+            wsConnectionData.delete(ws);
+            currentRoom = null;
+            currentUserId = null;
             return;
           }
           
@@ -1454,12 +1627,17 @@ export async function registerRoutes(
           const pollingRoom = pollingRooms.get(currentRoom);
           const stillActiveViaPolling = pollingRoom && pollingRoom.has(currentUserId);
           
-          if (stillActiveViaPolling) {
+          if (stillActiveViaPolling && !explicitLeave) {
             console.log(`[WS] WebSocket closed for ${currentUserId} but user still active via polling - skipping user-left`);
             room.delete(currentUserId);
+            wsConnectionData.delete(ws);
+            currentRoom = null;
+            currentUserId = null;
             return;
           }
           
+          if (leavingRole === 'artist') updateCapture(currentRoom, currentUserId, null);
+          else if (leavingRole === 'engineer') revokeCaptureControl(currentRoom);
           room.delete(currentUserId);
           
           console.log(`[WS] User ${currentUserId} left room ${currentRoom} - notifying others`);
@@ -1507,7 +1685,8 @@ export async function registerRoutes(
           if (remainingArtists === 0) {
             // Disconnect WebSocket agent
             const wsAgent = agentConnections.get(sessionCode);
-            if (wsAgent && wsAgent.ws.readyState === WebSocket.OPEN) {
+            const wsAgentConnected = wsAgent?.ws.readyState === WebSocket.OPEN;
+            if (wsAgentConnected && wsAgent) {
               wsAgent.ws.send(JSON.stringify({ 
                 type: 'session-ended',
                 sessionCode,
@@ -1521,16 +1700,23 @@ export async function registerRoutes(
             // The agent will receive the message on next poll, then be removed
             const httpAgent = pollingAgents.get(sessionCode);
             if (httpAgent) {
-              httpAgent.messages.push({
-                type: 'session-ended',
-                sessionCode,
-                reason: 'All artists have left the session'
-              });
-              httpAgent.pendingDisconnect = true; // Prevents cleanup until message delivered
+              if (wsAgentConnected) {
+                // The WebSocket delivery is authoritative; the Agent will
+                // remove its fallback registration after handling it.
+                pollingAgents.delete(sessionCode);
+              } else {
+                httpAgent.messages.push({
+                  type: 'session-ended',
+                  sessionCode,
+                  reason: 'All artists have left the session'
+                });
+                httpAgent.pendingDisconnect = true; // Prevents cleanup until message delivered
+              }
             }
             
             // Clear control permissions
             controlPermissions.delete(sessionCode);
+            controlModes.delete(sessionCode);
             
             console.log(`Last artist left session ${sessionCode}, agent disconnected`);
           }
@@ -1542,21 +1728,46 @@ export async function registerRoutes(
       currentUserId = null;
     }
 
-    ws.on('close', handleLeave);
-    ws.on('error', handleLeave);
+    ws.on('close', (code, reason) => {
+      console.log(`[WS] Closed room=${currentRoom || 'none'} code=${code} reason=${reason.toString().slice(0, 160)}`);
+      const connection = wsConnectionData.get(ws);
+      const currentEntry = currentRoom && currentUserId
+        ? rooms.get(currentRoom)?.get(currentUserId) : undefined;
+      // Artist socket loss invalidates the screen-capture proof immediately.
+      // An engineer socket can close during WebSocket-to-polling recovery, so
+      // preserve the grant during the reconnect window. No input can arrive
+      // until that engineer reconnects; final leave or capture loss revokes it.
+      if (currentRoom && currentUserId && currentEntry?.ws === ws) {
+        if (connection?.role === 'artist') updateCapture(currentRoom, currentUserId, null);
+      }
+      const departure = setTimeout(handleLeave, 120000);
+      departure.unref();
+    });
+    ws.on('error', error => {
+      console.error('[WS] Signaling socket error:', error.message);
+      ws.terminate(); // The close path performs the single cleanup.
+    });
   });
 
   // ============ AGENT WEBSOCKET SERVER ============
   
-  const agentWss = new WebSocketServer({ server: httpServer, path: '/agent' });
+  const agentWss = new WebSocketServer({ noServer: true });
+  startSocketKeepalive(agentWss);
+  routeWebSocketUpgrades(httpServer, new Map([
+    ['/ws', wss],
+    ['/agent', agentWss],
+  ]));
 
   agentWss.on('connection', (ws, req) => {
     let agentSession: string | null = null;
     let agentUserId: string | null = null;
 
-    // Parse query params for auth
+    // The simple Agent uses an in-memory, session-bound capability over the
+    // Authorization header. Keep query-token support for existing token clients.
     const url = new URL(req.url || '', `http://${req.headers.host}`);
-    const token = url.searchParams.get('token');
+    const authorization = req.headers.authorization;
+    const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+    const token = bearerToken || url.searchParams.get('token');
     const sessionCode = url.searchParams.get('session')?.toUpperCase();
 
     if (!token || !sessionCode) {
@@ -1564,15 +1775,27 @@ export async function registerRoutes(
       return;
     }
 
-    // Verify token
+    const pollingAgent = pollingAgents.get(sessionCode);
+    const simpleAgentAuthorized = !!pollingAgent &&
+      !pollingAgent.pendingDisconnect &&
+      pollingAgent.websocketToken === token &&
+      remoteControlEnabled.get(sessionCode)?.artistUserId === pollingAgent.userId;
     const tokenData = agentTokens.get(token);
-    if (!tokenData || tokenData.sessionCode !== sessionCode || tokenData.expiresAt < Date.now()) {
+    const legacyTokenAuthorized = !!tokenData &&
+      tokenData.sessionCode === sessionCode &&
+      tokenData.expiresAt >= Date.now();
+    if (!simpleAgentAuthorized && !legacyTokenAuthorized) {
       ws.close(4002, 'Invalid or expired token');
       return;
     }
 
     agentSession = sessionCode;
-    agentUserId = tokenData.userId;
+    agentUserId = simpleAgentAuthorized ? pollingAgent!.userId : tokenData!.userId;
+    const existingAgent = agentConnections.get(sessionCode);
+    if (existingAgent?.ws.readyState === WebSocket.OPEN) {
+      ws.close(4003, 'Agent already connected');
+      return;
+    }
 
     // Register agent connection
     agentConnections.set(sessionCode, {
@@ -1581,20 +1804,23 @@ export async function registerRoutes(
       userId: agentUserId,
       controlEnabled: false,
     });
+    if (pollingAgent) pollingAgent.lastPoll = Date.now();
+    if (!simpleAgentAuthorized) broadcastCaptureStatus(sessionCode);
 
     console.log(`Agent connected to session ${sessionCode}`);
 
-    // Notify web clients that agent is connected
-    const room = rooms.get(sessionCode);
-    if (room) {
-      room.forEach((participant) => {
-        if (participant.ws.readyState === WebSocket.OPEN) {
-          participant.ws.send(JSON.stringify({
-            type: 'agent-connected',
-            sessionCode,
-          }));
-        }
-      });
+    if (!simpleAgentAuthorized) {
+      const room = rooms.get(sessionCode);
+      if (room) {
+        room.forEach((participant) => {
+          if (participant.ws.readyState === WebSocket.OPEN) {
+            participant.ws.send(JSON.stringify({
+              type: 'agent-connected',
+              sessionCode,
+            }));
+          }
+        });
+      }
     }
 
     ws.on('message', (data) => {
@@ -1602,80 +1828,47 @@ export async function registerRoutes(
         const message = JSON.parse(data.toString());
 
         switch (message.type) {
+          case 'screen-info': {
+            if (message.screenInfo && typeof message.screenInfo === 'object') {
+              updateAgentScreenInfo(agentSession!, message.screenInfo);
+              const fallbackAgent = pollingAgents.get(agentSession!);
+              if (fallbackAgent?.userId === agentUserId) {
+                fallbackAgent.lastPoll = Date.now();
+              }
+            }
+            break;
+          }
+
           case 'control-response': {
+            message.allowed = message.allowed === true &&
+              !!liveCapture(agentSession!) &&
+              message.captureId === liveCapture(agentSession!)?.captureId &&
+              agentScreenInfo.get(agentSession!)?.displayControlSupported === true;
+            const mode = message.allowed && message.mode === 'alignment' ? 'alignment' : 'full';
             // Artist responded to control request
             console.log('[Control] Control response received, allowed:', message.allowed, 'session:', agentSession);
             controlPermissions.set(agentSession!, message.allowed);
+            if (message.allowed) controlModes.set(agentSession!, mode);
+            else controlModes.delete(agentSession!);
+            const fallbackAgent = pollingAgents.get(agentSession!);
+            if (fallbackAgent) fallbackAgent.controlEnabled = message.allowed;
             
-            const wsRoom = rooms.get(agentSession!);
-            console.log('[Control] WebSocket room found:', !!wsRoom, 'size:', wsRoom?.size || 0);
-            if (wsRoom) {
-              // Notify engineers in the WebSocket room
-              wsRoom.forEach((participant) => {
-                console.log('[Control] WS participant:', participant.role, 'readyState:', participant.ws.readyState);
-                if (participant.role === 'engineer' && participant.ws.readyState === WebSocket.OPEN) {
-                  participant.ws.send(JSON.stringify({
-                    type: 'control-response',
-                    allowed: message.allowed,
-                    sessionCode: agentSession,
-                  }));
-                  console.log('[Control] Sent control-response to WS engineer');
-                }
-              });
-            }
-            
-            // Also notify engineers using HTTP polling
-            const pollingRoom = pollingRooms.get(agentSession!);
-            console.log('[Control] Polling room found:', !!pollingRoom, 'size:', pollingRoom?.size || 0);
-            if (pollingRoom) {
-              pollingRoom.forEach((participant) => {
-                console.log('[Control] Polling participant:', participant.role);
-                if (participant.role === 'engineer') {
-                  participant.messages.push({
-                    type: 'control-response',
-                    allowed: message.allowed,
-                    sessionCode: agentSession,
-                  });
-                  console.log('[Control] Queued control-response for polling engineer');
-                }
-              });
-            }
+            broadcastControlState(agentSession!, message.allowed, mode);
             break;
           }
 
           case 'control-stopped': {
             // Artist stopped control
             controlPermissions.set(agentSession!, false);
+            controlModes.delete(agentSession!);
             const agentConn = agentConnections.get(agentSession!);
             if (agentConn) {
               agentConn.controlEnabled = false;
             }
+            const fallbackAgent = pollingAgents.get(agentSession!);
+            if (fallbackAgent) fallbackAgent.controlEnabled = false;
 
-            // Notify engineers via WebSocket
-            const wsStopRoom = rooms.get(agentSession!);
-            if (wsStopRoom) {
-              wsStopRoom.forEach((participant) => {
-                if (participant.role === 'engineer' && participant.ws.readyState === WebSocket.OPEN) {
-                  participant.ws.send(JSON.stringify({
-                    type: 'control-stopped',
-                    sessionCode: agentSession,
-                  }));
-                }
-              });
-            }
-            
-            // Also notify engineers using HTTP polling
-            const pollingStopRoom = pollingRooms.get(agentSession!);
-            if (pollingStopRoom) {
-              pollingStopRoom.forEach((participant) => {
-                if (participant.role === 'engineer') {
-                  participant.messages.push({
-                    type: 'control-stopped',
-                    sessionCode: agentSession,
-                  });
-                }
-              });
-            }
+            broadcastControlState(agentSession!, false);
             break;
           }
         }
@@ -1684,10 +1877,27 @@ export async function registerRoutes(
       }
     });
 
+    if (simpleAgentAuthorized && pollingAgent) {
+      const queuedMessages = pollingAgent.messages.splice(0);
+      for (const message of queuedMessages) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
+      }
+    }
+
     ws.on('close', () => {
       if (agentSession) {
+        const currentAgent = agentConnections.get(agentSession);
+        if (currentAgent?.ws !== ws) return;
         agentConnections.delete(agentSession);
+        const fallbackAgent = pollingAgents.get(agentSession);
+        if (fallbackAgent && !fallbackAgent.pendingDisconnect) {
+          fallbackAgent.lastPoll = Date.now();
+          console.log(`Agent WebSocket closed for ${agentSession}; retaining polling fallback`);
+          return;
+        }
         controlPermissions.delete(agentSession);
+        controlModes.delete(agentSession);
+        broadcastControlState(agentSession, false);
         
         // Notify web clients that agent disconnected
         const room = rooms.get(agentSession);
@@ -1706,11 +1916,9 @@ export async function registerRoutes(
       }
     });
 
-    ws.on('error', () => {
-      if (agentSession) {
-        agentConnections.delete(agentSession);
-        controlPermissions.delete(agentSession);
-      }
+    ws.on('error', error => {
+      console.error('[Agent] WebSocket error:', error.message);
+      ws.terminate();
     });
   });
 
@@ -1752,12 +1960,16 @@ export async function registerRoutes(
           }
           
           const agent = agentConnections.get(sessionCode);
-          if (!agent) {
+          const httpAgent = pollingAgents.get(sessionCode);
+          const capture = liveCapture(sessionCode);
+          if (message.type !== 'control-end' &&
+              (!capture || agentScreenInfo.get(sessionCode)?.displayControlSupported !== true)) return;
+          if (!agent && !httpAgent) {
             console.log('[Control] Blocked: no agent connected for session', sessionCode);
             return;
           }
           
-          if (agent.ws.readyState !== WebSocket.OPEN) {
+          if (agent && agent.ws.readyState !== WebSocket.OPEN && !httpAgent) {
             console.log('[Control] Blocked: agent websocket not open');
             return;
           }
@@ -1767,10 +1979,18 @@ export async function registerRoutes(
             console.log('[Control] Blocked: control not permitted for session', sessionCode);
             return;
           }
+
+          if (controlModes.get(sessionCode) === 'alignment' &&
+              message.type !== 'mouse-move' && message.type !== 'control-end') {
+            console.log('[Control] Blocked input until cursor alignment is approved:', message.type);
+            return;
+          }
           
           // Clear control permission when control-end is received
           if (message.type === 'control-end') {
             controlPermissions.set(sessionCode, false);
+            controlModes.delete(sessionCode);
+            broadcastControlState(sessionCode, false);
             console.log('[Control] Engineer ended control for session:', sessionCode);
           }
           
@@ -1778,11 +1998,18 @@ export async function registerRoutes(
           if (message.type !== 'mouse-move') {
             console.log('[Control] Forwarding to agent:', message.type, 'session:', sessionCode);
           }
-          agent.ws.send(JSON.stringify({
+          const controlMessage = {
             ...message,
+            ...capture,
             sessionCode,
             verifiedUserId: connData.userId,
-          }));
+          };
+          if (agent?.ws.readyState === WebSocket.OPEN) {
+            if (shouldDropBufferedMouseMove(message.type, agent.ws.bufferedAmount)) return;
+            agent.ws.send(JSON.stringify(controlMessage));
+          } else if (httpAgent) {
+            enqueueControlMessage(httpAgent.messages, controlMessage);
+          }
         }
       } catch (err) {
         // Ignore parse errors - they'll be handled by the main handler

@@ -20,6 +20,27 @@ export class PollingTransport implements PollingTransportEvents {
   private pollInterval: NodeJS.Timeout | null = null;
   private isPolling = false;
   private closed = false;
+  private joinRetry: ReturnType<typeof setTimeout> | null = null;
+  private pendingRequests = new Set<AbortController>();
+
+  private async post(path: string, body: unknown) {
+    const controller = new AbortController();
+    this.pendingRequests.add(controller);
+    const deadline = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const data = await response.json();
+      return { response, data };
+    } finally {
+      clearTimeout(deadline);
+      this.pendingRequests.delete(controller);
+    }
+  }
   
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
@@ -56,26 +77,25 @@ export class PollingTransport implements PollingTransportEvents {
   }
   
   private async handleJoin(message: any): Promise<void> {
+    if (this.closed) return;
+    if (this.joinRetry) clearTimeout(this.joinRetry);
+    this.joinRetry = null;
     this.roomId = message.roomId;
     this.userId = message.userId;
     this.role = message.role;
     
     try {
-      const res = await fetch('/api/signal/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const { response: res, data } = await this.post('/api/signal/join', {
           roomId: this.roomId,
           userId: this.userId,
           role: this.role
-        })
       });
+      if (this.closed) return;
       
       if (!res.ok) {
         throw new Error(`Join failed: ${res.status}`);
       }
       
-      const data = await res.json();
       console.log('[Polling] Joined room:', data.roomId);
       
       // Send room-state message with existing participants
@@ -92,8 +112,13 @@ export class PollingTransport implements PollingTransportEvents {
       // Start polling for messages
       this.startPolling();
     } catch (err: any) {
+      if (this.closed) return;
       console.error('[Polling] Join error:', err);
       this.triggerError(err);
+      this.joinRetry = setTimeout(() => {
+        this.joinRetry = null;
+        void this.handleJoin(message);
+      }, 2000);
     }
   }
   
@@ -172,25 +197,26 @@ export class PollingTransport implements PollingTransportEvents {
     this.isPolling = true;
     
     try {
-      const res = await fetch('/api/signal/poll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const { response: res, data } = await this.post('/api/signal/poll', {
           roomId: this.roomId,
           userId: this.userId
-        })
       });
+      if (this.closed) return;
       
       if (!res.ok) {
         if (res.status === 404) {
-          console.log('[Polling] Room not found, closing');
-          this.close(1000, 'Room closed');
+          // A stale transport lease is not an expired collaboration session.
+          // Rejoin the same room; capture/consent are revalidated by the server.
+          console.log('[Polling] Membership lost, rejoining the same room');
+          this.onmessage?.({ data: JSON.stringify({
+            type: 'agent-status', connected: false, controlActive: false,
+          }) });
+          await this.handleJoin({ roomId: this.roomId, userId: this.userId, role: this.role });
           return;
         }
         throw new Error(`Poll failed: ${res.status}`);
       }
       
-      const data = await res.json();
       
       // Emit agent status as a synthetic message so frontend can track it
       if (this.onmessage) {
@@ -198,7 +224,8 @@ export class PollingTransport implements PollingTransportEvents {
           data: JSON.stringify({ 
             type: 'agent-status', 
             connected: data.agentConnected || false,
-            controlActive: data.controlActive || false
+            controlActive: data.controlActive || false,
+            controlMode: data.controlMode || null,
           }) 
         });
       }
@@ -234,6 +261,9 @@ export class PollingTransport implements PollingTransportEvents {
     
     console.log('[Polling] Closing:', code, reason);
     this.closed = true;
+    if (this.joinRetry) clearTimeout(this.joinRetry);
+    this.joinRetry = null;
+    this.pendingRequests.forEach(controller => controller.abort());
     this.stopPolling();
     this.handleLeave();
     this._readyState = PollingTransport.CLOSED;

@@ -1,0 +1,18 @@
+- [Agent updater identity](agent-updater-identity.md) — keep Electron app IDs stable during rebrands so existing installations can still receive updates.
+- [Agent release parity](agent-release-parity.md) — keep the Windows and Mac Agent version numbers aligned so either direction uses the same release.
+- [Admin subscriber data](admin-subscriber-access.md) — do not expose user emails or subscription records through unprotected admin routes.
+- [GitHub workflow push permission](github-workflow-push-scope.md) — workflow changes in release tags require the GitHub connection's `workflow` scope.
+- [CSS dependency patching](css-dependency-patching.md) — retain the patched selector-parser override until Tailwind's dependencies stop requiring the vulnerable major.
+- [Portable npm lockfiles](portable-npm-lockfiles.md) — registry-proxy installs can serialize private hosts; normalize URLs without removing integrity hashes.
+- [Remote input geometry](remote-input-geometry.md) — absolute movement must match clicks; keep relative pointer-lock behavior separate.
+- [Touch compatibility clicks](touch-compatibility-clicks.md) — a touch's follow-up click can target a shared ancestor, not just the video where it began.
+- [Required PR check](required-pr-check.md) — GitHub merge protection is external state; keep the required status synchronized with workflow job names.
+- [Disposable PostgreSQL tooling](disposable-postgres-tooling.md) — Replit's Nix environment can expose server tools without pg_config; Ubuntu often needs pg_config discovery.
+- [Remote input lifetimes](remote-input-lifetimes.md) — delayed input must belong to its original authorization grant, not just pass a current permission check.
+- [Display capture identity](display-capture-identity.md) — keep monitor identity fail-closed and report eligibility after signaling rejoins, not from peer video state.
+- [Signaling reliability](signaling-transports.md) — one upgrade owner; stable joins determine retry health; WebSocket and polling users share a room.
+- [Stripe backfill defaults](stripe-backfill-defaults.md) — do not assume a resolved SDK backfill promise means data was synchronized.
+- [Stripe webhook ownership](stripe-webhook-ownership.md) — startup can mutate provider webhooks; keep development and production ownership isolated.
+- [Agent connection feedback](agent-connection-feedback.md) — initial Agent connection success must mean server acceptance, not just a dispatched request.
+- [Session continuity](session-continuity.md) — no room runtime cap; keep control consent only through engineer transport recovery while artist capture remains valid.
+- [Desktop release inspection](desktop-release-inspection.md) — the workspace archive tool can misidentify APFS DMGs; verify architecture independently.

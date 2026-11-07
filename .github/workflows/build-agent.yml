@@ -1,13 +1,60 @@
-name: Build Remote Studio Agent
+name: Build Virtual Studio Agent
 
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag matching the Agent version
+        required: true
+        type: string
+      publish_unsigned_macos:
+        description: Publish a Mac release without Apple signing; users must bypass Gatekeeper
+        required: true
+        default: false
+        type: boolean
 
 jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Check TypeScript
+        run: npm run check
+
+      - name: Test remote video input
+        run: npm test
+
+      - name: Build root web app
+        run: npm run build
+
+      - name: Check smoke runner failure handling
+        run: npm run test:production:runner
+
+      - name: Install disposable database tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql
+
+      - name: Smoke test production startup
+        run: npm run test:production
+
+      - name: Check application schema compatibility
+        run: npm run test:schema
+
   build-windows:
+    needs: [typecheck]
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -29,14 +76,35 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: remote-studio-agent-win
+          name: virtual-studio-agent-win
           path: virtual-studio-agent/dist/*.exe
 
   build-mac:
+    needs: [typecheck]
     runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Require Apple signing and notarization credentials for releases
+        if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && !inputs.publish_unsigned_macos
+        env:
+          MACOS_CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+          MACOS_CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=()
+          for name in MACOS_CSC_LINK MACOS_CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing GitHub Actions secrets required for a signed macOS release: %s\n' "${missing[*]}"
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -49,15 +117,22 @@ jobs:
 
       - name: Build for macOS
         working-directory: virtual-studio-agent
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run build:mac
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: remote-studio-agent-mac
+          name: virtual-studio-agent-mac
           path: virtual-studio-agent/dist/*.dmg
 
   build-linux:
+    needs: [typecheck]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -84,13 +159,13 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: remote-studio-agent-linux
+          name: virtual-studio-agent-linux
           path: virtual-studio-agent/dist/*.AppImage
 
   release:
     needs: [build-windows, build-mac, build-linux]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     permissions:
       contents: write
 
@@ -98,19 +173,19 @@ jobs:
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: remote-studio-agent-win
+          name: virtual-studio-agent-win
           path: ./dist
 
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: remote-studio-agent-mac
+          name: virtual-studio-agent-mac
           path: ./dist
 
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
-          name: remote-studio-agent-linux
+          name: virtual-studio-agent-linux
           path: ./dist
 
       - name: List all artifacts
@@ -118,27 +193,42 @@ jobs:
 
       - name: Rename files for consistent download URLs
         run: |
+          set -euo pipefail
           cd dist
-          for f in *.exe; do mv "$f" "Remote.Studio.Agent.Setup.exe" 2>/dev/null || true; done
-          for f in *.dmg; do mv "$f" "Remote.Studio.Agent.dmg" 2>/dev/null || true; done
-          for f in *.AppImage; do mv "$f" "Remote.Studio.Agent.AppImage" 2>/dev/null || true; done
+          for f in *.exe; do mv "$f" "Virtual.Studio.Agent.Setup.exe" 2>/dev/null || true; done
+          for f in *.dmg; do
+            case "$f" in
+              *arm64*) mv "$f" "Virtual.Studio.Agent-arm64.dmg" ;;
+              *x64*) mv "$f" "Virtual.Studio.Agent-x64.dmg" ;;
+              *) echo "Unexpected macOS installer name: $f"; exit 1 ;;
+            esac
+          done
+          for f in *.AppImage; do mv "$f" "Virtual.Studio.Agent.AppImage" 2>/dev/null || true; done
+          test -f Virtual.Studio.Agent-arm64.dmg
+          test -f Virtual.Studio.Agent-x64.dmg
           ls -la
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Remote Studio Agent ${{ github.ref_name }}
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Virtual Studio Agent ${{ inputs.release_tag || github.ref_name }}
           body: |
-            ## Remote Studio Agent ${{ github.ref_name }}
+            ## Virtual Studio Agent ${{ inputs.release_tag || github.ref_name }}
             
             Download the installer for your operating system:
-            - **Windows**: Remote.Studio.Agent.Setup.exe
-            - **macOS** (10.15+): Remote.Studio.Agent.dmg
-            - **Linux**: Remote.Studio.Agent.AppImage
+            - **Windows**: Virtual.Studio.Agent.Setup.exe
+            - **macOS Apple Silicon** (M1/M2/M3/M4): Virtual.Studio.Agent-arm64.dmg
+            - **macOS Intel**: Virtual.Studio.Agent-x64.dmg
+            - **Linux**: Virtual.Studio.Agent.AppImage
+
+            If this release was manually built without Apple signing, macOS may report the app as damaged. Only use the official release and follow the per-app Gatekeeper instructions.
           files: |
-            dist/Remote.Studio.Agent.Setup.exe
-            dist/Remote.Studio.Agent.dmg
-            dist/Remote.Studio.Agent.AppImage
+            dist/Virtual.Studio.Agent.Setup.exe
+            dist/Virtual.Studio.Agent-arm64.dmg
+            dist/Virtual.Studio.Agent-x64.dmg
+            dist/Virtual.Studio.Agent.AppImage
           draft: false
           prerelease: false
         env:

@@ -46,7 +46,7 @@ async function seedProducts() {
 
   console.log('Checking for existing products...');
   const existingProducts = await stripe.products.search({ 
-    query: "name:'Virtual Studio Pro'" 
+    query: "name:'Virtual Studio Pro'"
   });
 
   if (existingProducts.data.length > 0) {
