@@ -24,6 +24,14 @@ test('macOS agent builds native Apple Silicon and Intel installers', () => {
   assert.equal(buildStep.run, 'npm run build:mac');
 });
 
+test('combined release normalizes the lockfile before public CI installs dependencies', () => {
+  const steps = workflow.jobs.typecheck.steps;
+  const normalizeIndex = steps.findIndex(step => step.run === 'node scripts/normalize-lockfile.mjs');
+  const installIndex = steps.findIndex(step => step.run === 'npm ci');
+  assert.ok(normalizeIndex >= 0, 'release CI must normalize private package URLs before npm ci');
+  assert.ok(installIndex > normalizeIndex, 'lockfile normalization must run before dependency installation');
+});
+
 test('tagged macOS releases allow unsigned builds only when all signing credentials are absent', () => {
   const credentialStep = macJob.steps.find(step => step.name === 'Require Apple signing and notarization credentials for releases');
   assert.ok(credentialStep, 'release signing credential gate must exist');
