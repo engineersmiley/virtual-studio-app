@@ -1151,8 +1151,12 @@ export async function registerRoutes(
       if (room) {
         const activeSocket = rooms.get(normalizedRoom)?.get(userId)?.ws;
         const stillConnected = activeSocket?.readyState === WebSocket.OPEN;
+        const leavingParticipant = room.get(userId);
         if (!stillConnected && room.get(userId)?.role === 'artist') {
           updateCapture(normalizedRoom, userId, null);
+        }
+        if (!stillConnected && leavingParticipant?.role === 'engineer') {
+          revokeCaptureControl(normalizedRoom);
         }
         room.delete(userId);
         
@@ -1515,7 +1519,7 @@ export async function registerRoutes(
           }
 
           case 'leave': {
-            handleLeave();
+            handleLeave(true);
             break;
           }
           
@@ -1557,7 +1561,7 @@ export async function registerRoutes(
       }
     });
 
-    function handleLeave() {
+    function handleLeave(explicitLeave = false) {
       if (currentRoom && currentUserId) {
         // Get the role before cleaning up
         const connData = wsConnectionData.get(ws);
@@ -1582,7 +1586,7 @@ export async function registerRoutes(
           const pollingRoom = pollingRooms.get(currentRoom);
           const stillActiveViaPolling = pollingRoom && pollingRoom.has(currentUserId);
           
-          if (stillActiveViaPolling) {
+          if (stillActiveViaPolling && !explicitLeave) {
             console.log(`[WS] WebSocket closed for ${currentUserId} but user still active via polling - skipping user-left`);
             room.delete(currentUserId);
             wsConnectionData.delete(ws);
@@ -1592,6 +1596,7 @@ export async function registerRoutes(
           }
           
           if (leavingRole === 'artist') updateCapture(currentRoom, currentUserId, null);
+          else if (leavingRole === 'engineer') revokeCaptureControl(currentRoom);
           room.delete(currentUserId);
           
           console.log(`[WS] User ${currentUserId} left room ${currentRoom} - notifying others`);
@@ -1680,11 +1685,12 @@ export async function registerRoutes(
       const connection = wsConnectionData.get(ws);
       const currentEntry = currentRoom && currentUserId
         ? rooms.get(currentRoom)?.get(currentUserId) : undefined;
-      // A departed socket immediately loses its grant, but a brief signaling
-      // interruption must not end the whole room/Agent before reconnection.
+      // Artist socket loss invalidates the screen-capture proof immediately.
+      // An engineer socket can close during WebSocket-to-polling recovery, so
+      // preserve the grant during the reconnect window. No input can arrive
+      // until that engineer reconnects; final leave or capture loss revokes it.
       if (currentRoom && currentUserId && currentEntry?.ws === ws) {
         if (connection?.role === 'artist') updateCapture(currentRoom, currentUserId, null);
-        else if (connection?.role === 'engineer') revokeCaptureControl(currentRoom);
       }
       const departure = setTimeout(handleLeave, 120000);
       departure.unref();

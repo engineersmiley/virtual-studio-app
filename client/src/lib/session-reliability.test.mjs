@@ -72,6 +72,21 @@ function pollingHarness(fetch) {
 }
 const json = (status, data) => ({ ok: status < 400, status, json: async () => data });
 
+test('engineer signaling reconnect preserves consent, while final leave revokes it', () => {
+  const source = readFileSync(new URL('../../../server/routes.ts', import.meta.url), 'utf8');
+  const closeStart = source.indexOf("ws.on('close', (code, reason) =>");
+  const closeEnd = source.indexOf("ws.on('error'", closeStart);
+  const closeHandler = source.slice(closeStart, closeEnd);
+  assert.match(closeHandler, /connection\?\.role === 'artist'\) updateCapture/);
+  assert.doesNotMatch(closeHandler, /revokeCaptureControl\(currentRoom\)/);
+
+  const leaveStart = source.indexOf('function handleLeave(explicitLeave = false)');
+  const leaveEnd = source.indexOf("ws.on('close', (code, reason) =>", leaveStart);
+  const leaveHandler = source.slice(leaveStart, leaveEnd);
+  assert.match(leaveHandler, /leavingRole === 'engineer'\) revokeCaptureControl\(currentRoom\)/);
+  assert.match(leaveHandler, /stillActiveViaPolling && !explicitLeave/);
+});
+
 test('a temporary polling join failure retries and explicit close cancels recovery', async () => {
   let calls = 0;
   const h = pollingHarness(async () => {

@@ -13,5 +13,5 @@
 - [Stripe backfill defaults](stripe-backfill-defaults.md) — do not assume a resolved SDK backfill promise means data was synchronized.
 - [Stripe webhook ownership](stripe-webhook-ownership.md) — startup can mutate provider webhooks; keep development and production ownership isolated.
 - [Agent connection feedback](agent-connection-feedback.md) — initial Agent connection success must mean server acceptance, not just a dispatched request.
-- [Session continuity](session-continuity.md) — no arbitrary runtime cap; reconnect safety must preserve consent, and installer updates belong on the download page.
+- [Session continuity](session-continuity.md) — no room runtime cap; keep control consent only through engineer transport recovery while artist capture remains valid.
 - [Desktop release inspection](desktop-release-inspection.md) — the workspace archive tool can misidentify APFS DMGs; verify architecture independently.

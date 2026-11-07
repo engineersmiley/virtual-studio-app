@@ -12,16 +12,21 @@ The initiating disconnect cause was not conclusively identified.
 
 **How to apply:** Keep signaling alive even when media is peer-to-peer and
 signaling otherwise idle. Distinguish expired transport membership from an
-ended room. Short reconnect grace must revoke input immediately and require
-fresh capture validation/consent, not preserve an authorization grant.
-An established socket should switch promptly to the fallback transport:
-production showed the old departure grace expiring while browser upgrade retries
-were still underway. Recovery budgets must fit inside the departure grace.
-Another production trace showed a browser signaling socket closing while the
-room remained alive on polling; capture was temporarily cleared, so the Agent
-received `control-end`. Reconnection restores the share but not consent: the
-engineer must request control again and the artist must approve. Do not
-silently regrant remote input after capture proof was lost.
+ended room. If the artist's capture proof changes or disappears, revoke input
+immediately and require a fresh share and approval; never preserve consent
+after capture loss. An engineer's signaling socket closing alone is different:
+keep the existing room-level grant during the reconnect window while the
+artist's capture proof remains valid. The disconnected engineer cannot send
+input; revoke if they explicitly leave, fail to rejoin before the grace expires,
+or the capture/Agent becomes invalid. An established socket should switch
+promptly to the fallback transport so recovery completes within the departure
+grace.
+
+**Why:** Production showed an engineer WebSocket closing while the Agent and
+artist capture stayed connected; immediately sending `control-end` caused the
+Agent to become inactive during polling fallback. Preserving the grant only
+through transport recovery avoids that loss without keeping input active after
+the artist's screen capture changes.
 Explicitly ending/leaving a room still stops control. Server restarts and
 publishing currently lose in-memory signaling state; do not promise seamless
 or uninterrupted sessions across those events.
