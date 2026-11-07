@@ -258,8 +258,6 @@ function SessionContent() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number; identifier: number; moved: boolean } | null>(null);
   const fullscreenTouchRef = useRef<{ x: number; y: number; time: number; moved: boolean } | null>(null);
-  const lastMouseMoveRef = useRef<number>(0);
-  const MOUSE_THROTTLE_MS = 16; // ~60fps for smooth movement
   
   const uploadMutation = useUploadRecording();
 
@@ -532,11 +530,6 @@ function SessionContent() {
     if (Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= 15) {
       gesture.moved = true;
     }
-    
-    // Throttle touch move to reduce lag (~60fps)
-    const now = Date.now();
-    if (now - lastMouseMoveRef.current < MOUSE_THROTTLE_MS) return;
-    lastMouseMoveRef.current = now;
     
     const video = remoteVideoRef.current;
     if (!video) return;
@@ -1627,11 +1620,6 @@ function SessionContent() {
             }}
             onMouseMove={(e) => {
               if (role === 'engineer' && hasRemoteStream && remoteVideoRef.current) {
-                // Throttle mouse move to reduce lag (~60fps)
-                const now = Date.now();
-                if (now - lastMouseMoveRef.current < MOUSE_THROTTLE_MS) return;
-                lastMouseMoveRef.current = now;
-                
                 const video = remoteVideoRef.current;
                 const { x, y } = mapVideoPointToScreen(
                   e.clientX,

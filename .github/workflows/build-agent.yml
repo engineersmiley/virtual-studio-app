@@ -101,6 +101,10 @@ jobs:
               missing+=("$name")
             fi
           done
+          if [ "${#missing[@]}" -eq 5 ]; then
+            echo "::notice::No Apple signing credentials are configured; continuing with unsigned Mac installers."
+            exit 0
+          fi
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing GitHub Actions secrets required for a signed macOS release: %s\n' "${missing[*]}"
             exit 1
@@ -223,7 +227,7 @@ jobs:
             - **macOS Intel**: Virtual.Studio.Agent-x64.dmg
             - **Linux**: Virtual.Studio.Agent.AppImage
 
-            If this release was manually built without Apple signing, macOS may report the app as damaged. Only use the official release and follow the per-app Gatekeeper instructions.
+            Mac installers are unsigned unless Apple signing and notarization credentials are configured. If macOS reports the app as damaged or cannot be opened, only use the official release and follow the Gatekeeper instructions on the download page.
           files: |
             dist/Virtual.Studio.Agent.Setup.exe
             dist/Virtual.Studio.Agent-arm64.dmg

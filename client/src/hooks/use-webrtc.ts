@@ -1477,7 +1477,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
   // Throttle ref for pointer events
   const lastPointerSendRef = useRef<number>(0);
-  const POINTER_THROTTLE_MS = 50; // ~20 updates per second
+  const POINTER_THROTTLE_MS = 16; // Match full control movement at ~60 updates per second
 
   // Send a control event to artist (for engineers only)
   const sendControlEvent = useCallback((type: 'click' | 'move' | 'pointer', x: number, y: number) => {
