@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { enqueueControlMessage } from "./control-message-queue";
+import {
+  enqueueControlMessage,
+  MAX_AGENT_CONTROL_BUFFER_BYTES,
+  shouldDropBufferedMouseMove,
+} from "./control-message-queue";
+
+test("drops only cursor samples that would grow a congested Agent socket queue", () => {
+  assert.equal(shouldDropBufferedMouseMove("mouse-move", MAX_AGENT_CONTROL_BUFFER_BYTES), false);
+  assert.equal(shouldDropBufferedMouseMove("mouse-move", MAX_AGENT_CONTROL_BUFFER_BYTES + 1), true);
+  assert.equal(shouldDropBufferedMouseMove("mouse-click", MAX_AGENT_CONTROL_BUFFER_BYTES + 1), false);
+});
 
 test("keeps only the newest consecutive mouse position from the same grant", () => {
   const queue: any[] = [];

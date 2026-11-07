@@ -143,10 +143,12 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
   const context = createContext({
     __dirname: '',
     process: { platform: 'linux' },
-    console: { log() {}, error() {} },
+    console: { log() {}, error() {}, warn() {} },
     Date: { now: () => now },
     setInterval: callback => { intervals.add(callback); return callback; },
     clearInterval: callback => intervals.delete(callback),
+    setTimeout: (callback, delay) => ({ callback, delay }),
+    clearTimeout() {},
     fakeHttp: async (url, options) => {
       requests.push({ url, options });
       if (pausePoll && url.endsWith('/poll')) {

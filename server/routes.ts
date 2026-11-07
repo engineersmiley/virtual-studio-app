@@ -17,7 +17,7 @@ import { CaptureControl } from "./capture-control";
 import { listRoomParticipants, relayRoomMessage } from "./signaling-room";
 import { routeWebSocketUpgrades } from "./websocket-upgrade";
 import { startSocketKeepalive } from "./socket-keepalive";
-import { enqueueControlMessage } from "./control-message-queue";
+import { enqueueControlMessage, shouldDropBufferedMouseMove } from "./control-message-queue";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -719,13 +719,14 @@ export async function registerRoutes(
         return res.status(409).json({ error: 'Agent already connected to this session' });
       }
       
-      // Register polling agent
+      const websocketToken = crypto.randomBytes(32).toString('hex');
       pollingAgents.set(normalizedCode, {
         sessionCode: normalizedCode,
         userId: rcData.artistUserId,
         controlEnabled: false,
         lastPoll: Date.now(),
-        messages: []
+        messages: [],
+        websocketToken,
       });
       
       console.log(`Agent simple-connected to session ${normalizedCode} (registered in pollingAgents)`);
@@ -754,7 +755,8 @@ export async function registerRoutes(
       res.json({ 
         connected: true, 
         sessionCode: normalizedCode,
-        artistUserId: rcData.artistUserId
+        artistUserId: rcData.artistUserId,
+        websocketToken,
       });
     } catch (err: any) {
       console.error('Agent simple connect error:', err);
@@ -799,7 +801,9 @@ export async function registerRoutes(
     const pollingAgent = pollingAgents.get(code);
     if (pollingAgent) {
       pollingAgent.controlEnabled = false;
-      pollingAgent.messages.push(message);
+      if (agent?.ws.readyState !== WebSocket.OPEN) {
+        pollingAgent.messages.push(message);
+      }
     }
     const status = { type: 'control-response', allowed: false };
     rooms.get(code)?.forEach(p => {
@@ -1105,6 +1109,9 @@ export async function registerRoutes(
         
         // Try WebSocket agent first
         if (wsAgent && wsAgent.ws.readyState === WebSocket.OPEN) {
+          if (shouldDropBufferedMouseMove(type, wsAgent.ws.bufferedAmount)) {
+            return res.json({ success: true, droppedStaleMove: true });
+          }
           const controlMessage = { type, ...payload, ...capture, sessionCode: normalizedRoom, verifiedUserId: userId };
           console.log('[Control Polling] Forwarding to WS agent:', type, 'session:', normalizedRoom);
           wsAgent.ws.send(JSON.stringify(controlMessage));
@@ -1184,6 +1191,7 @@ export async function registerRoutes(
     controlEnabled: boolean;
     lastPoll: number;
     messages: any[];
+    websocketToken: string;
     pendingDisconnect?: boolean; // Set when session ends, prevents cleanup until message delivered
   }
   
@@ -1194,6 +1202,14 @@ export async function registerRoutes(
   setInterval(() => {
     const now = Date.now();
     pollingAgents.forEach((agent, sessionCode) => {
+      // The polling registration remains available as a fallback lease while
+      // the same Agent uses its persistent WebSocket for low-latency control.
+      const websocketAgent = agentConnections.get(sessionCode);
+      if (websocketAgent?.ws.readyState === WebSocket.OPEN) {
+        agent.lastPoll = now;
+        return;
+      }
+
       // Don't cleanup agents with pending disconnect - they need to receive the session-ended message first
       if (agent.pendingDisconnect) {
         // If pending for too long (2 minutes), cleanup anyway
@@ -1205,6 +1221,10 @@ export async function registerRoutes(
       
       if (now - agent.lastPoll > AGENT_POLL_TIMEOUT) {
         pollingAgents.delete(sessionCode);
+        agentConnections.delete(sessionCode);
+        controlPermissions.set(sessionCode, false);
+        controlModes.delete(sessionCode);
+        broadcastControlState(sessionCode, false);
         // Notify room that agent disconnected
         const room = rooms.get(sessionCode);
         if (room) {
@@ -1270,7 +1290,8 @@ export async function registerRoutes(
         userId: userId,
         controlEnabled: false,
         lastPoll: Date.now(),
-        messages: []
+        messages: [],
+        websocketToken: crypto.randomBytes(32).toString('hex'),
       });
       
       console.log(`Agent connected via polling to session ${normalizedCode}`);
@@ -1292,7 +1313,11 @@ export async function registerRoutes(
       }
       
       broadcastCaptureStatus(normalizedCode);
-      res.json({ success: true, sessionCode: normalizedCode });
+      res.json({
+        success: true,
+        sessionCode: normalizedCode,
+        websocketToken: pollingAgents.get(normalizedCode)?.websocketToken,
+      });
     } catch (err: any) {
       console.error('Agent connect error:', err);
       res.status(500).json({ error: err.message });
@@ -1410,8 +1435,24 @@ export async function registerRoutes(
     try {
       const { token, sessionCode } = req.body;
       const normalizedCode = sessionCode?.toUpperCase();
-      
+      const agent = agentConnections.get(normalizedCode);
+      const pollingAgent = pollingAgents.get(normalizedCode);
+      if (!agent && !pollingAgent) {
+        return res.json({ success: true });
+      }
+      if (agent || pollingAgent) {
+        revokeCaptureControl(normalizedCode);
+      }
+      if (agent) {
+        agentConnections.delete(normalizedCode);
+        if (agent.ws.readyState === WebSocket.OPEN) {
+          agent.ws.close(1000, 'Agent disconnected');
+        }
+      }
       pollingAgents.delete(normalizedCode);
+      controlPermissions.set(normalizedCode, false);
+      controlModes.delete(normalizedCode);
+      broadcastControlState(normalizedCode, false);
       
       // Notify room
       const room = rooms.get(normalizedCode);
@@ -1644,7 +1685,8 @@ export async function registerRoutes(
           if (remainingArtists === 0) {
             // Disconnect WebSocket agent
             const wsAgent = agentConnections.get(sessionCode);
-            if (wsAgent && wsAgent.ws.readyState === WebSocket.OPEN) {
+            const wsAgentConnected = wsAgent?.ws.readyState === WebSocket.OPEN;
+            if (wsAgentConnected && wsAgent) {
               wsAgent.ws.send(JSON.stringify({ 
                 type: 'session-ended',
                 sessionCode,
@@ -1658,12 +1700,18 @@ export async function registerRoutes(
             // The agent will receive the message on next poll, then be removed
             const httpAgent = pollingAgents.get(sessionCode);
             if (httpAgent) {
-              httpAgent.messages.push({
-                type: 'session-ended',
-                sessionCode,
-                reason: 'All artists have left the session'
-              });
-              httpAgent.pendingDisconnect = true; // Prevents cleanup until message delivered
+              if (wsAgentConnected) {
+                // The WebSocket delivery is authoritative; the Agent will
+                // remove its fallback registration after handling it.
+                pollingAgents.delete(sessionCode);
+              } else {
+                httpAgent.messages.push({
+                  type: 'session-ended',
+                  sessionCode,
+                  reason: 'All artists have left the session'
+                });
+                httpAgent.pendingDisconnect = true; // Prevents cleanup until message delivered
+              }
             }
             
             // Clear control permissions
@@ -1714,9 +1762,12 @@ export async function registerRoutes(
     let agentSession: string | null = null;
     let agentUserId: string | null = null;
 
-    // Parse query params for auth
+    // The simple Agent uses an in-memory, session-bound capability over the
+    // Authorization header. Keep query-token support for existing token clients.
     const url = new URL(req.url || '', `http://${req.headers.host}`);
-    const token = url.searchParams.get('token');
+    const authorization = req.headers.authorization;
+    const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+    const token = bearerToken || url.searchParams.get('token');
     const sessionCode = url.searchParams.get('session')?.toUpperCase();
 
     if (!token || !sessionCode) {
@@ -1724,15 +1775,27 @@ export async function registerRoutes(
       return;
     }
 
-    // Verify token
+    const pollingAgent = pollingAgents.get(sessionCode);
+    const simpleAgentAuthorized = !!pollingAgent &&
+      !pollingAgent.pendingDisconnect &&
+      pollingAgent.websocketToken === token &&
+      remoteControlEnabled.get(sessionCode)?.artistUserId === pollingAgent.userId;
     const tokenData = agentTokens.get(token);
-    if (!tokenData || tokenData.sessionCode !== sessionCode || tokenData.expiresAt < Date.now()) {
+    const legacyTokenAuthorized = !!tokenData &&
+      tokenData.sessionCode === sessionCode &&
+      tokenData.expiresAt >= Date.now();
+    if (!simpleAgentAuthorized && !legacyTokenAuthorized) {
       ws.close(4002, 'Invalid or expired token');
       return;
     }
 
     agentSession = sessionCode;
-    agentUserId = tokenData.userId;
+    agentUserId = simpleAgentAuthorized ? pollingAgent!.userId : tokenData!.userId;
+    const existingAgent = agentConnections.get(sessionCode);
+    if (existingAgent?.ws.readyState === WebSocket.OPEN) {
+      ws.close(4003, 'Agent already connected');
+      return;
+    }
 
     // Register agent connection
     agentConnections.set(sessionCode, {
@@ -1741,21 +1804,23 @@ export async function registerRoutes(
       userId: agentUserId,
       controlEnabled: false,
     });
-    broadcastCaptureStatus(sessionCode);
+    if (pollingAgent) pollingAgent.lastPoll = Date.now();
+    if (!simpleAgentAuthorized) broadcastCaptureStatus(sessionCode);
 
     console.log(`Agent connected to session ${sessionCode}`);
 
-    // Notify web clients that agent is connected
-    const room = rooms.get(sessionCode);
-    if (room) {
-      room.forEach((participant) => {
-        if (participant.ws.readyState === WebSocket.OPEN) {
-          participant.ws.send(JSON.stringify({
-            type: 'agent-connected',
-            sessionCode,
-          }));
-        }
-      });
+    if (!simpleAgentAuthorized) {
+      const room = rooms.get(sessionCode);
+      if (room) {
+        room.forEach((participant) => {
+          if (participant.ws.readyState === WebSocket.OPEN) {
+            participant.ws.send(JSON.stringify({
+              type: 'agent-connected',
+              sessionCode,
+            }));
+          }
+        });
+      }
     }
 
     ws.on('message', (data) => {
@@ -1763,6 +1828,17 @@ export async function registerRoutes(
         const message = JSON.parse(data.toString());
 
         switch (message.type) {
+          case 'screen-info': {
+            if (message.screenInfo && typeof message.screenInfo === 'object') {
+              updateAgentScreenInfo(agentSession!, message.screenInfo);
+              const fallbackAgent = pollingAgents.get(agentSession!);
+              if (fallbackAgent?.userId === agentUserId) {
+                fallbackAgent.lastPoll = Date.now();
+              }
+            }
+            break;
+          }
+
           case 'control-response': {
             message.allowed = message.allowed === true &&
               !!liveCapture(agentSession!) &&
@@ -1774,6 +1850,8 @@ export async function registerRoutes(
             controlPermissions.set(agentSession!, message.allowed);
             if (message.allowed) controlModes.set(agentSession!, mode);
             else controlModes.delete(agentSession!);
+            const fallbackAgent = pollingAgents.get(agentSession!);
+            if (fallbackAgent) fallbackAgent.controlEnabled = message.allowed;
             
             broadcastControlState(agentSession!, message.allowed, mode);
             break;
@@ -1787,6 +1865,8 @@ export async function registerRoutes(
             if (agentConn) {
               agentConn.controlEnabled = false;
             }
+            const fallbackAgent = pollingAgents.get(agentSession!);
+            if (fallbackAgent) fallbackAgent.controlEnabled = false;
 
             broadcastControlState(agentSession!, false);
             break;
@@ -1797,11 +1877,27 @@ export async function registerRoutes(
       }
     });
 
+    if (simpleAgentAuthorized && pollingAgent) {
+      const queuedMessages = pollingAgent.messages.splice(0);
+      for (const message of queuedMessages) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
+      }
+    }
+
     ws.on('close', () => {
       if (agentSession) {
+        const currentAgent = agentConnections.get(agentSession);
+        if (currentAgent?.ws !== ws) return;
         agentConnections.delete(agentSession);
+        const fallbackAgent = pollingAgents.get(agentSession);
+        if (fallbackAgent && !fallbackAgent.pendingDisconnect) {
+          fallbackAgent.lastPoll = Date.now();
+          console.log(`Agent WebSocket closed for ${agentSession}; retaining polling fallback`);
+          return;
+        }
         controlPermissions.delete(agentSession);
         controlModes.delete(agentSession);
+        broadcastControlState(agentSession, false);
         
         // Notify web clients that agent disconnected
         const room = rooms.get(agentSession);
@@ -1820,12 +1916,9 @@ export async function registerRoutes(
       }
     });
 
-    ws.on('error', () => {
-      if (agentSession) {
-        agentConnections.delete(agentSession);
-        controlPermissions.delete(agentSession);
-        controlModes.delete(agentSession);
-      }
+    ws.on('error', error => {
+      console.error('[Agent] WebSocket error:', error.message);
+      ws.terminate();
     });
   });
 
@@ -1912,6 +2005,7 @@ export async function registerRoutes(
             verifiedUserId: connData.userId,
           };
           if (agent?.ws.readyState === WebSocket.OPEN) {
+            if (shouldDropBufferedMouseMove(message.type, agent.ws.bufferedAmount)) return;
             agent.ws.send(JSON.stringify(controlMessage));
           } else if (httpAgent) {
             enqueueControlMessage(httpAgent.messages, controlMessage);

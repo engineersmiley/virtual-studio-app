@@ -317,6 +317,8 @@ let controlEnabled = false;
 let currentSession = null;
 let currentToken = null;
 let pollingInterval = null;
+let agentPollInFlight = false;
+let agentSocketReconnectTimer = null;
 let usePolling = false;
 let stopScreenInfoMonitor = null;
 let connectionGeneration = 0;
@@ -421,9 +423,212 @@ async function checkAccessibilityPermissions() {
 let consecutiveErrors = 0;
 const MAX_CONSECUTIVE_ERRORS = 10; // Disconnect after ten consecutive failed polls
 
+function getCurrentAgentScreenInfo() {
+  return {
+    ...readScreenInfo({ screen, getControlState: getCurrentDisplayControlState }),
+    agentVersion: app.getVersion(),
+  };
+}
+
+function sendCurrentAgentScreenInfo(info = getCurrentAgentScreenInfo()) {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !currentSession) return false;
+  try {
+    ws.send(JSON.stringify({
+      type: 'screen-info',
+      screenInfo: { ...info, agentVersion: app.getVersion() },
+    }));
+    return true;
+  } catch (error) {
+    console.error('[Agent] Failed to send screen info over WebSocket:', error.message);
+    return false;
+  }
+}
+
+function startAgentPolling(sessionCode, generation) {
+  if (pollingInterval || !usePolling) return;
+  let lastPollStartedAt = -Infinity;
+
+  const poll = async () => {
+    if (generation !== connectionGeneration || !usePolling || agentPollInFlight) return;
+    const now = Date.now();
+    // Poll only as a fallback; sample at up to 60 fps while control is active.
+    if (now - lastPollStartedAt < getAgentPollCadence(controlEnabled).minimumRequestIntervalMs) return;
+    if (!currentSession || !isConnected) {
+      stopScreenInfoUpdates();
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = null;
+      return;
+    }
+
+    agentPollInFlight = true;
+    lastPollStartedAt = now;
+    try {
+      const pollResponse = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        timeoutMs: 5000,
+        body: JSON.stringify({
+          sessionCode,
+          token: currentToken,
+          screenInfo: getCurrentAgentScreenInfo(),
+        }),
+      });
+      if (generation !== connectionGeneration || !usePolling) return;
+
+      if (pollResponse.ok) {
+        consecutiveErrors = 0;
+        const data = await pollResponse.json();
+        for (const message of data.messages || []) {
+          if (generation !== connectionGeneration || !usePolling) break;
+          if (message.type !== 'mouse-move') console.log(`[Agent] Processing message: ${message.type}`);
+          await handleControlMessage(message);
+        }
+      } else if (pollResponse.status === 404) {
+        console.log('[Agent] Session not found (404) - disconnecting');
+        await handleControlMessage({ type: 'session-ended', reason: 'Session no longer exists' });
+      } else {
+        consecutiveErrors++;
+        console.log(`[Agent] Poll error (${pollResponse.status}), consecutive: ${consecutiveErrors}`);
+      }
+    } catch (err) {
+      if (generation !== connectionGeneration || !usePolling) return;
+      consecutiveErrors++;
+      console.error(`[Agent] Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, err.message);
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.log('[Agent] Too many errors - auto-disconnecting');
+        await handleControlMessage({ type: 'session-ended', reason: 'Connection lost' });
+      }
+    } finally {
+      agentPollInFlight = false;
+    }
+  };
+
+  pollingInterval = setInterval(poll, getAgentPollCadence(false).timerIntervalMs);
+  void poll();
+}
+
+function connectAgentWebSocket(sessionCode, token, generation) {
+  if (!token) return Promise.resolve(false);
+  return new Promise(resolve => {
+    let settled = false;
+    let opened = false;
+    let timeout;
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+
+    let socket;
+    try {
+      const url = `${VIRTUAL_STUDIO_URL}/agent?session=${encodeURIComponent(sessionCode)}`;
+      socket = new WebSocket(url, { headers: { Authorization: `Bearer ${token}` } });
+      ws = socket;
+    } catch (error) {
+      console.warn('[Agent] WebSocket unavailable; using polling fallback:', error.message);
+      finish(false);
+      return;
+    }
+
+    socket.on('open', () => {
+      if (settled && !opened) {
+        socket.close();
+        return;
+      }
+      if (generation !== connectionGeneration) {
+        socket.close();
+        finish(false);
+        return;
+      }
+
+      opened = true;
+      usePolling = false;
+      consecutiveErrors = 0;
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = null;
+      if (agentSocketReconnectTimer) clearTimeout(agentSocketReconnectTimer);
+      agentSocketReconnectTimer = null;
+      mainWindow.webContents.send('connection-status', {
+        connected: true, session: sessionCode, mode: 'websocket',
+      });
+      updateTrayMenu();
+      sendCurrentAgentScreenInfo();
+      console.log(`[Agent] Connected to session ${sessionCode} via WebSocket`);
+      finish(true);
+    });
+
+    socket.on('message', data => {
+      if (generation !== connectionGeneration || ws !== socket) return;
+      try {
+        const message = JSON.parse(data.toString());
+        void handleControlMessage(message);
+      } catch (error) {
+        console.error('[Agent] Invalid WebSocket message:', error.message);
+      }
+    });
+
+    socket.on('close', () => {
+      if (ws !== socket) {
+        if (!opened) finish(false);
+        return;
+      }
+      ws = null;
+      if (!opened) {
+        finish(false);
+        return;
+      }
+      if (generation !== connectionGeneration || !isConnected) return;
+      usePolling = true;
+      console.warn('[Agent] WebSocket closed; switching to polling fallback');
+      mainWindow.webContents.send('connection-status', {
+        connected: true, session: sessionCode, mode: 'polling',
+      });
+      startAgentPolling(sessionCode, generation);
+      scheduleAgentWebSocketReconnect(sessionCode, generation);
+    });
+
+    socket.on('error', error => {
+      console.warn('[Agent] WebSocket error:', error.message);
+      if (!opened) {
+        finish(false);
+        socket.terminate();
+      }
+    });
+
+    timeout = setTimeout(() => {
+      if (opened) return;
+      console.warn('[Agent] WebSocket connect timed out; using polling fallback');
+      finish(false);
+      socket.terminate();
+    }, 5000);
+  });
+}
+
+function scheduleAgentWebSocketReconnect(sessionCode, generation, delay = 5000) {
+  if (agentSocketReconnectTimer || !currentToken || !usePolling || !isConnected) return;
+  agentSocketReconnectTimer = setTimeout(async () => {
+    agentSocketReconnectTimer = null;
+    if (generation !== connectionGeneration || !isConnected || !usePolling) return;
+    if (agentPollInFlight) {
+      scheduleAgentWebSocketReconnect(sessionCode, generation, 500);
+      return;
+    }
+
+    // Pause polling only between requests so queued controls are either
+    // delivered by that poll or replayed over the WebSocket, never lost.
+    usePolling = false;
+    const connected = await connectAgentWebSocket(sessionCode, currentToken, generation);
+    if (generation !== connectionGeneration || !isConnected) return;
+    if (!connected) {
+      usePolling = true;
+      scheduleAgentWebSocketReconnect(sessionCode, generation, 10000);
+    }
+  }, delay);
+}
+
 async function connectViaPolling(sessionCode, generation) {
   try {
-    // Simple mode - no token needed, just session code
     const response = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/simple-connect`, {
       method: 'POST',
       timeoutMs: 10000,
@@ -436,16 +641,17 @@ async function connectViaPolling(sessionCode, generation) {
       const data = await response.json();
       throw new Error(data.error || 'Failed to connect');
     }
+
+    const connectionData = await response.json();
+    if (generation !== connectionGeneration) return { success: false, error: 'Connection cancelled' };
     
     usePolling = true;
     isConnected = true;
     currentSession = sessionCode;
-    currentToken = null; // No token needed in simple mode
+    currentToken = connectionData.websocketToken || null;
     consecutiveErrors = 0;
     
     // Watch topology locally so approval is revoked immediately on changes.
-    // Network reports travel with the serialized heartbeat below, not through
-    // a second HTTP route that can arrive out of order or fail independently.
     stopScreenInfoMonitor = monitorScreenInfo({
       screen,
       getControlState: getCurrentDisplayControlState,
@@ -455,85 +661,33 @@ async function connectViaPolling(sessionCode, generation) {
           revokeDisplayControl();
         }
       },
-      publish: async () => ({ ok: true }),
+      publish: async info => {
+        if (usePolling) return { ok: true };
+        return sendCurrentAgentScreenInfo(info)
+          ? { ok: true }
+          : { ok: false, status: 503 };
+      },
       onError: (err) => console.error('[Agent] Failed to inspect display; will retry:', err.message)
     });
     
-    mainWindow.webContents.send('connection-status', { connected: true, session: sessionCode, mode: 'polling' });
-    updateTrayMenu();
-    console.log(`[Agent] Connected to session ${sessionCode} via polling`);
-    
-    // Do not let delayed polls overwrite fresh geometry or deliver commands to
-    // a replacement connection.
-    let pollInFlight = false;
-    let lastPollStartedAt = -Infinity;
-    // Start polling for messages
-    pollingInterval = setInterval(async () => {
-      if (generation !== connectionGeneration || pollInFlight) return;
-      const now = Date.now();
-      // Keep idle traffic low, but deliver input up to 60 fps once the artist
-      // grants cursor-only or full control. No concurrent heartbeat requests.
-      if (now - lastPollStartedAt < getAgentPollCadence(controlEnabled).minimumRequestIntervalMs) return;
-      // Safety check - if already disconnected, stop polling
-      if (!currentSession || !isConnected) {
-        stopScreenInfoUpdates();
-        console.log('[Agent] Polling stopped - no longer connected');
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
-          pollingInterval = null;
-        }
-        return;
-      }
-      
-      pollInFlight = true;
-      lastPollStartedAt = now;
-      try {
-        // Poll without token - simple mode
-        const pollResponse = await httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/poll`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          timeoutMs: 5000,
-          // Renew compatibility on the same request that proves the Agent is
-          // alive. A lost one-time screen-info POST must not strand Control.
-          body: JSON.stringify({
-            sessionCode: currentSession,
-            screenInfo: {
-              ...readScreenInfo({ screen, getControlState: getCurrentDisplayControlState }),
-              agentVersion: app.getVersion(),
-            },
-          })
-        });
-        if (generation !== connectionGeneration) return;
-        
-        if (pollResponse.ok) {
-          consecutiveErrors = 0; // Reset on success
-          const data = await pollResponse.json();
-          for (const message of data.messages) {
-            if (message.type !== 'mouse-move') console.log(`[Agent] Processing message: ${message.type}`);
-            await handleControlMessage(message);
-          }
-        } else if (pollResponse.status === 404) {
-          // Session no longer exists - disconnect
-          console.log('[Agent] Session not found (404) - disconnecting');
-          await handleControlMessage({ type: 'session-ended', reason: 'Session no longer exists' });
-        } else {
-          consecutiveErrors++;
-          console.log(`[Agent] Poll error (${pollResponse.status}), consecutive: ${consecutiveErrors}`);
-        }
-      } catch (err) {
-        if (generation !== connectionGeneration) return;
-        consecutiveErrors++;
-        console.error(`[Agent] Polling error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, err.message);
-        
-        // Auto-disconnect after too many consecutive errors
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log('[Agent] Too many errors - auto-disconnecting');
-          await handleControlMessage({ type: 'session-ended', reason: 'Connection lost' });
-        }
-      } finally {
-        pollInFlight = false;
-      }
-    }, getAgentPollCadence(controlEnabled).timerIntervalMs);
+    const websocketConnected = await connectAgentWebSocket(
+      sessionCode, connectionData.websocketToken, generation,
+    );
+    if (generation !== connectionGeneration) {
+      if (ws) ws.close();
+      return { success: false, error: 'Connection cancelled' };
+    }
+
+    if (!websocketConnected) {
+      usePolling = true;
+      mainWindow.webContents.send('connection-status', {
+        connected: true, session: sessionCode, mode: 'polling',
+      });
+      updateTrayMenu();
+      console.log(`[Agent] Connected to session ${sessionCode} via polling fallback`);
+      startAgentPolling(sessionCode, generation);
+      scheduleAgentWebSocketReconnect(sessionCode, generation);
+    }
     return { success: true };
   } catch (error) {
     if (generation !== connectionGeneration) return { success: false, error: 'Connection cancelled' };
@@ -562,6 +716,10 @@ function connectToServer(sessionCode) {
   if (ws) {
     ws.close();
     ws = null;
+  }
+  if (agentSocketReconnectTimer) {
+    clearTimeout(agentSocketReconnectTimer);
+    agentSocketReconnectTimer = null;
   }
   if (pollingInterval) {
     clearInterval(pollingInterval);
@@ -666,6 +824,20 @@ async function handleControlMessage(message) {
         console.log('Session ended:', message.reason);
         ++connectionGeneration;
         stopScreenInfoUpdates();
+        if (agentSocketReconnectTimer) {
+          clearTimeout(agentSocketReconnectTimer);
+          agentSocketReconnectTimer = null;
+        }
+        const sessionToCleanup = currentSession;
+        if (sessionToCleanup) {
+          httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionCode: sessionToCleanup }),
+            timeoutMs: 3000,
+          }).catch(error =>
+            console.error('[Agent] Server cleanup after session end failed:', error.message));
+        }
         
         // CRITICAL: Stop polling immediately to prevent further requests
         if (pollingInterval) {
@@ -947,6 +1119,10 @@ ipcMain.handle('disconnect', async () => {
   console.log('[Agent] Disconnect requested');
   ++connectionGeneration;
   stopScreenInfoUpdates();
+  if (agentSocketReconnectTimer) {
+    clearTimeout(agentSocketReconnectTimer);
+    agentSocketReconnectTimer = null;
+  }
   
   // Stop polling first to prevent any more requests
   if (pollingInterval) {
@@ -957,12 +1133,13 @@ ipcMain.handle('disconnect', async () => {
   
   const sessionToDisconnect = currentSession;
   
-  // Notify server of disconnect (don't wait for response)
-  if (usePolling && sessionToDisconnect) {
+  // Notify server of disconnect regardless of transport.
+  if (sessionToDisconnect) {
     httpRequest(`${VIRTUAL_STUDIO_HTTP}/api/agent/disconnect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionCode: sessionToDisconnect })
+      body: JSON.stringify({ sessionCode: sessionToDisconnect }),
+      timeoutMs: 3000,
     }).catch(err => {
       console.error('[Agent] Server disconnect notification error:', err.message);
     });
