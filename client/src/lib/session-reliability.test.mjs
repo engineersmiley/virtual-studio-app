@@ -72,6 +72,19 @@ function pollingHarness(fetch) {
 }
 const json = (status, data) => ({ ok: status < 400, status, json: async () => data });
 
+test('a temporary polling join failure retries and explicit close cancels recovery', async () => {
+  let calls = 0;
+  const h = pollingHarness(async () => {
+    calls++;
+    return json(503, {});
+  });
+  await h.transport.handleJoin({ roomId: 'ROOM', userId: 'artist', role: 'artist' });
+  assert.equal(calls, 1);
+  assert.ok([...h.timers.values()].some(t => t.delay === 2000));
+  h.transport.close();
+  assert.equal([...h.timers.values()].some(t => t.delay === 2000), false);
+});
+
 test('expired polling membership rejoins the same room instead of ending it', async () => {
   const calls = [];
   const h = pollingHarness(async (path, options) => {

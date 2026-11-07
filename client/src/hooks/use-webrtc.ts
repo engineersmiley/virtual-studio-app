@@ -597,6 +597,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
     switch (message.type) {
       case 'room-state': {
+        setError(null);
         setSignalingJoined(true);
         setParticipants(message.participants || []);
         
@@ -936,7 +937,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     
     transport.onerror = () => {
       console.error('[Polling] Error');
-      setError('Connection error. Please refresh.');
+      setError('Connection interrupted. Reconnecting...');
     };
     
     transport.onclose = () => {
@@ -997,6 +998,12 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       setSignalingJoined(false);
       setConnected(false);
       retireSocket();
+      // An established room must not spend ~40 seconds retrying an unreliable
+      // upgrade while the server's departure timer expires.
+      if (joined) {
+        connectWithPolling();
+        return;
+      }
       if (retryCountRef.current < maxRetries) {
         retryCountRef.current++;
         const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 5000);
@@ -1054,7 +1061,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       // The peer connections are direct P2P and don't need WebSocket once established
       setConnected(false);
       
-      if (event.code !== 1000) retryOrFallback();
+      // Intentional local teardown already retires this socket and detaches
+      // handlers. A server's normal close still needs recovery.
+      retryOrFallback();
     };
 
     return () => {

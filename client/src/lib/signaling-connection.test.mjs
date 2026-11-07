@@ -117,7 +117,7 @@ function retryHarness() {
   };
 }
 
-for (const acknowledges of [false, true]) {
+for (const acknowledges of [false]) {
   test(`brief socket openings${acknowledges ? ' with brief join acknowledgments' : ''} cannot reset retries indefinitely`, async () => {
     const h = retryHarness();
     h.connect();
@@ -136,6 +136,17 @@ for (const acknowledges of [false, true]) {
     assert.equal(h.timers.size, 0);
   });
 }
+
+test('a joined socket immediately switches to polling instead of waiting through retries', async () => {
+  const h = retryHarness();
+  h.connect();
+  const socket = h.sockets.at(-1);
+  socket.open();
+  await socket.join();
+  socket.fail();
+  assert.equal(h.fallbacks(), 1);
+  assert.equal(h.timers.size, 0);
+});
 
 test('open socket without a room acknowledgment times out into a bounded retry', () => {
   const h = retryHarness();

@@ -3,6 +3,41 @@ import { test } from "node:test";
 import express from "express";
 import { createPaymentStartup } from "./paymentStartup";
 import { resolveStripeCredentialSource } from "./stripeClient";
+import { scopePaymentMethodBackfill } from "./stripeBackfill";
+
+test("payment method backfill only visits customers in the active Stripe connection", async () => {
+  async function* items(values: any[]) { yield* values; }
+  const requested: string[] = [];
+  const written: any[] = [];
+  const sync = {
+    getAccountId: async () => "active-account",
+    upsertPaymentMethods: async (batch: any[], account: string) => { written.push({ batch, account }); },
+    syncPaymentMethods: async () => ({ synced: -1 }),
+  };
+  scopePaymentMethodBackfill(sync, {
+    customers: { list: () => items([{ id: "active-customer" }]) },
+    paymentMethods: { list: ({ customer }: any) => {
+      requested.push(customer);
+      return items(Array.from({ length: 101 }, (_, i) => ({ id: `method-${i}` })));
+    } },
+  } as any);
+  assert.deepEqual(await sync.syncPaymentMethods(), { synced: 101 });
+  assert.deepEqual(requested, ["active-customer"]);
+  assert.deepEqual(written.map(x => x.batch.length), [100, 1]);
+  assert.ok(written.every(x => x.account === "active-account"));
+});
+
+test("scoped backfill propagates Stripe failures rather than claiming readiness", async () => {
+  const sync = {
+    getAccountId: async () => "active-account",
+    upsertPaymentMethods: async () => {},
+    syncPaymentMethods: async () => ({ synced: 0 }),
+  };
+  scopePaymentMethodBackfill(sync, {
+    customers: { list: async function* () { throw new Error("provider unavailable"); } },
+  } as any);
+  await assert.rejects(sync.syncPaymentMethods(), /provider unavailable/);
+});
 
 test("Replit development always selects its development Stripe connection over shared keys", () => {
   assert.equal(resolveStripeCredentialSource({

@@ -92,7 +92,7 @@ test('connect HTTP request has a wall-clock deadline even before socket opens', 
   const request = new Request();
   let deadline;
   const context = {
-    https: { request: () => request },
+    https: { Agent: class {}, request: () => request },
     URL,
     setTimeout(callback) { deadline = callback; return 1; },
     clearTimeout() {},
@@ -103,6 +103,42 @@ test('connect HTTP request has a wall-clock deadline even before socket opens', 
   assert.equal(typeof deadline, 'function');
   deadline();
   await assert.rejects(pending, /timed out/);
+});
+
+test('successive Agent requests reuse one bounded keep-alive agent', async () => {
+  const agents = [];
+  let created = 0;
+  const context = {
+    https: {
+      Agent: class {
+        constructor(options) {
+          created++;
+          assert.equal(options.keepAlive, true);
+          assert.equal(options.maxSockets, 4);
+        }
+      },
+      request(options, callback) {
+        agents.push(options.agent);
+        const req = new EventEmitter();
+        req.write = () => {};
+        req.end = () => {
+          const res = new EventEmitter();
+          res.statusCode = 200;
+          callback(res);
+          res.emit('data', '{}');
+          res.emit('end');
+        };
+        return req;
+      },
+    },
+    URL, clearTimeout,
+  };
+  vm.createContext(context);
+  vm.runInContext(functionText('httpRequest'), context);
+  await context.httpRequest('https://example.test/poll');
+  await context.httpRequest('https://example.test/send');
+  assert.equal(created, 1);
+  assert.equal(agents[0], agents[1]);
 });
 
 test('Agent UI resets Connect after failures and disconnects', () => {

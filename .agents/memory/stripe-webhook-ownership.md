@@ -10,8 +10,9 @@ readiness check. Managed webhook ownership must be scoped to its environment.
 the Replit development connector. Its separate local database therefore treated
 the live webhook as orphaned and attempted cleanup. Selecting the development
 connector now prevents this cross-environment provider mutation. Development
-webhook setup succeeded through that connector, but its backfill still failed;
-production recovery must be verified after publishing.
+webhook setup succeeded through that connector. A separate SDK customer-scope
+problem also affected backfill; see stripe-backfill-defaults.md. Production
+recovery must still be verified after publishing.
 
 **How to apply:** Before changing or repeatedly restarting billing initialization,
 inspect the SDK's cleanup behavior, endpoint destination, database metadata, and

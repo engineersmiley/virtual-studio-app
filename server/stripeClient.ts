@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { scopePaymentMethodBackfill } from './stripeBackfill';
 
 let connectionSettings: any;
 
@@ -106,6 +107,7 @@ export async function getStripeSync() {
       },
       stripeSecretKey: secretKey,
     });
+    scopePaymentMethodBackfill(stripeSync, new Stripe(secretKey));
   }
   return stripeSync;
 }

@@ -14,6 +14,9 @@ The initiating disconnect cause was not conclusively identified.
 signaling otherwise idle. Distinguish expired transport membership from an
 ended room. Short reconnect grace must revoke input immediately and require
 fresh capture validation/consent, not preserve an authorization grant.
+An established socket should switch promptly to the fallback transport:
+production showed the old departure grace expiring while browser upgrade retries
+were still underway. Recovery budgets must fit inside the departure grace.
 Explicitly ending/leaving a room still stops control. Server restarts and
 publishing currently lose in-memory signaling state; do not promise seamless
 or uninterrupted sessions across those events.

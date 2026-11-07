@@ -20,6 +20,7 @@ export class PollingTransport implements PollingTransportEvents {
   private pollInterval: NodeJS.Timeout | null = null;
   private isPolling = false;
   private closed = false;
+  private joinRetry: ReturnType<typeof setTimeout> | null = null;
   private pendingRequests = new Set<AbortController>();
 
   private async post(path: string, body: unknown) {
@@ -76,6 +77,9 @@ export class PollingTransport implements PollingTransportEvents {
   }
   
   private async handleJoin(message: any): Promise<void> {
+    if (this.closed) return;
+    if (this.joinRetry) clearTimeout(this.joinRetry);
+    this.joinRetry = null;
     this.roomId = message.roomId;
     this.userId = message.userId;
     this.role = message.role;
@@ -108,8 +112,13 @@ export class PollingTransport implements PollingTransportEvents {
       // Start polling for messages
       this.startPolling();
     } catch (err: any) {
+      if (this.closed) return;
       console.error('[Polling] Join error:', err);
       this.triggerError(err);
+      this.joinRetry = setTimeout(() => {
+        this.joinRetry = null;
+        void this.handleJoin(message);
+      }, 2000);
     }
   }
   
@@ -252,6 +261,8 @@ export class PollingTransport implements PollingTransportEvents {
     
     console.log('[Polling] Closing:', code, reason);
     this.closed = true;
+    if (this.joinRetry) clearTimeout(this.joinRetry);
+    this.joinRetry = null;
     this.pendingRequests.forEach(controller => controller.abort());
     this.stopPolling();
     this.handleLeave();

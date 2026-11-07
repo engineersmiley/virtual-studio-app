@@ -1674,7 +1674,7 @@ export async function registerRoutes(
         if (connection?.role === 'artist') updateCapture(currentRoom, currentUserId, null);
         else if (connection?.role === 'engineer') revokeCaptureControl(currentRoom);
       }
-      const departure = setTimeout(handleLeave, 15000);
+      const departure = setTimeout(handleLeave, 120000);
       departure.unref();
     });
     ws.on('error', error => {
