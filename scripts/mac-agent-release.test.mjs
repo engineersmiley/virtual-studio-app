@@ -75,7 +75,7 @@ test('release version and Mac download links match the published artifacts', () 
   assert.match(downloadPage, /Open Terminal/);
   assert.doesNotMatch(homePage, /section-apple-silicon-download/);
   assert.match(releaseText, /Mac installers are unsigned unless Apple signing and notarization credentials are configured/);
-  assert.match(releaseText, /use the Gatekeeper instructions on the download page/);
+  assert.match(releaseText, /follow the Gatekeeper instructions on the download page/);
 });
 
 test('Windows installer path uses the same Agent release version', () => {
