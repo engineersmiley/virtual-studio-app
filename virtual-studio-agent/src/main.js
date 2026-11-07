@@ -5,6 +5,7 @@ const https = require('https');
 const { exec } = require('child_process');
 const { monitorScreenInfo, readScreenInfo } = require('./screen-info');
 const { getDisplayControlState, mapInputPoint, canControlCapture } = require('./display-control');
+const { getAgentPollCadence } = require('./poll-cadence');
 
 let approvedDisplaySignature = null;
 let approvedCaptureId = null;
@@ -470,9 +471,9 @@ async function connectViaPolling(sessionCode, generation) {
     pollingInterval = setInterval(async () => {
       if (generation !== connectionGeneration || pollInFlight) return;
       const now = Date.now();
-      // Keep idle traffic low, but deliver input near 30 fps once the artist
+      // Keep idle traffic low, but deliver input up to 60 fps once the artist
       // grants cursor-only or full control. No concurrent heartbeat requests.
-      if (now - lastPollStartedAt < (controlEnabled ? 33 : 500)) return;
+      if (now - lastPollStartedAt < getAgentPollCadence(controlEnabled).minimumRequestIntervalMs) return;
       // Safety check - if already disconnected, stop polling
       if (!currentSession || !isConnected) {
         stopScreenInfoUpdates();
@@ -532,7 +533,7 @@ async function connectViaPolling(sessionCode, generation) {
       } finally {
         pollInFlight = false;
       }
-    }, 33);
+    }, getAgentPollCadence(controlEnabled).timerIntervalMs);
     return { success: true };
   } catch (error) {
     if (generation !== connectionGeneration) return { success: false, error: 'Connection cancelled' };
