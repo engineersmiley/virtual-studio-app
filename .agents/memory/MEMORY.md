@@ -1,4 +1,5 @@
 - [Agent updater identity](agent-updater-identity.md) — keep Electron app IDs stable during rebrands so existing installations can still receive updates.
+- [Agent release parity](agent-release-parity.md) — keep the Windows and Mac Agent version numbers aligned so either direction uses the same release.
 - [Admin subscriber data](admin-subscriber-access.md) — do not expose user emails or subscription records through unprotected admin routes.
 - [GitHub workflow push permission](github-workflow-push-scope.md) — workflow changes in release tags require the GitHub connection's `workflow` scope.
 - [CSS dependency patching](css-dependency-patching.md) — retain the patched selector-parser override until Tailwind's dependencies stop requiring the vulnerable major.

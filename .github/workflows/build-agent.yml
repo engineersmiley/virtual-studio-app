@@ -6,6 +6,10 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: Release tag matching the Agent version
+        required: true
+        type: string
       publish_unsigned_macos:
         description: Publish a Mac release without Apple signing; users must bypass Gatekeeper
         required: true
@@ -83,7 +87,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Require Apple signing and notarization credentials for releases
-        if: startsWith(github.ref, 'refs/tags/') && !inputs.publish_unsigned_macos
+        if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && !inputs.publish_unsigned_macos
         env:
           MACOS_CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
           MACOS_CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
@@ -97,6 +101,10 @@ jobs:
               missing+=("$name")
             fi
           done
+          if [ "${#missing[@]}" -eq 5 ]; then
+            echo "::notice::No Apple signing credentials are configured; continuing with unsigned Mac installers."
+            exit 0
+          fi
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing GitHub Actions secrets required for a signed macOS release: %s\n' "${missing[*]}"
             exit 1
@@ -161,7 +169,7 @@ jobs:
   release:
     needs: [build-windows, build-mac, build-linux]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     permissions:
       contents: write
 
@@ -207,9 +215,11 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Virtual Studio Agent ${{ github.ref_name }}
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Virtual Studio Agent ${{ inputs.release_tag || github.ref_name }}
           body: |
-            ## Virtual Studio Agent ${{ github.ref_name }}
+            ## Virtual Studio Agent ${{ inputs.release_tag || github.ref_name }}
             
             Download the installer for your operating system:
             - **Windows**: Virtual.Studio.Agent.Setup.exe
@@ -217,7 +227,7 @@ jobs:
             - **macOS Intel**: Virtual.Studio.Agent-x64.dmg
             - **Linux**: Virtual.Studio.Agent.AppImage
 
-            If this release was manually built without Apple signing, macOS may report the app as damaged. Only use the official release and follow the per-app Gatekeeper instructions.
+            Mac installers are unsigned unless Apple signing and notarization credentials are configured. If macOS reports the app as damaged or cannot be opened, only use the official release and follow the Gatekeeper instructions on the download page.
           files: |
             dist/Virtual.Studio.Agent.Setup.exe
             dist/Virtual.Studio.Agent-arm64.dmg

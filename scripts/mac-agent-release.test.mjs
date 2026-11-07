@@ -24,14 +24,20 @@ test('macOS agent builds native Apple Silicon and Intel installers', () => {
   assert.equal(buildStep.run, 'npm run build:mac');
 });
 
-test('tagged macOS releases require code signing and notarization credentials', () => {
+test('tagged macOS releases allow unsigned builds only when all signing credentials are absent', () => {
   const credentialStep = macJob.steps.find(step => step.name === 'Require Apple signing and notarization credentials for releases');
   assert.ok(credentialStep, 'release signing credential gate must exist');
   assert.match(credentialStep.if, /refs\/tags/);
+  assert.match(credentialStep.if, /workflow_dispatch/);
   assert.match(credentialStep.if, /!inputs\.publish_unsigned_macos/);
   for (const name of ['MACOS_CSC_LINK', 'MACOS_CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID']) {
     assert.ok(credentialStep.env[name], `${name} must be supplied from GitHub Actions secrets`);
   }
+  assert.match(credentialStep.run, /"\$\{#missing\[@\]\}" -eq 5/);
+  assert.match(credentialStep.run, /No Apple signing credentials are configured; continuing with unsigned Mac installers/);
+  assert.match(credentialStep.run, /Missing GitHub Actions secrets required for a signed macOS release/);
+  assert.equal(workflow.on.workflow_dispatch.inputs.release_tag.type, 'string');
+  assert.equal(workflow.on.workflow_dispatch.inputs.release_tag.required, true);
   assert.equal(workflow.on.workflow_dispatch.inputs.publish_unsigned_macos.type, 'boolean');
   assert.equal(workflow.on.workflow_dispatch.inputs.publish_unsigned_macos.default, false);
 });
@@ -39,18 +45,20 @@ test('tagged macOS releases require code signing and notarization credentials', 
 test('release version and Mac download links match the published artifacts', () => {
   assert.match(downloadConfig, new RegExp(`AGENT_VERSION = "${agent.version}"`));
   assert.match(downloadConfig, /WINDOWS_AGENT_VERSION = AGENT_VERSION/);
-  assert.match(downloadConfig, /\/v\$\{WINDOWS_AGENT_VERSION\}/);
-  assert.match(downloadConfig, /windows: `\$\{WINDOWS_RELEASE_BASE\}\/Remote\.Studio\.Agent\.Setup\.exe`/);
   assert.match(downloadConfig, /CURRENT_AGENT_VERSION = AGENT_VERSION/);
   assert.match(downloadConfig, /MAC_AGENT_VERSION = AGENT_VERSION/);
-  assert.match(downloadConfig, /v\$\{MAC_AGENT_VERSION\}-arm64/);
+  assert.match(downloadConfig, /CURRENT_RELEASE_BASE = `\$\{RELEASE_DOWNLOAD_BASE\}\/v\$\{CURRENT_AGENT_VERSION\}`/);
+  assert.match(downloadConfig, /windows: `\$\{CURRENT_RELEASE_BASE\}\/Virtual\.Studio\.Agent\.Setup\.exe`/);
+  assert.match(downloadConfig, /macAppleSilicon: `\$\{CURRENT_RELEASE_BASE\}\/Virtual\.Studio\.Agent-arm64\.dmg`/);
+  assert.match(downloadConfig, /macIntel: `\$\{CURRENT_RELEASE_BASE\}\/Virtual\.Studio\.Agent-x64\.dmg`/);
+  assert.match(downloadConfig, /linux: `\$\{CURRENT_RELEASE_BASE\}\/Virtual\.Studio\.Agent\.AppImage`/);
   const renameStep = releaseJob.steps.find(step => step.name === 'Rename files for consistent download URLs');
   for (const filename of ['Virtual.Studio.Agent-arm64.dmg', 'Virtual.Studio.Agent-x64.dmg']) {
     assert.ok(releaseText.includes(filename), `release notes must list ${filename}`);
     assert.ok(releaseFiles.includes(`dist/${filename}`), `release must upload ${filename}`);
     assert.ok(renameStep.run.includes(filename), `release workflow must produce ${filename}`);
   }
-  assert.match(downloadConfig, /Remote\.Studio\.Agent\.dmg/);
+  assert.doesNotMatch(downloadConfig, /v\$\{MAC_AGENT_VERSION\}-arm64|Remote\.Studio\.Agent\.dmg/);
   assert.match(downloadPage, /Mac Intel/);
   assert.match(downloadPage, /v\{MAC_AGENT_VERSION\}/);
   assert.match(downloadPage, /AGENT_DOWNLOAD_URLS as DOWNLOAD_URLS/);
@@ -66,12 +74,13 @@ test('release version and Mac download links match the published artifacts', () 
   assert.match(downloadPage, /drag Virtual Studio Agent into Applications/);
   assert.match(downloadPage, /Open Terminal/);
   assert.doesNotMatch(homePage, /section-apple-silicon-download/);
-  assert.match(releaseText, /If this release was manually built without Apple signing/);
+  assert.match(releaseText, /Mac installers are unsigned unless Apple signing and notarization credentials are configured/);
+  assert.match(releaseText, /use the Gatekeeper instructions on the download page/);
 });
 
-test('Windows scaled-control update has a standalone installer release path', () => {
+test('Windows installer path uses the same Agent release version', () => {
   assert.deepEqual(windowsWorkflow.on.push.tags, ['windows-v*']);
-  assert.equal(windowsWorkflow.on.workflow_dispatch.inputs.release_tag.default, 'windows-v1.20.2');
+  assert.equal(windowsWorkflow.on.workflow_dispatch.inputs.release_tag.default, `windows-v${agent.version}`);
   assert.equal(windowsJob['runs-on'], 'windows-latest');
   assert.ok(windowsJob.steps.some(step => step.name === 'Build Windows installer'
     && step.run === 'npm run build:win'));

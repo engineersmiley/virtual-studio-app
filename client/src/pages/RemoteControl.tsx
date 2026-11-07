@@ -203,7 +203,7 @@ export default function RemoteControl() {
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-4 text-center">
-              Current Windows, Intel Mac, Apple Silicon Mac, and Linux downloads: v{CURRENT_AGENT_VERSION}.
+              Windows, Intel Mac, Apple Silicon Mac, and Linux downloads: v{CURRENT_AGENT_VERSION}.
               Before updating, fully quit the Agent (including its Windows tray icon), install, then reopen it.
               Updating interrupts active remote control.
             </p>

@@ -75,8 +75,24 @@ export function assertReleaseWorkflowContract(source, file) {
   // All packaging jobs must succeed, so publishing remains transitively gated.
   assertNeeds(release, builds, 'release');
   assertBlocking(release, 'release');
+  const tagOnly = "startsWith(github.ref, 'refs/tags/')";
+  const taggedOrManualRelease =
+    "startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')";
+  const allowedConditions = file === 'build-agent.yml'
+    ? [tagOnly, taggedOrManualRelease]
+    : [tagOnly];
   assert.ok(
-    !owns(release, 'if') || release.if === "startsWith(github.ref, 'refs/tags/')",
+    !owns(release, 'if') || allowedConditions.includes(release.if),
     'release must retain the default success gate (optionally restricted to tags)',
   );
+  if (file === 'build-agent.yml' && release.if === taggedOrManualRelease) {
+    const releaseTagInput = workflow.on?.workflow_dispatch?.inputs?.release_tag;
+    assert.ok(isMapping(releaseTagInput) && releaseTagInput.type === 'string' && releaseTagInput.required === true,
+      'manual release must require a string release_tag input');
+    const releaseStep = release.steps.find(step => step.name === 'Create Release');
+    assert.equal(releaseStep?.with?.tag_name, '${{ inputs.release_tag || github.ref_name }}',
+      'manual releases must use the requested tag');
+    assert.ok(releaseStep?.with?.body?.includes('${{ inputs.release_tag || github.ref_name }}'),
+      'manual release notes must show the requested tag');
+  }
 }
