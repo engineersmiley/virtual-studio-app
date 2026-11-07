@@ -20,8 +20,17 @@ test('macOS agent builds native Apple Silicon and Intel installers', () => {
   assert.equal(agent.build.mac.hardenedRuntime, true);
   assert.equal(agent.build.mac.entitlements, 'entitlements.mac.plist');
   assert.equal(agent.build.mac.entitlementsInherit, 'entitlements.mac.plist');
-  const buildStep = macJob.steps.find(step => step.name === 'Build for macOS');
-  assert.equal(buildStep.run, 'npm run build:mac');
+  const unsignedBuild = macJob.steps.find(step => step.name === 'Build unsigned macOS installers');
+  const signedBuild = macJob.steps.find(step => step.name === 'Build signed macOS installers');
+  assert.match(unsignedBuild.if, /inputs\.publish_unsigned_macos/);
+  assert.match(unsignedBuild.if, /steps\.apple_signing\.outputs\.unsigned/);
+  assert.equal(unsignedBuild.run, 'npm run build:mac');
+  assert.equal(unsignedBuild.env.CSC_IDENTITY_AUTO_DISCOVERY, 'false');
+  assert.equal(unsignedBuild.env.CSC_LINK, undefined, 'unsigned builds must not pass an empty certificate path');
+  assert.match(signedBuild.if, /!inputs\.publish_unsigned_macos/);
+  assert.match(signedBuild.if, /steps\.apple_signing\.outputs\.unsigned/);
+  assert.equal(signedBuild.run, 'npm run build:mac');
+  assert.match(signedBuild.env.CSC_LINK, /secrets\.MACOS_CSC_LINK/);
 });
 
 test('combined release normalizes the lockfile before public CI installs dependencies', () => {
@@ -35,6 +44,7 @@ test('combined release normalizes the lockfile before public CI installs depende
 test('tagged macOS releases allow unsigned builds only when all signing credentials are absent', () => {
   const credentialStep = macJob.steps.find(step => step.name === 'Require Apple signing and notarization credentials for releases');
   assert.ok(credentialStep, 'release signing credential gate must exist');
+  assert.equal(credentialStep.id, 'apple_signing');
   assert.match(credentialStep.if, /refs\/tags/);
   assert.match(credentialStep.if, /workflow_dispatch/);
   assert.match(credentialStep.if, /!inputs\.publish_unsigned_macos/);
@@ -42,6 +52,8 @@ test('tagged macOS releases allow unsigned builds only when all signing credenti
     assert.ok(credentialStep.env[name], `${name} must be supplied from GitHub Actions secrets`);
   }
   assert.match(credentialStep.run, /"\$\{#missing\[@\]\}" -eq 5/);
+  assert.match(credentialStep.run, /unsigned=true/);
+  assert.match(credentialStep.run, /unsigned=false/);
   assert.match(credentialStep.run, /No Apple signing credentials are configured; continuing with unsigned Mac installers/);
   assert.match(credentialStep.run, /Missing GitHub Actions secrets required for a signed macOS release/);
   assert.equal(workflow.on.workflow_dispatch.inputs.release_tag.type, 'string');
