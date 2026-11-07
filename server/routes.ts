@@ -778,6 +778,18 @@ export async function registerRoutes(
       pollingRooms.get(code)?.get(id)?.role === 'artist');
   }
 
+  function broadcastControlState(code: string, allowed: boolean, mode?: string | null) {
+    const status = {
+      type: 'control-response',
+      allowed,
+      mode: allowed ? (mode === 'alignment' ? 'alignment' : 'full') : null,
+    };
+    rooms.get(code)?.forEach(p => {
+      if (p.ws.readyState === WebSocket.OPEN) p.ws.send(JSON.stringify(status));
+    });
+    pollingRooms.get(code)?.forEach(p => p.messages.push(status));
+  }
+
   function revokeCaptureControl(code: string) {
     controlPermissions.set(code, false);
     controlModes.delete(code);
@@ -1087,6 +1099,7 @@ export async function registerRoutes(
         if (type === 'control-end') {
           controlPermissions.set(normalizedRoom, false);
           controlModes.delete(normalizedRoom);
+          broadcastControlState(normalizedRoom, false);
           console.log('[Control Polling] Engineer ended control for session:', normalizedRoom);
         }
         
@@ -1342,24 +1355,23 @@ export async function registerRoutes(
           message.captureId === liveCapture(normalizedCode)?.captureId &&
           agentScreenInfo.get(normalizedCode)?.displayControlSupported === true;
         const mode = message.allowed && message.mode === 'alignment' ? 'alignment' : 'full';
-        // Forward to room participants
         const room = rooms.get(normalizedCode);
         if (room) {
-          room.forEach((participant) => {
+          room.forEach(participant => {
             if (participant.ws.readyState === WebSocket.OPEN) {
               participant.ws.send(JSON.stringify({
                 type: 'control-response',
                 allowed: message.allowed,
                 mode: message.allowed ? mode : null,
-                fromAgent: true
+                fromAgent: true,
               }));
             }
           });
         }
         const pollingRoom = pollingRooms.get(normalizedCode);
         if (pollingRoom) {
-          pollingRoom.forEach(p => {
-            p.messages.push({
+          pollingRoom.forEach(participant => {
+            participant.messages.push({
               type: 'control-response',
               allowed: message.allowed,
               mode: message.allowed ? mode : null,
@@ -1757,41 +1769,7 @@ export async function registerRoutes(
             if (message.allowed) controlModes.set(agentSession!, mode);
             else controlModes.delete(agentSession!);
             
-            const wsRoom = rooms.get(agentSession!);
-            console.log('[Control] WebSocket room found:', !!wsRoom, 'size:', wsRoom?.size || 0);
-            if (wsRoom) {
-              // Notify engineers in the WebSocket room
-              wsRoom.forEach((participant) => {
-                console.log('[Control] WS participant:', participant.role, 'readyState:', participant.ws.readyState);
-                if (participant.role === 'engineer' && participant.ws.readyState === WebSocket.OPEN) {
-                  participant.ws.send(JSON.stringify({
-                    type: 'control-response',
-                    allowed: message.allowed,
-                    mode: message.allowed ? mode : null,
-                    sessionCode: agentSession,
-                  }));
-                  console.log('[Control] Sent control-response to WS engineer');
-                }
-              });
-            }
-            
-            // Also notify engineers using HTTP polling
-            const pollingRoom = pollingRooms.get(agentSession!);
-            console.log('[Control] Polling room found:', !!pollingRoom, 'size:', pollingRoom?.size || 0);
-            if (pollingRoom) {
-              pollingRoom.forEach((participant) => {
-                console.log('[Control] Polling participant:', participant.role);
-                if (participant.role === 'engineer') {
-                  participant.messages.push({
-                    type: 'control-response',
-                    allowed: message.allowed,
-                    mode: message.allowed ? mode : null,
-                    sessionCode: agentSession,
-                  });
-                  console.log('[Control] Queued control-response for polling engineer');
-                }
-              });
-            }
+            broadcastControlState(agentSession!, message.allowed, mode);
             break;
           }
 
@@ -1804,31 +1782,7 @@ export async function registerRoutes(
               agentConn.controlEnabled = false;
             }
 
-            // Notify engineers via WebSocket
-            const wsStopRoom = rooms.get(agentSession!);
-            if (wsStopRoom) {
-              wsStopRoom.forEach((participant) => {
-                if (participant.role === 'engineer' && participant.ws.readyState === WebSocket.OPEN) {
-                  participant.ws.send(JSON.stringify({
-                    type: 'control-stopped',
-                    sessionCode: agentSession,
-                  }));
-                }
-              });
-            }
-            
-            // Also notify engineers using HTTP polling
-            const pollingStopRoom = pollingRooms.get(agentSession!);
-            if (pollingStopRoom) {
-              pollingStopRoom.forEach((participant) => {
-                if (participant.role === 'engineer') {
-                  participant.messages.push({
-                    type: 'control-stopped',
-                    sessionCode: agentSession,
-                  });
-                }
-              });
-            }
+            broadcastControlState(agentSession!, false);
             break;
           }
         }
@@ -1937,6 +1891,7 @@ export async function registerRoutes(
           if (message.type === 'control-end') {
             controlPermissions.set(sessionCode, false);
             controlModes.delete(sessionCode);
+            broadcastControlState(sessionCode, false);
             console.log('[Control] Engineer ended control for session:', sessionCode);
           }
           

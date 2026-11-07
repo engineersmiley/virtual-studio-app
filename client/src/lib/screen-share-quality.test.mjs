@@ -7,7 +7,7 @@ const source = readFileSync(new URL('../hooks/use-webrtc.ts', import.meta.url), 
 test('desktop sharing prefers readable text and does not force 1080p capture', () => {
   assert.match(source, /width: \{ ideal: 3840 \}/);
   assert.match(source, /height: \{ ideal: 2160 \}/);
-  assert.match(source, /frameRate: \{ ideal: 30, max: 30 \}/);
+  assert.match(source, /frameRate: \{ ideal: 30, max: 60 \}/);
   assert.match(source, /videoTrack\.contentHint = 'detail'/);
 });
 

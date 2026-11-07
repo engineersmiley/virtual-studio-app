@@ -17,6 +17,11 @@ fresh capture validation/consent, not preserve an authorization grant.
 An established socket should switch promptly to the fallback transport:
 production showed the old departure grace expiring while browser upgrade retries
 were still underway. Recovery budgets must fit inside the departure grace.
+Another production trace showed a browser signaling socket closing while the
+room remained alive on polling; capture was temporarily cleared, so the Agent
+received `control-end`. Reconnection restores the share but not consent: the
+engineer must request control again and the artist must approve. Do not
+silently regrant remote input after capture proof was lost.
 Explicitly ending/leaving a room still stops control. Server restarts and
 publishing currently lose in-memory signaling state; do not promise seamless
 or uninterrupted sessions across those events.

@@ -19,12 +19,17 @@ function connectionHarness(request) {
   const context = {
     httpRequest: request,
     VIRTUAL_STUDIO_HTTP: 'https://example.test',
+    getAgentPollCadence: controlEnabled => ({
+      timerIntervalMs: 16,
+      minimumRequestIntervalMs: controlEnabled ? 16 : 500,
+    }),
     connectionGeneration: 1,
     stopScreenInfoUpdates() {},
     updateTrayMenu() {},
     mainWindow: { webContents: { send: (...args) => events.push(args) } },
     console: { log() {}, error() {} },
     usePolling: false, isConnected: false, currentSession: null, currentToken: null,
+    controlEnabled: false,
     consecutiveErrors: 0, pollingInterval: null,
     monitorScreenInfo: () => () => {},
     screen: {},
@@ -45,7 +50,7 @@ test('initial Agent connection waits for the server and bounds its wait', async 
     return { ok: true };
   });
   const result = await h.context.connectViaPolling('ABC123', 1);
-  assert.equal(result.success, true);
+  assert.equal(result.success, true, result.error);
   assert.equal(options.timeoutMs, 10000);
   assert.equal(h.context.isConnected, true);
   assert.equal(h.context.currentSession, 'ABC123');

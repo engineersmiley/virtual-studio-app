@@ -163,6 +163,12 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
       };
       if (name === './screen-info') return monitorModule;
       if (name === './display-control') return displayControlModule;
+      if (name === './poll-cadence') return {
+        getAgentPollCadence: controlEnabled => ({
+          timerIntervalMs: 16,
+          minimumRequestIntervalMs: controlEnabled ? 16 : 500,
+        }),
+      };
       if (name === '@jitsi/robotjs') throw new Error('native dependency unavailable');
       return {};
     },
@@ -195,11 +201,11 @@ test('real agent connection lifecycle removes monitoring on reconnect, disconnec
   assert.equal(count(), initialCount, 'idle Agent keeps the 500ms request cadence');
   runInContext('controlEnabled = true', context);
   await [...intervals][0]();
-  assert.equal(count(), initialCount + 1, 'authorized cursor/full control polls at 33ms cadence');
-  now += 20;
+  assert.equal(count(), initialCount + 1, 'authorized cursor/full control polls at 16ms cadence');
+  now += 15;
   await [...intervals][0]();
-  assert.equal(count(), initialCount + 1, 'active polls remain bounded and non-overlapping');
-  now += 13;
+  assert.equal(count(), initialCount + 1, 'active polls wait until the 16ms frame boundary');
+  now += 1;
   await [...intervals][0]();
   assert.equal(count(), initialCount + 2);
   runInContext('controlEnabled = false', context);

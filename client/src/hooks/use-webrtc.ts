@@ -3,6 +3,7 @@ import type { SessionRole } from '@shared/schema';
 import { PollingTransport } from '@/lib/polling-transport';
 import { createRemoteControlLifetime } from '@/lib/remote-control-lifetime.js';
 import { getIdentifiedCaptureSurface, shouldPublishCaptureState } from '@/lib/capture-state.js';
+import { applyScreenShareFrameRate } from '@/lib/screen-share-frame-rate.js';
 
 type SignalingTransport = WebSocket | PollingTransport;
 
@@ -195,6 +196,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   // Queue for ICE candidates that arrive before remote description is set
   const iceCandidateQueueRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
+  const requestedShareFrameRateRef = useRef(30);
   const audioContextRef = useRef<AudioContext | null>(null);
   const onRemoteControlRef = useRef(onRemoteControl);
   const onRemoteStreamWithInfoRef = useRef(onRemoteStreamWithInfo);
@@ -1095,7 +1097,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           video: { 
             width: { ideal: 3840 },
             height: { ideal: 2160 },
-            frameRate: { ideal: 30, max: 30 }
+            // Start in readable-text mode; allow 60 fps when remote control is active.
+            frameRate: { ideal: 30, max: 60 }
           },
           audio: {
             echoCancellation: false,
@@ -1201,6 +1204,11 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
       localStreamRef.current = combinedStream;
       setLocalStream(combinedStream);
+      if (videoTrack && requestedShareFrameRateRef.current === 60) {
+        void applyScreenShareFrameRate(videoTrack, true).catch((error: unknown) =>
+          console.warn('[WebRTC] Could not raise screen capture to 60 fps:', error),
+        );
+      }
 
       // Send offer to all other participants (not ourselves)
       // Use participantsRef.current to get the latest participants (avoid stale closure)
@@ -1267,6 +1275,22 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     }
   }, [roomId, userId, role, createPeerConnection, canBroadcast]);
 
+  const setScreenShareFrameRate = useCallback(async (controlActive: boolean) => {
+    requestedShareFrameRateRef.current = controlActive ? 60 : 30;
+    const videoTrack = localStreamRef.current?.getVideoTracks()[0];
+    if (!videoTrack || videoTrack.readyState !== 'live') return;
+
+    try {
+      const appliedFrameRate = await applyScreenShareFrameRate(videoTrack, controlActive);
+      if (appliedFrameRate !== false) {
+        const actualFrameRate = videoTrack.getSettings().frameRate;
+        console.log(`[WebRTC] Screen capture target ${appliedFrameRate} fps; actual ${actualFrameRate ?? 'unknown'} fps`);
+      }
+    } catch (error) {
+      console.warn('[WebRTC] Could not update screen capture frame rate:', error);
+    }
+  }, []);
+
   const stopSharing = useCallback(() => {
     // Stop all tracks on local stream
     if (localStreamRef.current) {
@@ -1284,6 +1308,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       localStreamRef.current = null;
       setLocalStream(null);
     }
+    requestedShareFrameRateRef.current = 30;
     
     // Close audio context
     if (audioContextRef.current) {
@@ -1710,6 +1735,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     connect,
     disconnect,
     startSharing,
+    setScreenShareFrameRate,
     stopSharing,
     startMic,
     stopMic,
