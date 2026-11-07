@@ -237,6 +237,13 @@ Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateScrollWheelEvent(N
 
 // HTTP request helper for legacy Electron (no fetch API)
 function httpRequest(url, options = {}) {
+  // Electron's older Node runtime does not keep HTTPS connections alive by
+  // default. Reusing TLS connections avoids a fresh handshake for every move.
+  if (!httpRequest.keepAliveAgent) {
+    httpRequest.keepAliveAgent = new https.Agent({
+      keepAlive: true, maxSockets: 4, maxFreeSockets: 2,
+    });
+  }
   return new Promise((resolve, reject) => {
     let deadline;
     const finish = (callback, value) => {
@@ -249,6 +256,7 @@ function httpRequest(url, options = {}) {
       port: urlObj.port || 443,
       path: urlObj.pathname + urlObj.search,
       method: options.method || 'GET',
+      agent: httpRequest.keepAliveAgent,
       headers: options.headers || {},
       signal: options.signal
     };
@@ -500,7 +508,7 @@ async function connectViaPolling(sessionCode, generation) {
           consecutiveErrors = 0; // Reset on success
           const data = await pollResponse.json();
           for (const message of data.messages) {
-            console.log(`[Agent] Processing message: ${message.type}`);
+            if (message.type !== 'mouse-move') console.log(`[Agent] Processing message: ${message.type}`);
             await handleControlMessage(message);
           }
         } else if (pollResponse.status === 404) {
