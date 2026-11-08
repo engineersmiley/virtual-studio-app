@@ -1161,6 +1161,9 @@ function SessionContent() {
   const engineerCount = participants.filter(p => p.role === 'engineer').length + (role === 'engineer' ? 1 : 0);
   const producerCount = participants.filter(p => p.role === 'producer').length + (role === 'producer' ? 1 : 0);
   const otherCount = participants.filter(p => p.role === 'other').length + (role === 'other' ? 1 : 0);
+  const djCount = participants.filter(p => p.role === 'dj').length + (role === 'dj' ? 1 : 0);
+  const isDJ = role === 'dj';
+  const isProducerOrDJ = role === 'producer' || isDJ;
 
   // Helper to get role color
   const getRoleColor = (r: SessionRole) => {
@@ -1169,6 +1172,7 @@ function SessionContent() {
       case 'engineer': return 'text-primary';
       case 'producer': return 'text-purple-400';
       case 'other': return 'text-amber-400';
+      case 'dj': return 'text-pink-400';
     }
   };
 
@@ -1178,6 +1182,7 @@ function SessionContent() {
       case 'engineer': return 'bg-primary/20 border-primary/30';
       case 'producer': return 'bg-purple-500/20 border-purple-500/30';
       case 'other': return 'bg-amber-500/20 border-amber-500/30';
+      case 'dj': return 'bg-pink-500/20 border-pink-500/30';
     }
   };
 
@@ -1187,6 +1192,7 @@ function SessionContent() {
       case 'engineer': return 'bg-primary';
       case 'producer': return 'bg-purple-500';
       case 'other': return 'bg-amber-500';
+      case 'dj': return 'bg-pink-500';
     }
   };
 
@@ -1196,6 +1202,7 @@ function SessionContent() {
       case 'engineer': return <Zap size={14} />;
       case 'producer': return <Eye size={14} />;
       case 'other': return <PenTool size={14} />;
+      case 'dj': return <Disc size={14} />;
     }
   };
 
@@ -1239,6 +1246,12 @@ function SessionContent() {
             <span className="text-primary">{engineerCount}E</span>
             <span className="text-muted-foreground">/</span>
             <span className="text-purple-400">{producerCount}P</span>
+            {djCount > 0 && (
+              <>
+                <span className="text-muted-foreground">/</span>
+                <span className="text-pink-400">{djCount}DJ</span>
+              </>
+            )}
             {otherCount > 0 && (
               <>
                 <span className="text-muted-foreground">/</span>
@@ -1255,8 +1268,8 @@ function SessionContent() {
         </div>
       </header>
 
-      {/* Mac Audio Setup Warning Banner - for artists/producers on Mac */}
-      {isMac && (role === 'artist' || role === 'producer') && !macWarningDismissed && (
+      {/* Mac Audio Setup Warning Banner - for sharing roles on Mac */}
+      {isMac && (role === 'artist' || isProducerOrDJ) && !macWarningDismissed && (
         <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-xl">🍎</span>
@@ -1291,7 +1304,7 @@ function SessionContent() {
             {error}
           </div>
           <div className="flex items-center gap-2">
-            {role === 'artist' && !isSharing && (
+            {(role === 'artist' || role === 'engineer' || isProducerOrDJ) && !isSharing && (
               <button 
                 onClick={() => { clearError?.(); handleStartSharing(false); }}
                 className="px-3 py-1 text-sm bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-colors"
@@ -1635,8 +1648,8 @@ function SessionContent() {
               }
             }}
           >
-            {((role === 'artist' || role === 'engineer' || role === 'producer') && isSharing && localStream?.getVideoTracks().length) ? (
-              // Artist, Engineer, or Producer (broadcasting) - show status instead of video preview to avoid mirror effect
+            {((role === 'artist' || role === 'engineer' || isProducerOrDJ) && isSharing && localStream?.getVideoTracks().length) ? (
+              // Sharing roles show status instead of preview to avoid a mirror effect.
               isSharing ? (
                 <>
                   {/* Hidden video element for stream reference (needed for pointer positioning) */}
@@ -1714,7 +1727,7 @@ function SessionContent() {
                 {!hasRemoteStream && !isSharing && !remoteVideoRef.current?.srcObject && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 bg-black/80">
                     <Radio size={64} className="opacity-30 animate-pulse" />
-                    {participants.filter(p => p.role === 'artist' || p.role === 'producer' || p.role === 'engineer').length === 0 ? (
+                    {participants.filter(p => p.role === 'artist' || p.role === 'producer' || p.role === 'engineer' || p.role === 'dj').length === 0 ? (
                       <>
                         <p className="font-tech">Waiting for someone to share their screen...</p>
                         <p className="text-sm opacity-50">Room code: <span className="text-primary font-mono">{roomId}</span></p>
@@ -1864,14 +1877,14 @@ function SessionContent() {
             )}
             
             {/* Producer Status Lights */}
-            {role === 'producer' && (
+            {isProducerOrDJ && (
               <button 
                 onClick={handleClickWithTouchGuard(handleToggleAudio)}
                 onTouchEnd={handleAudioTouch}
                 disabled={!hasRemoteStream}
                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity disabled:opacity-50"
                 title={!hasRemoteStream ? 'No stream' : videoAudioMuted ? 'Audio muted' : 'Audio on'}
-                data-testid="button-producer-toggle-audio"
+                data-testid={isDJ ? 'button-dj-toggle-audio' : 'button-producer-toggle-audio'}
               >
                 <div className={`w-2.5 h-2.5 rounded-full ${
                   !hasRemoteStream ? 'bg-gray-500' : videoAudioMuted ? 'bg-red-400' : 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)] animate-pulse'
@@ -2047,22 +2060,22 @@ function SessionContent() {
             )}
             
             {/* Producer Action Buttons */}
-            {role === 'producer' && (
-              // Producer - can share screen for beat-making or audio only
+            {isProducerOrDJ && (
+              // Producers and DJs can share their screen or broadcast audio only.
               <div className="flex items-center gap-2 flex-wrap">
                 {!isSharing ? (
                   <>
                     <button
                       onClick={() => handleStartSharing(false)}
-                      data-testid="button-producer-share-screen"
-                      className="px-3 py-2 rounded-lg bg-purple-600 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
+                      data-testid={isDJ ? 'button-dj-share-screen' : 'button-producer-share-screen'}
+                      className={`px-3 py-2 rounded-lg text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all ${isDJ ? 'bg-pink-600' : 'bg-purple-600'}`}
                     >
                       <Monitor size={16} /> Screen
                     </button>
                     <button
                       onClick={() => handleStartSharing(true)}
-                      data-testid="button-producer-share-audio"
-                      className="px-3 py-2 rounded-lg bg-purple-700 text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all"
+                      data-testid={isDJ ? 'button-dj-share-audio' : 'button-producer-share-audio'}
+                      className={`px-3 py-2 rounded-lg text-white font-medium text-sm flex items-center gap-2 hover:brightness-110 transition-all ${isDJ ? 'bg-pink-700' : 'bg-purple-700'}`}
                     >
                       <Volume2 size={16} /> Audio
                     </button>
@@ -2070,7 +2083,7 @@ function SessionContent() {
                 ) : (
                   <button
                     onClick={handleStopSharing}
-                    data-testid="button-producer-stop-sharing"
+                    data-testid={isDJ ? 'button-dj-stop-sharing' : 'button-producer-stop-sharing'}
                     className="px-3 py-2 rounded-lg bg-destructive text-white font-medium text-sm flex items-center gap-2 hover:bg-destructive/90 transition-all"
                   >
                     <VolumeX size={16} /> Stop
@@ -2080,7 +2093,7 @@ function SessionContent() {
                 <button
                   onClick={handleClickWithTouchGuard(handleToggleAudio)}
                   onTouchEnd={handleAudioTouch}
-                  data-testid="button-producer-toggle-audio"
+                  data-testid={isDJ ? 'button-dj-toggle-audio' : 'button-producer-toggle-audio'}
                   className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
                     !hasRemoteStream
                       ? 'bg-gray-500/20 border-gray-500/50 text-gray-400'
@@ -2110,7 +2123,7 @@ function SessionContent() {
                       min={0}
                       step={5}
                       className="w-20"
-                      data-testid="slider-volume-producer"
+                      data-testid={isDJ ? 'slider-volume-dj' : 'slider-volume-producer'}
                     />
                     <Volume2 size={14} className="text-muted-foreground" />
                     <span className="text-xs text-muted-foreground w-8">{volume}%</span>
@@ -2120,7 +2133,7 @@ function SessionContent() {
                 {/* Mic toggle for producers */}
                 <button
                   onClick={handleToggleMic}
-                  data-testid="button-producer-toggle-mic"
+                  data-testid={isDJ ? 'button-dj-toggle-mic' : 'button-producer-toggle-mic'}
                   className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border ${
                     isMicActive 
                       ? 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30' 
@@ -2135,7 +2148,7 @@ function SessionContent() {
                 {/* Test Audio button for producers */}
                 <button
                   onClick={playTestAudio}
-                  data-testid="button-producer-test-audio"
+                  data-testid={isDJ ? 'button-dj-test-audio' : 'button-producer-test-audio'}
                   disabled={isTestingAudio}
                   className="px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-all border bg-blue-500/20 border-blue-500/50 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50"
                   title="Play a test tone to confirm audio is working on this device"
@@ -2144,9 +2157,9 @@ function SessionContent() {
                   Test Audio
                 </button>
                 
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/20 border border-purple-500/50">
-                  <Music size={14} className="text-purple-400" />
-                  <span className="text-xs text-purple-300">Producer</span>
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${isDJ ? 'bg-pink-500/20 border-pink-500/50' : 'bg-purple-500/20 border-purple-500/50'}`}>
+                  <Music size={14} className={isDJ ? 'text-pink-400' : 'text-purple-400'} />
+                  <span className={`text-xs ${isDJ ? 'text-pink-300' : 'text-purple-300'}`}>{isDJ ? 'DJ' : 'Producer'}</span>
                 </div>
               </div>
             )}
@@ -2260,7 +2273,7 @@ function SessionContent() {
               <div className={`flex items-center gap-3 p-3 rounded-lg border ${getRoleBgColor(role)}`}>
                 <div className={`w-3 h-3 rounded-full ${getRoleDotColor(role)} shadow-lg`} />
                 <span className="font-tech text-sm flex items-center gap-2">
-                  {getRoleIcon(role)} You ({role})
+                  {getRoleIcon(role)} You ({isDJ ? 'DJ' : role})
                 </span>
                 <span className="ml-auto flex items-center gap-2">
                   {/* Show audio confirmation status for viewers */}
@@ -2274,9 +2287,9 @@ function SessionContent() {
                     </span>
                   )}
                   {/* Show broadcasting status for broadcasters */}
-                  {(role === 'artist' || role === 'producer') && isSharing && (
+                  {(role === 'artist' || isProducerOrDJ) && isSharing && (
                     <span className="text-xs text-green-400 flex items-center gap-1">
-                      <Radio size={12} /> {role === 'producer' ? 'Audio' : 'Live'}
+                      <Radio size={12} /> {role === 'artist' ? 'Live' : isDJ ? 'DJ Live' : 'Audio'}
                       {/* Audio sync indicator - green when at least one listener confirmed */}
                       {audioConfirmations.size > 0 && (
                         <span className="ml-1 flex items-center gap-1 text-green-400" title={`${audioConfirmations.size} listener(s) confirmed audio`}>
@@ -2300,7 +2313,7 @@ function SessionContent() {
                   >
                     <div className={`w-3 h-3 rounded-full ${getRoleDotColor(p.role as SessionRole)}`} />
                     <span className="font-tech text-sm flex items-center gap-2">
-                      {getRoleIcon(p.role as SessionRole)} {p.role}
+                      {getRoleIcon(p.role as SessionRole)} {p.role === 'dj' ? 'DJ' : p.role}
                     </span>
                     {isBroadcasting && (
                       <span className="ml-auto text-xs text-green-400 flex items-center gap-1">
@@ -2440,11 +2453,11 @@ function SessionContent() {
                 </div>
               </>
             )}
-            {role === 'producer' && (
+            {isProducerOrDJ && (
               <>
-                <p><strong>Producer Controls:</strong></p>
+                <p><strong>{isDJ ? 'DJ Controls:' : 'Producer Controls:'}</strong></p>
                 <ol className="list-decimal list-inside space-y-1 text-xs">
-                  <li>Click "Audio" to broadcast your beats</li>
+                  <li>Click "Audio" to broadcast your {isDJ ? 'DJ mix' : 'beats'}</li>
                   <li>Check "Share audio" checkbox when prompted</li>
                   <li>Everyone in the session will hear your audio</li>
                   <li>Click "Stop" when done</li>

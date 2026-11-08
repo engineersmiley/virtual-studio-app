@@ -272,7 +272,7 @@ test('desktop double-click retains two left clicks, not an extra mouse-double-cl
 
 test('desktop video input requires an engineer with control enabled, locked or unlocked', () => {
   for (const options of [
-    { role: 'artist' }, { role: 'producer' }, { role: 'other' }, { controlEnabled: false },
+    { role: 'artist' }, { role: 'producer' }, { role: 'other' }, { role: 'dj' }, { controlEnabled: false },
   ]) {
     for (const locked of [false, true]) {
       const state = setup(options);

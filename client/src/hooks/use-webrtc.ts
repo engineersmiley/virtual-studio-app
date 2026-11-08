@@ -613,7 +613,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
             : null);
         }
         
-        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
+        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer' || role === 'dj';
         if (canBroadcast && localStreamRef.current) {
           const viewers = (message.participants || []).filter((p: Participant) => p.userId !== userId);
           for (const viewer of viewers) {
@@ -629,7 +629,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
           return [...prev, { userId: message.userId, role: message.role }];
         });
         
-        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
+        const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer' || role === 'dj';
         if (canBroadcast && message.userId !== userId && localStreamRef.current) {
           await sendOfferToViewer(message.userId);
         }
@@ -706,7 +706,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         if (message.userId !== userId) {
           const pc = createPeerConnection(message.userId);
           
-          if (role === 'engineer' || role === 'producer' || role === 'other') {
+          if (role === 'engineer' || role === 'producer' || role === 'other' || role === 'dj') {
             const dataChannel = pc.createDataChannel('control', { ordered: true });
             dataChannel.onopen = () => {
               console.log('[WebRTC] Control data channel opened');
@@ -1076,13 +1076,13 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     };
   }, [roomId, userId, role, createPeerConnection, closePeerConnection, closeAllPeerConnections, connectWithPolling, handleSignalingMessage]);
 
-  // Check if role can broadcast (artist, engineer, or producer)
-  const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer';
+  // DJs share screen/audio like producers, without artist or engineer permissions.
+  const canBroadcast = role === 'artist' || role === 'engineer' || role === 'producer' || role === 'dj';
 
   const startSharing = useCallback(async (audioOnly: boolean = false): Promise<{ hasSystemAudio: boolean; hasMicAudio: boolean }> => {
-    // Only artist, engineer, and producer can share
+    // Artists, engineers, producers, and DJs can share
     if (!canBroadcast) {
-      setError('Only artists, engineers, and producers can share');
+      setError('Only artists, engineers, producers, and DJs can share');
       return { hasSystemAudio: false, hasMicAudio: false };
     }
 

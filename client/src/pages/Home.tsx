@@ -439,10 +439,11 @@ export default function Home() {
           {/* Session Controls */}
           <div className="glass-panel rounded-2xl p-8 max-w-2xl mx-auto pointer-events-auto">
             {/* Role Selection */}
-            <div className="grid grid-cols-2 gap-3 mb-8">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8" role="group" aria-label="Choose your session role">
               <button
                 onClick={() => setSelectedRole('artist')}
                 data-testid="button-role-artist"
+                aria-pressed={selectedRole === 'artist'}
                 className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
                   selectedRole === 'artist' 
                     ? 'bg-secondary text-white shadow-[0_0_20px_-5px_hsl(var(--secondary)/0.5)]' 
@@ -454,6 +455,7 @@ export default function Home() {
               <button
                 onClick={() => setSelectedRole('engineer')}
                 data-testid="button-role-engineer"
+                aria-pressed={selectedRole === 'engineer'}
                 className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
                   selectedRole === 'engineer' 
                     ? 'bg-primary text-background shadow-[0_0_20px_-5px_hsl(var(--primary)/0.5)]' 
@@ -465,6 +467,7 @@ export default function Home() {
               <button
                 onClick={() => setSelectedRole('producer')}
                 data-testid="button-role-producer"
+                aria-pressed={selectedRole === 'producer'}
                 className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
                   selectedRole === 'producer' 
                     ? 'bg-purple-600 text-white shadow-[0_0_20px_-5px_rgba(147,51,234,0.5)]' 
@@ -474,8 +477,21 @@ export default function Home() {
                 <Eye size={20} /> Producer
               </button>
               <button
+                onClick={() => setSelectedRole('dj')}
+                data-testid="button-role-dj"
+                aria-pressed={selectedRole === 'dj'}
+                className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
+                  selectedRole === 'dj'
+                    ? 'bg-pink-600 text-white shadow-[0_0_20px_-5px_rgba(219,39,119,0.5)]'
+                    : 'bg-white/5 border border-white/10 hover:border-pink-500/50'
+                }`}
+              >
+                <Headphones size={20} /> DJ
+              </button>
+              <button
                 onClick={() => setSelectedRole('other')}
                 data-testid="button-role-other"
+                aria-pressed={selectedRole === 'other'}
                 className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
                   selectedRole === 'other' 
                     ? 'bg-amber-600 text-white shadow-[0_0_20px_-5px_rgba(217,119,6,0.5)]' 
