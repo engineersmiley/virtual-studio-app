@@ -465,7 +465,9 @@ export default function Home() {
                   ) : (
                     <CreditCard className="w-4 h-4 mr-2" />
                   )}
-                  {billingInterval === "year" ? "Subscribe Yearly" : "Subscribe Monthly"}
+                  {selectedPrice?.id
+                    ? (billingInterval === "year" ? "Subscribe Yearly" : "Subscribe Monthly")
+                    : `${billingInterval === "year" ? "Yearly" : "Monthly"} checkout unavailable`}
                 </Button>
                 <button
                   onClick={() => setShowSubscribe(false)}

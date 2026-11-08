@@ -284,7 +284,7 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
               )}
               {selectedPrice?.id
                 ? `Subscribe - $${selectedPriceLabel}/${billingInterval === "year" ? "year" : "month"}`
-                : "Yearly checkout unavailable"}
+                : `${billingInterval === "year" ? "Yearly" : "Monthly"} checkout unavailable`}
             </Button>
 
             <div className="relative my-4">
