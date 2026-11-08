@@ -45,11 +45,10 @@ function setup() {
     remoteVideoRef: { current: video }, fullscreenTouchRef: { current: null },
     virtualCursorRef: { current: { x: 960, y: 540 } },
     touchStartRef: { current: { x: 0, y: 0, time: 1000, identifier: 1, moved: false } },
-    lastMouseMoveRef: { current: 0 },
     lastRemoteVideoTouchTimeRef: { current: 0 },
     agentScreenSize: { width: 1920, height: 1080 },
-    MOUSE_THROTTLE_MS: 16, TOUCH_DELAY_MS: 500,
-    Date: { now: () => 1000 }, setTimeout: (callback) => callback(),
+    TOUCH_DELAY_MS: 500,
+    setTimeout: (callback) => callback(),
     queueFullControlClick: () => commands.push({ type: 'mouse-click', button: 'left' }),
     document: { pointerLockElement: null },
     sendFullControlCommand: (command) => commands.push(command),
@@ -58,7 +57,6 @@ function setup() {
   };
   function run(name, clientX, clientY) {
     assert.ok(expressions[name], `missing handler ${name}`);
-    scope.lastMouseMoveRef.current = 0;
     const js = ts.transpileModule(`(${expressions[name]})`, {
       compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
     }).outputText;
@@ -130,6 +128,15 @@ test('movement reads changed stream dimensions and the shared pre-metadata fallb
       assert.deepEqual(state.run(name, 350, 400), { type: 'mouse-move', ...expected });
     }
   }
+});
+
+test('rapid desktop movement samples are not dropped by a second page-level throttle', () => {
+  const state = setup();
+  state.run('videoContainerRef.onMouseMove', 350, 400);
+  state.run('videoContainerRef.onMouseMove', 365, 415);
+  const moves = state.commands.filter(command => command.type === 'mouse-move');
+  assert.equal(moves.length, 2);
+  assert.notDeepEqual(moves[0], moves[1]);
 });
 
 test('fullscreen pointer lock retains relative sensitivity and edge overreach', () => {

@@ -2,7 +2,7 @@
 - [Agent release parity](agent-release-parity.md) — keep the Windows and Mac Agent version numbers aligned so either direction uses the same release.
 - [Cross-platform remote control](cross-platform-remote-control.md) — keep remote mouse and keyboard responsive in both Mac-to-Windows and Windows-to-Mac sessions.
 - [Admin subscriber data](admin-subscriber-access.md) — do not expose user emails or subscription records through unprotected admin routes.
-- [GitHub workflow push permission](github-workflow-push-scope.md) — workflow changes in release tags require the GitHub connection's `workflow` scope.
+- [GitHub workflow permissions](github-workflow-push-scope.md) — pushing workflow files and dispatching Actions need different permissions; Replit’s Git URL rewrite can also override PAT auth.
 - [CSS dependency patching](css-dependency-patching.md) — retain the patched selector-parser override until Tailwind's dependencies stop requiring the vulnerable major.
 - [Portable npm lockfiles](portable-npm-lockfiles.md) — registry-proxy installs can serialize private hosts; normalize URLs without removing integrity hashes.
 - [Remote input geometry](remote-input-geometry.md) — absolute movement must match clicks; keep relative pointer-lock behavior separate.

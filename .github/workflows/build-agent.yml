@@ -29,6 +29,9 @@ jobs:
           node-version: '22.12.0'
           cache: npm
 
+      - name: Normalize npm lockfile for public CI
+        run: node scripts/normalize-lockfile.mjs
+
       - name: Install root dependencies
         run: npm ci
 
@@ -87,6 +90,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Require Apple signing and notarization credentials for releases
+        id: apple_signing
         if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && !inputs.publish_unsigned_macos
         env:
           MACOS_CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
@@ -102,6 +106,7 @@ jobs:
             fi
           done
           if [ "${#missing[@]}" -eq 5 ]; then
+            echo "unsigned=true" >> "$GITHUB_OUTPUT"
             echo "::notice::No Apple signing credentials are configured; continuing with unsigned Mac installers."
             exit 0
           fi
@@ -109,6 +114,7 @@ jobs:
             printf 'Missing GitHub Actions secrets required for a signed macOS release: %s\n' "${missing[*]}"
             exit 1
           fi
+          echo "unsigned=false" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -119,7 +125,15 @@ jobs:
         working-directory: virtual-studio-agent
         run: npm install
 
-      - name: Build for macOS
+      - name: Build unsigned macOS installers
+        if: inputs.publish_unsigned_macos || steps.apple_signing.outputs.unsigned == 'true'
+        working-directory: virtual-studio-agent
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run build:mac
+
+      - name: Build signed macOS installers
+        if: '!inputs.publish_unsigned_macos && steps.apple_signing.outputs.unsigned != ''true'''
         working-directory: virtual-studio-agent
         env:
           CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
@@ -199,17 +213,27 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          for f in *.exe; do mv "$f" "Virtual.Studio.Agent.Setup.exe" 2>/dev/null || true; done
+          shopt -s nullglob
+          rename_if_needed() {
+            local source="$1"
+            local target="$2"
+            if [[ "$source" != "$target" ]]; then
+              mv "$source" "$target"
+            fi
+          }
+          for f in *.exe; do rename_if_needed "$f" "Virtual.Studio.Agent.Setup.exe"; done
           for f in *.dmg; do
             case "$f" in
-              *arm64*) mv "$f" "Virtual.Studio.Agent-arm64.dmg" ;;
-              *x64*) mv "$f" "Virtual.Studio.Agent-x64.dmg" ;;
+              *arm64*) rename_if_needed "$f" "Virtual.Studio.Agent-arm64.dmg" ;;
+              *x64*) rename_if_needed "$f" "Virtual.Studio.Agent-x64.dmg" ;;
               *) echo "Unexpected macOS installer name: $f"; exit 1 ;;
             esac
           done
-          for f in *.AppImage; do mv "$f" "Virtual.Studio.Agent.AppImage" 2>/dev/null || true; done
+          for f in *.AppImage; do rename_if_needed "$f" "Virtual.Studio.Agent.AppImage"; done
+          test -f Virtual.Studio.Agent.Setup.exe
           test -f Virtual.Studio.Agent-arm64.dmg
           test -f Virtual.Studio.Agent-x64.dmg
+          test -f Virtual.Studio.Agent.AppImage
           ls -la
 
       - name: Create Release

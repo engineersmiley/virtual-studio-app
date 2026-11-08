@@ -20,13 +20,31 @@ test('macOS agent builds native Apple Silicon and Intel installers', () => {
   assert.equal(agent.build.mac.hardenedRuntime, true);
   assert.equal(agent.build.mac.entitlements, 'entitlements.mac.plist');
   assert.equal(agent.build.mac.entitlementsInherit, 'entitlements.mac.plist');
-  const buildStep = macJob.steps.find(step => step.name === 'Build for macOS');
-  assert.equal(buildStep.run, 'npm run build:mac');
+  const unsignedBuild = macJob.steps.find(step => step.name === 'Build unsigned macOS installers');
+  const signedBuild = macJob.steps.find(step => step.name === 'Build signed macOS installers');
+  assert.match(unsignedBuild.if, /inputs\.publish_unsigned_macos/);
+  assert.match(unsignedBuild.if, /steps\.apple_signing\.outputs\.unsigned/);
+  assert.equal(unsignedBuild.run, 'npm run build:mac');
+  assert.equal(unsignedBuild.env.CSC_IDENTITY_AUTO_DISCOVERY, 'false');
+  assert.equal(unsignedBuild.env.CSC_LINK, undefined, 'unsigned builds must not pass an empty certificate path');
+  assert.match(signedBuild.if, /!inputs\.publish_unsigned_macos/);
+  assert.match(signedBuild.if, /steps\.apple_signing\.outputs\.unsigned/);
+  assert.equal(signedBuild.run, 'npm run build:mac');
+  assert.match(signedBuild.env.CSC_LINK, /secrets\.MACOS_CSC_LINK/);
+});
+
+test('combined release normalizes the lockfile before public CI installs dependencies', () => {
+  const steps = workflow.jobs.typecheck.steps;
+  const normalizeIndex = steps.findIndex(step => step.run === 'node scripts/normalize-lockfile.mjs');
+  const installIndex = steps.findIndex(step => step.run === 'npm ci');
+  assert.ok(normalizeIndex >= 0, 'release CI must normalize private package URLs before npm ci');
+  assert.ok(installIndex > normalizeIndex, 'lockfile normalization must run before dependency installation');
 });
 
 test('tagged macOS releases allow unsigned builds only when all signing credentials are absent', () => {
   const credentialStep = macJob.steps.find(step => step.name === 'Require Apple signing and notarization credentials for releases');
   assert.ok(credentialStep, 'release signing credential gate must exist');
+  assert.equal(credentialStep.id, 'apple_signing');
   assert.match(credentialStep.if, /refs\/tags/);
   assert.match(credentialStep.if, /workflow_dispatch/);
   assert.match(credentialStep.if, /!inputs\.publish_unsigned_macos/);
@@ -34,6 +52,8 @@ test('tagged macOS releases allow unsigned builds only when all signing credenti
     assert.ok(credentialStep.env[name], `${name} must be supplied from GitHub Actions secrets`);
   }
   assert.match(credentialStep.run, /"\$\{#missing\[@\]\}" -eq 5/);
+  assert.match(credentialStep.run, /unsigned=true/);
+  assert.match(credentialStep.run, /unsigned=false/);
   assert.match(credentialStep.run, /No Apple signing credentials are configured; continuing with unsigned Mac installers/);
   assert.match(credentialStep.run, /Missing GitHub Actions secrets required for a signed macOS release/);
   assert.equal(workflow.on.workflow_dispatch.inputs.release_tag.type, 'string');
@@ -53,11 +73,18 @@ test('release version and Mac download links match the published artifacts', () 
   assert.match(downloadConfig, /macIntel: `\$\{CURRENT_RELEASE_BASE\}\/Virtual\.Studio\.Agent-x64\.dmg`/);
   assert.match(downloadConfig, /linux: `\$\{CURRENT_RELEASE_BASE\}\/Virtual\.Studio\.Agent\.AppImage`/);
   const renameStep = releaseJob.steps.find(step => step.name === 'Rename files for consistent download URLs');
-  for (const filename of ['Virtual.Studio.Agent-arm64.dmg', 'Virtual.Studio.Agent-x64.dmg']) {
+  for (const filename of [
+    'Virtual.Studio.Agent.Setup.exe',
+    'Virtual.Studio.Agent-arm64.dmg',
+    'Virtual.Studio.Agent-x64.dmg',
+    'Virtual.Studio.Agent.AppImage',
+  ]) {
     assert.ok(releaseText.includes(filename), `release notes must list ${filename}`);
     assert.ok(releaseFiles.includes(`dist/${filename}`), `release must upload ${filename}`);
     assert.ok(renameStep.run.includes(filename), `release workflow must produce ${filename}`);
+    assert.ok(renameStep.run.includes(`test -f ${filename}`), `release workflow must verify ${filename}`);
   }
+  assert.match(renameStep.run, /rename_if_needed/);
   assert.doesNotMatch(downloadConfig, /v\$\{MAC_AGENT_VERSION\}-arm64|Remote\.Studio\.Agent\.dmg/);
   assert.match(downloadPage, /Mac Intel/);
   assert.match(downloadPage, /v\{MAC_AGENT_VERSION\}/);

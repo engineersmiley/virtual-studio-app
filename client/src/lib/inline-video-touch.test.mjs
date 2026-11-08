@@ -51,7 +51,7 @@ function setup({ controlEnabled = true, videoPresent = true, remote } = {}) {
     role: 'engineer', controlEnabled, touchStartRef, lastRemoteVideoTouchTimeRef,
     virtualCursorRef: { current: { x: 960, y: 540 } },
     hasRemoteStream: true, controlMode: false,
-    lastMouseMoveRef, MOUSE_THROTTLE_MS: 16, remoteVideoRef,
+    remoteVideoRef,
     agentScreenSize: { width: 1920, height: 1080 },
     sendFullControlCommand: remote?.api.sendFullControlCommand ?? ((command) => commands.push(command)),
     queueFullControlClick: remote?.api.queueFullControlClick ??
@@ -110,18 +110,15 @@ test('inline short tap clicks exactly once, including its synthetic browser clic
   assert.equal(clickCount(commands), 1, 'duplicate end cannot click again');
 });
 
-test('inline drags returning to their origin never click, even with throttled moves', () => {
-  for (const throttled of [false, true]) {
-    const { commands, handlers, event, point, lastMouseMoveRef, syntheticClick } = setup();
-    handlers.onTouchStart(event());
-    if (throttled) lastMouseMoveRef.current = 1_000;
-    handlers.onTouchMove(event([point(115, 200)]));
-    handlers.onTouchMove(event());
-    handlers.onTouchEnd(event([]));
-    syntheticClick();
-    assert.equal(clickCount(commands), 0);
-    assert.equal(commands.length, throttled ? 0 : 1);
-  }
+test('inline drags returning to their origin send both movement samples without clicking', () => {
+  const { commands, handlers, event, point, syntheticClick } = setup();
+  handlers.onTouchStart(event());
+  handlers.onTouchMove(event([point(115, 200)]));
+  handlers.onTouchMove(event());
+  handlers.onTouchEnd(event([]));
+  syntheticClick();
+  assert.equal(clickCount(commands), 0);
+  assert.equal(commands.filter(command => command.type === 'mouse-move').length, 2);
 });
 
 test('inline tap distance and duration limits still reject drags and long presses', () => {
