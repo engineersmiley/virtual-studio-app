@@ -73,11 +73,18 @@ test('release version and Mac download links match the published artifacts', () 
   assert.match(downloadConfig, /macIntel: `\$\{CURRENT_RELEASE_BASE\}\/Virtual\.Studio\.Agent-x64\.dmg`/);
   assert.match(downloadConfig, /linux: `\$\{CURRENT_RELEASE_BASE\}\/Virtual\.Studio\.Agent\.AppImage`/);
   const renameStep = releaseJob.steps.find(step => step.name === 'Rename files for consistent download URLs');
-  for (const filename of ['Virtual.Studio.Agent-arm64.dmg', 'Virtual.Studio.Agent-x64.dmg']) {
+  for (const filename of [
+    'Virtual.Studio.Agent.Setup.exe',
+    'Virtual.Studio.Agent-arm64.dmg',
+    'Virtual.Studio.Agent-x64.dmg',
+    'Virtual.Studio.Agent.AppImage',
+  ]) {
     assert.ok(releaseText.includes(filename), `release notes must list ${filename}`);
     assert.ok(releaseFiles.includes(`dist/${filename}`), `release must upload ${filename}`);
     assert.ok(renameStep.run.includes(filename), `release workflow must produce ${filename}`);
+    assert.ok(renameStep.run.includes(`test -f ${filename}`), `release workflow must verify ${filename}`);
   }
+  assert.match(renameStep.run, /rename_if_needed/);
   assert.doesNotMatch(downloadConfig, /v\$\{MAC_AGENT_VERSION\}-arm64|Remote\.Studio\.Agent\.dmg/);
   assert.match(downloadPage, /Mac Intel/);
   assert.match(downloadPage, /v\{MAC_AGENT_VERSION\}/);
