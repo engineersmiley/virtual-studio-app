@@ -489,6 +489,18 @@ export default function Home() {
                 <Headphones size={20} /> DJ
               </button>
               <button
+                onClick={() => setSelectedRole('writer')}
+                data-testid="button-role-writer"
+                aria-pressed={selectedRole === 'writer'}
+                className={`py-4 rounded-xl font-display font-bold text-base flex items-center justify-center gap-2 transition-all ${
+                  selectedRole === 'writer'
+                    ? 'bg-emerald-600 text-white shadow-[0_0_20px_-5px_rgba(5,150,105,0.5)]'
+                    : 'bg-white/5 border border-white/10 hover:border-emerald-500/50'
+                }`}
+              >
+                <PenTool size={20} /> Writers
+              </button>
+              <button
                 onClick={() => setSelectedRole('other')}
                 data-testid="button-role-other"
                 aria-pressed={selectedRole === 'other'}
@@ -498,7 +510,7 @@ export default function Home() {
                     : 'bg-white/5 border border-white/10 hover:border-amber-500/50'
                 }`}
               >
-                <PenTool size={20} /> Other
+                <Users size={20} /> Others
               </button>
             </div>
 
