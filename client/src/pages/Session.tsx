@@ -417,7 +417,6 @@ function SessionContent() {
     connect,
     disconnect,
     startSharing,
-    setScreenShareFrameRate,
     stopSharing,
     startMic,
     stopMic,
@@ -449,11 +448,6 @@ function SessionContent() {
       }
     },
   });
-
-  useEffect(() => {
-    if (role !== 'artist') return;
-    void setScreenShareFrameRate(wsControlAllowed);
-  }, [role, wsControlAllowed, setScreenShareFrameRate]);
 
   // Start session timer when connected
   useEffect(() => {
