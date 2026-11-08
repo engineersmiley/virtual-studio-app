@@ -48,6 +48,27 @@ test('ICE recovery has one coordinator and backs off without a runtime cap', () 
   );
 });
 
+test('subscription billing options pair monthly and yearly prices from one active product', () => {
+  const { getSubscriptionPriceOptions } = load('../../../client/src/lib/subscription-pricing.ts');
+  const options = getSubscriptionPriceOptions([
+    { id: 'studio-year', product: 'studio', type: 'recurring', active: true, unit_amount: 9900, recurring: { interval: 'year' } },
+    { id: 'other-month', product: 'other', type: 'recurring', active: true, unit_amount: 999, recurring: { interval: 'month' } },
+    { id: 'studio-month', product: 'studio', type: 'recurring', active: true, unit_amount: 999, recurring: { interval: 'month' } },
+    { id: 'inactive-year', product: 'studio', type: 'recurring', active: false, unit_amount: 8900, recurring: { interval: 'year' } },
+  ]);
+  assert.equal(options.monthly?.id, 'studio-month');
+  assert.equal(options.yearly?.id, 'studio-year');
+});
+
+test('subscription billing keeps the monthly option and leaves yearly checkout unset without an active yearly price', () => {
+  const { getSubscriptionPriceOptions } = load('../../../client/src/lib/subscription-pricing.ts');
+  const options = getSubscriptionPriceOptions([
+    { id: 'monthly', product: 'studio', type: 'recurring', active: true, unit_amount: 999, recurring: { interval: 'month' } },
+  ]);
+  assert.equal(options.monthly?.id, 'monthly');
+  assert.equal(options.yearly, undefined);
+});
+
 test('mouse queue replaces stale moves but preserves click and grant boundaries', () => {
   const { enqueueControlMessage } = load('../../../server/control-message-queue.ts');
   const queue = [];

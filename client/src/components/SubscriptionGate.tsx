@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { SubscriptionPlanSelector } from "@/components/SubscriptionPlanSelector";
+import {
+  FALLBACK_MONTHLY_PRICE_CENTS,
+  FALLBACK_YEARLY_PRICE_CENTS,
+  getSubscriptionPriceOptions,
+} from "@/lib/subscription-pricing";
+import type { BillingInterval, SubscriptionPrice } from "@/lib/subscription-pricing";
 
 interface SubscriptionGateProps {
   children: React.ReactNode;
@@ -20,6 +27,7 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
   const [checkEmail, setCheckEmail] = useState("");
   const [promoCode, setPromoCode] = useState("");
   const [showPromo, setShowPromo] = useState(false);
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -30,9 +38,17 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
     }
   }, []);
 
-  const { data: pricesData } = useQuery<{ prices: Array<{ id: string; unit_amount: number }> }>({
+  const { data: pricesData } = useQuery<{ prices: SubscriptionPrice[] }>({
     queryKey: ['/api/stripe/prices'],
   });
+  const priceOptions = getSubscriptionPriceOptions(pricesData?.prices);
+  const monthlyPrice = priceOptions.monthly;
+  const yearlyPrice = priceOptions.yearly;
+  const monthlyAmountCents = monthlyPrice?.unit_amount ?? FALLBACK_MONTHLY_PRICE_CENTS;
+  const yearlyAmountCents = yearlyPrice?.unit_amount ?? FALLBACK_YEARLY_PRICE_CENTS;
+  const selectedPrice = billingInterval === "year" ? yearlyPrice : monthlyPrice;
+  const selectedAmountCents = billingInterval === "year" ? yearlyAmountCents : monthlyAmountCents;
+  const selectedPriceLabel = (selectedAmountCents / 100).toFixed(2);
 
   const { data: subscriptionData, isLoading: checkingSubscription } = useQuery<{
     hasSubscription: boolean;
@@ -102,8 +118,8 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
   });
 
   const handleSubscribe = () => {
-    if (!email.trim() || !pricesData?.prices?.[0]?.id) return;
-    checkoutMutation.mutate({ email, priceId: pricesData.prices[0].id });
+    if (!email.trim() || !selectedPrice?.id) return;
+    checkoutMutation.mutate({ email, priceId: selectedPrice.id });
   };
 
   const handleCheckAccess = () => {
@@ -139,9 +155,6 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
     return <>{children}</>;
   }
 
-  const monthlyPrice = pricesData?.prices?.[0];
-  const priceAmount = monthlyPrice?.unit_amount ? (monthlyPrice.unit_amount / 100).toFixed(2) : '9.99';
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-background relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-primary/5 pointer-events-none" />
@@ -175,9 +188,31 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
 
           <div className="text-center mb-6">
             <p className="text-4xl font-bold">
-              ${priceAmount}
-              <span className="text-lg font-normal text-muted-foreground">/month</span>
+              ${selectedPriceLabel}
+              <span className="text-lg font-normal text-muted-foreground">
+                /{billingInterval === "year" ? "year" : "month"}
+              </span>
             </p>
+            {billingInterval === "year" && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Billed yearly · ${(yearlyAmountCents / 1200).toFixed(2)}/month equivalent
+              </p>
+            )}
+          </div>
+
+          <div className="mb-5">
+            <SubscriptionPlanSelector
+              interval={billingInterval}
+              onChange={setBillingInterval}
+              monthlyAmountCents={monthlyAmountCents}
+              yearlyAmountCents={yearlyAmountCents}
+              yearlyCheckoutAvailable={!!yearlyPrice?.id}
+            />
+            {billingInterval === "year" && !yearlyPrice && (
+              <p className="mt-2 text-xs text-amber-300" role="status">
+                Yearly checkout needs an active $99 annual price in live Stripe.
+              </p>
+            )}
           </div>
 
           <div className="space-y-3 mb-6">
@@ -238,7 +273,7 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
             <Button 
               variant="outline"
               onClick={handleSubscribe}
-              disabled={!email.trim() || checkoutMutation.isPending}
+              disabled={!email.trim() || checkoutMutation.isPending || !selectedPrice?.id}
               data-testid="button-gate-subscribe"
               className="w-full"
             >
@@ -247,7 +282,9 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
               ) : (
                 <CreditCard className="w-4 h-4 mr-2" />
               )}
-              Subscribe - ${priceAmount}/month
+              {selectedPrice?.id
+                ? `Subscribe - $${selectedPriceLabel}/${billingInterval === "year" ? "year" : "month"}`
+                : "Yearly checkout unavailable"}
             </Button>
 
             <div className="relative my-4">

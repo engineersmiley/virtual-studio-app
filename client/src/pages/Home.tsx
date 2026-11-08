@@ -15,6 +15,13 @@ import { usePwaInstall } from "@/hooks/use-pwa-install";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { SubscriptionPlanSelector } from "@/components/SubscriptionPlanSelector";
+import {
+  FALLBACK_MONTHLY_PRICE_CENTS,
+  FALLBACK_YEARLY_PRICE_CENTS,
+  getSubscriptionPriceOptions,
+} from "@/lib/subscription-pricing";
+import type { BillingInterval, SubscriptionPrice } from "@/lib/subscription-pricing";
 
 const STORAGE_KEY = "studiolink_subscriber_email";
 
@@ -29,6 +36,7 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [showSubscribe, setShowSubscribe] = useState(false);
   const [checkEmail, setCheckEmail] = useState("");
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
   const { toast } = useToast();
   const joinCodeInputRef = useRef<HTMLInputElement>(null);
   
@@ -95,9 +103,17 @@ export default function Home() {
     }
   }, [justSubscribed, cancelled]);
 
-  const { data: pricesData } = useQuery<{ prices: Array<{ id: string; unit_amount: number; currency: string }> }>({
+  const { data: pricesData } = useQuery<{ prices: SubscriptionPrice[] }>({
     queryKey: ['/api/stripe/prices'],
   });
+  const priceOptions = getSubscriptionPriceOptions(pricesData?.prices);
+  const monthlyPrice = priceOptions.monthly;
+  const yearlyPrice = priceOptions.yearly;
+  const monthlyAmountCents = monthlyPrice?.unit_amount ?? FALLBACK_MONTHLY_PRICE_CENTS;
+  const yearlyAmountCents = yearlyPrice?.unit_amount ?? FALLBACK_YEARLY_PRICE_CENTS;
+  const selectedPrice = billingInterval === "year" ? yearlyPrice : monthlyPrice;
+  const selectedAmountCents = billingInterval === "year" ? yearlyAmountCents : monthlyAmountCents;
+  const selectedPriceLabel = (selectedAmountCents / 100).toFixed(2);
 
   const checkoutMutation = useMutation({
     mutationFn: async ({ email, priceId }: { email: string; priceId: string }) => {
@@ -139,19 +155,22 @@ export default function Home() {
       });
       return;
     }
-    if (!pricesData?.prices?.[0]?.id) {
+    if (!selectedPrice?.id) {
       toast({
         title: "Error",
-        description: "Pricing not available. Please refresh the page.",
+        description: billingInterval === "year"
+          ? "Yearly checkout is not active yet. Add an active $99 annual price to Virtual Studio Pro in live Stripe."
+          : "Monthly pricing is not available. Please refresh the page.",
         variant: "destructive"
       });
       return;
     }
-    checkoutMutation.mutate({ email, priceId: pricesData.prices[0].id });
+    checkoutMutation.mutate({ email, priceId: selectedPrice.id });
   };
 
-  const monthlyPrice = pricesData?.prices?.[0];
-  const priceAmount = monthlyPrice?.unit_amount ? (monthlyPrice.unit_amount / 100).toFixed(2) : '9.99';
+  const priceAmount = monthlyAmountCents
+    ? (monthlyAmountCents / 100).toFixed(2)
+    : '9.99';
 
   // Create new session
   const createSession = useMutation({
@@ -380,9 +399,31 @@ export default function Home() {
                 <Crown className="w-12 h-12 text-secondary mx-auto mb-3" />
                 <h3 className="font-display font-bold text-2xl mb-2">Virtual Studio Pro</h3>
                 <p className="text-3xl font-bold">
-                  ${priceAmount}
-                  <span className="text-sm font-normal text-muted-foreground">/month</span>
+                  ${selectedPriceLabel}
+                  <span className="text-sm font-normal text-muted-foreground">
+                    /{billingInterval === "year" ? "year" : "month"}
+                  </span>
                 </p>
+                {billingInterval === "year" && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Billed yearly · ${(yearlyAmountCents / 1200).toFixed(2)}/month equivalent
+                  </p>
+                )}
+              </div>
+
+              <div className="mb-5">
+                <SubscriptionPlanSelector
+                  interval={billingInterval}
+                  onChange={setBillingInterval}
+                  monthlyAmountCents={monthlyAmountCents}
+                  yearlyAmountCents={yearlyAmountCents}
+                  yearlyCheckoutAvailable={!!yearlyPrice?.id}
+                />
+                {billingInterval === "year" && !yearlyPrice && (
+                  <p className="mt-2 text-xs text-amber-300" role="status">
+                    The $99 yearly option is shown, but checkout needs an active annual price in live Stripe.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-3 mb-6 text-left">
@@ -415,7 +456,7 @@ export default function Home() {
                 />
                 <Button 
                   onClick={handleSubscribe}
-                  disabled={!email.trim() || checkoutMutation.isPending}
+                  disabled={!email.trim() || checkoutMutation.isPending || !selectedPrice?.id}
                   data-testid="button-subscribe"
                   className="w-full bg-gradient-to-r from-secondary to-secondary/80 hover:brightness-110"
                 >
@@ -424,7 +465,7 @@ export default function Home() {
                   ) : (
                     <CreditCard className="w-4 h-4 mr-2" />
                   )}
-                  Subscribe Now
+                  {billingInterval === "year" ? "Subscribe Yearly" : "Subscribe Monthly"}
                 </Button>
                 <button
                   onClick={() => setShowSubscribe(false)}
