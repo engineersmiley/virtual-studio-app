@@ -4,6 +4,7 @@ import { PollingTransport } from '@/lib/polling-transport';
 import { createRemoteControlLifetime } from '@/lib/remote-control-lifetime.js';
 import { getIdentifiedCaptureSurface, shouldPublishCaptureState } from '@/lib/capture-state.js';
 import { SCREEN_SHARE_FRAME_RATE } from '@/lib/screen-share-frame-rate.js';
+import { isIceRestartCoordinator, nextIceRestartDelay } from '@/lib/ice-restart';
 
 type SignalingTransport = WebSocket | PollingTransport;
 
@@ -191,6 +192,8 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   const usingPollingRef = useRef(false);
   // Map of peer connections: userId -> RTCPeerConnection
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peerRecoveryRequestRef = useRef<Map<string, (force?: boolean) => void>>(new Map());
+  const peerRecoveryCleanupRef = useRef<Map<string, () => void>>(new Map());
   // Map of data channels: userId -> RTCDataChannel
   const dataChannelsRef = useRef<Map<string, RTCDataChannel>>(new Map());
   // Queue for ICE candidates that arrive before remote description is set
@@ -308,6 +311,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
 
   const createPeerConnection = useCallback((targetUserId: string) => {
     // Close existing connection for this peer if any
+    peerRecoveryCleanupRef.current.get(targetUserId)?.();
+    peerRecoveryCleanupRef.current.delete(targetUserId);
+    peerRecoveryRequestRef.current.delete(targetUserId);
     const existingPc = peerConnectionsRef.current.get(targetUserId);
     if (existingPc) {
       existingPc.close();
@@ -323,14 +329,96 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       rtcpMuxPolicy: 'require',
     });
 
+    let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+    let recoveryAttempt = 0;
+    let recoveryInProgress = false;
+    const clearRecoveryTimer = () => {
+      if (recoveryTimer) clearTimeout(recoveryTimer);
+      recoveryTimer = null;
+    };
+    const scheduleIceRecovery = (delayMs = 0, force = false) => {
+      if (recoveryTimer || recoveryInProgress) return;
+      recoveryTimer = setTimeout(() => {
+        recoveryTimer = null;
+        if (peerConnectionsRef.current.get(targetUserId) !== pc || pc.connectionState === 'closed') return;
+        if (!force && pc.connectionState === 'connected' && pc.iceConnectionState === 'connected') {
+          recoveryAttempt = 0;
+          return;
+        }
+        if (pc.signalingState !== 'stable') {
+          scheduleIceRecovery(nextIceRestartDelay(Math.max(1, recoveryAttempt)), force);
+          return;
+        }
+
+        const transport = wsRef.current;
+        if (!transport || !isTransportOpen(transport)) {
+          scheduleIceRecovery(5000, force);
+          return;
+        }
+
+        recoveryAttempt += 1;
+        const retryDelay = nextIceRestartDelay(recoveryAttempt);
+        if (isIceRestartCoordinator(userId, targetUserId)) {
+          recoveryInProgress = true;
+          void (async () => {
+            try {
+              const offer = await pc.createOffer({ iceRestart: true });
+              if (peerConnectionsRef.current.get(targetUserId) !== pc || pc.connectionState === 'closed') return;
+              const enhancedOffer = new RTCSessionDescription({
+                type: offer.type,
+                sdp: enhanceAudioQuality(offer.sdp || ''),
+              });
+              await pc.setLocalDescription(enhancedOffer);
+              const activeTransport = wsRef.current;
+              if (!activeTransport || !isTransportOpen(activeTransport)) {
+                scheduleIceRecovery(retryDelay);
+                return;
+              }
+              await Promise.resolve(activeTransport.send(JSON.stringify({
+                type: 'offer',
+                roomId,
+                userId,
+                role,
+                payload: {
+                  sdp: { type: enhancedOffer.type, sdp: enhancedOffer.sdp },
+                  targetUserId,
+                  iceRestart: true,
+                },
+              })));
+              console.log('[WebRTC] Sent targeted ICE restart offer to', targetUserId);
+            } catch (err) {
+              console.warn('[WebRTC] ICE restart negotiation failed for', targetUserId, err);
+            } finally {
+              recoveryInProgress = false;
+            }
+            scheduleIceRecovery(retryDelay);
+          })();
+        } else {
+          try {
+            void Promise.resolve(transport.send(JSON.stringify({
+              type: 'ice-restart-request',
+              roomId,
+              userId,
+              role,
+              payload: { targetUserId },
+            }))).catch(err => console.warn('[WebRTC] ICE restart request failed for', targetUserId, err));
+          } catch (err) {
+            console.warn('[WebRTC] ICE restart request failed for', targetUserId, err);
+          }
+          scheduleIceRecovery(retryDelay);
+        }
+      }, delayMs);
+    };
+    peerRecoveryRequestRef.current.set(targetUserId, force => scheduleIceRecovery(0, force));
+    peerRecoveryCleanupRef.current.set(targetUserId, clearRecoveryTimer);
+
     // Monitor ICE connection state for stability
     pc.oniceconnectionstatechange = () => {
       console.log('[WebRTC] ICE connection state for', targetUserId, ':', pc.iceConnectionState);
       
-      // If ICE fails, try to restart it
       if (pc.iceConnectionState === 'failed') {
-        console.log('[WebRTC] ICE failed, attempting restart...');
-        pc.restartIce();
+        console.log('[WebRTC] ICE failed; requesting a negotiated restart');
+        scheduleIceRecovery(0);
       }
     };
 
@@ -436,6 +524,7 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
     };
 
     pc.onconnectionstatechange = () => {
+      if (peerConnectionsRef.current.get(targetUserId) !== pc) return;
       const state = pc.connectionState;
       console.log('[WebRTC] Connection state changed for', targetUserId, ':', state);
       
@@ -443,72 +532,15 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
       const hasConnected = states.some(s => s === 'connected');
       setConnected(hasConnected);
       
-      // Handle disconnected state - aggressively try ICE restart to recover
-      if (state === 'disconnected') {
-        console.log('[WebRTC] Connection disconnected, attempting ICE restart...');
-        // Try ICE restart immediately
-        try {
-          pc.restartIce();
-        } catch (e) {
-          console.log('[WebRTC] Immediate ICE restart failed:', e);
-        }
-        
-        // Also try again after delay if still disconnected
-        setTimeout(() => {
-          const currentPc = peerConnectionsRef.current.get(targetUserId);
-          if (currentPc && (currentPc.connectionState === 'disconnected' || currentPc.connectionState === 'failed')) {
-            console.log('[WebRTC] Still disconnected after 3s, retrying ICE restart');
-            try {
-              currentPc.restartIce();
-            } catch (e) {
-              console.log('[WebRTC] ICE restart retry failed:', e);
-            }
-          }
-        }, 3000);
-        
-        // Third attempt after longer delay
-        setTimeout(() => {
-          const currentPc = peerConnectionsRef.current.get(targetUserId);
-          if (currentPc && (currentPc.connectionState === 'disconnected' || currentPc.connectionState === 'failed')) {
-            console.log('[WebRTC] Still disconnected after 10s, final ICE restart attempt');
-            try {
-              currentPc.restartIce();
-            } catch (e) {
-              console.log('[WebRTC] Final ICE restart failed:', e);
-            }
-          }
-        }, 10000);
-      }
-      
-      // Connection failed - try multiple recovery attempts, NEVER auto-remove streams
-      if (state === 'failed') {
-        console.log('[WebRTC] Connection failed for', targetUserId, '- attempting aggressive recovery');
-        
-        // Try ICE restart immediately
-        try {
-          pc.restartIce();
-        } catch (e) {
-          console.log('[WebRTC] ICE restart on failure failed:', e);
-        }
-        
-        // Keep trying every 5 seconds for up to 30 seconds
-        [5000, 10000, 15000, 20000, 25000, 30000].forEach(delay => {
-          setTimeout(() => {
-            const currentPc = peerConnectionsRef.current.get(targetUserId);
-            if (currentPc && currentPc.connectionState === 'failed') {
-              console.log(`[WebRTC] Connection still failed after ${delay}ms, attempting ICE restart`);
-              try {
-                currentPc.restartIce();
-              } catch (e) {
-                console.log('[WebRTC] ICE restart attempt failed:', e);
-              }
-            }
-          }, delay);
-        });
-        
-        // NEVER auto-remove streams on connection failure
-        // Only remove when we receive explicit user-left from server
-        console.log('[WebRTC] Keeping stream despite connection failure - waiting for explicit disconnect');
+      if (state === 'connected') {
+        clearRecoveryTimer();
+        recoveryAttempt = 0;
+      } else if (state === 'disconnected') {
+        console.log('[WebRTC] Connection disconnected; scheduling negotiated recovery');
+        scheduleIceRecovery(3000);
+      } else if (state === 'failed') {
+        console.log('[WebRTC] Connection failed; scheduling negotiated recovery');
+        scheduleIceRecovery(0);
       }
     };
 
@@ -545,6 +577,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }, [roomId, userId, role, onRemoteStream]);
 
   const closePeerConnection = useCallback((targetUserId: string) => {
+    peerRecoveryCleanupRef.current.get(targetUserId)?.();
+    peerRecoveryCleanupRef.current.delete(targetUserId);
+    peerRecoveryRequestRef.current.delete(targetUserId);
     const pc = peerConnectionsRef.current.get(targetUserId);
     if (pc) {
       pc.close();
@@ -553,6 +588,9 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
   }, []);
 
   const closeAllPeerConnections = useCallback(() => {
+    peerRecoveryCleanupRef.current.forEach(cleanup => cleanup());
+    peerRecoveryCleanupRef.current.clear();
+    peerRecoveryRequestRef.current.clear();
     peerConnectionsRef.current.forEach((pc) => {
       pc.close();
     });
@@ -700,13 +738,30 @@ export function useWebRTC({ roomId, userId, role, onRemoteStream, onRemoteStream
         break;
       }
 
+      case 'ice-restart-request': {
+        const requesterUserId = message.userId;
+        if (isIceRestartCoordinator(userId, requesterUserId)) {
+          peerRecoveryRequestRef.current.get(requesterUserId)?.(true);
+        }
+        break;
+      }
+
       case 'offer': {
         console.log('[WebRTC] Received offer from', message.userId, '- my role:', role, 'my userId:', userId);
         console.log('[WebRTC] Offer payload:', message.payload ? 'present' : 'missing', 'sdp type:', message.payload?.sdp?.type);
         if (message.userId !== userId) {
-          const pc = createPeerConnection(message.userId);
+          const existingPc = peerConnectionsRef.current.get(message.userId);
+          const isIceRestartOffer = message.payload?.iceRestart === true;
+          const pc = isIceRestartOffer && existingPc
+            ? existingPc
+            : createPeerConnection(message.userId);
+          const reusedPeerConnection = isIceRestartOffer && existingPc === pc;
+          if (reusedPeerConnection && pc.signalingState !== 'stable') {
+            console.log('[WebRTC] Ignoring duplicate ICE restart offer while negotiation is active');
+            break;
+          }
           
-          if (role === 'engineer' || role === 'producer' || role === 'other' || role === 'dj' || role === 'writer') {
+          if (!reusedPeerConnection && (role === 'engineer' || role === 'producer' || role === 'other' || role === 'dj' || role === 'writer')) {
             const dataChannel = pc.createDataChannel('control', { ordered: true });
             dataChannel.onopen = () => {
               console.log('[WebRTC] Control data channel opened');

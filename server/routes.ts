@@ -1559,6 +1559,14 @@ export async function registerRoutes(
             break;
           }
 
+          case 'ice-restart-request': {
+            if (!currentRoom) return;
+            const targetId = payload?.targetUserId;
+            relayRoomMessage(rooms.get(currentRoom), pollingRooms.get(currentRoom),
+              { type, userId: currentUserId, payload }, currentUserId!, targetId);
+            break;
+          }
+
           case 'leave': {
             handleLeave(true);
             break;

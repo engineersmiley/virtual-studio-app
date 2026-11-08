@@ -38,6 +38,16 @@ test('signaling keepalive prevents idle sockets without retaining dead connectio
   assert.equal(cleared, true);
 });
 
+test('ICE recovery has one coordinator and backs off without a runtime cap', () => {
+  const { isIceRestartCoordinator, nextIceRestartDelay } = load('../../../client/src/lib/ice-restart.ts');
+  assert.equal(isIceRestartCoordinator('artist-a', 'engineer-b'), true);
+  assert.equal(isIceRestartCoordinator('engineer-b', 'artist-a'), false);
+  assert.deepEqual(
+    [1, 2, 3, 4, 5].map(nextIceRestartDelay),
+    [5000, 10000, 20000, 30000, 30000],
+  );
+});
+
 test('mouse queue replaces stale moves but preserves click and grant boundaries', () => {
   const { enqueueControlMessage } = load('../../../server/control-message-queue.ts');
   const queue = [];
@@ -53,6 +63,17 @@ test('mouse queue replaces stale moves but preserves click and grant boundaries'
   assert.deepEqual(queue.map(m => m.type),
     ['mouse-move', 'mouse-click', 'mouse-move', 'mouse-move', 'control-end']);
   assert.equal(queue[2].captureId, 'A');
+});
+
+test('black video can request a targeted ICE restart without replacing the peer connection', () => {
+  const webRtc = readFileSync(new URL('../../../client/src/hooks/use-webrtc.ts', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../../../server/routes.ts', import.meta.url), 'utf8');
+  assert.match(webRtc, /createOffer\(\{ iceRestart: true \}\)/);
+  assert.match(webRtc, /iceRestart: true/);
+  assert.match(webRtc, /isIceRestartCoordinator\(userId, targetUserId\)/);
+  assert.match(webRtc, /case 'ice-restart-request'/);
+  assert.match(webRtc, /isIceRestartOffer && existingPc/);
+  assert.match(routes, /case 'ice-restart-request'/);
 });
 
 function pollingHarness(fetch) {
