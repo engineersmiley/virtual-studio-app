@@ -14,3 +14,31 @@ mtime_ms = 1793471570036
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:35038730-b6ec-454e-ba3e-0a4a428d5762/c3dc901d-4447-42bb-9abb-e640263fae8c/812cd0fb-8223-41fe-a476-135740492c49"
 storage_version_token = "1793471618033160"
 content_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+[[outputs]]
+id = "AJN-_GvGaC8AQsuU2HRaK"
+uri = "file://virtual-studio-agent/assets/icon.png"
+type = "image"
+title = "Virtual Studio Agent app icon"
+description = "The cyan-magenta app icon used in the Windows and Mac Agent builds."
+logical_id = "84464e42-d12b-4e88-96a5-0d01201d3cf5"
+content_hash = "sha256:ab37dbf8981349762c2cf344310b069669a8266a6b0704103853abbbde90fdbe"
+size = 40794
+mtime_ms = 1768926377863
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:35038730-b6ec-454e-ba3e-0a4a428d5762/84464e42-d12b-4e88-96a5-0d01201d3cf5/a916d2d4-61bd-4ec7-acef-62ecb1ef5ef4"
+storage_version_token = "1794105554347939"
+content_type = "image/png"
+
+[[outputs]]
+id = "932wskvoUBB37pB7__rSW"
+uri = "file://attached_assets/generated_images/large_virtual_studio_globe_logo.webp"
+type = "image"
+title = "Virtual Studio logo"
+description = "The current Virtual Studio wordmark used on the website."
+logical_id = "e611cc76-f55a-48ba-993b-c5a77364c180"
+content_hash = "sha256:c63465140b0e33ff20a43ba4561185725a09f046d032b010a72fed2089a10c21"
+size = 99056
+mtime_ms = 1794000905666
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:35038730-b6ec-454e-ba3e-0a4a428d5762/e611cc76-f55a-48ba-993b-c5a77364c180/9cfca380-8e61-4e7d-9a7b-c244d5472cf1"
+storage_version_token = "1794105555260566"
+content_type = "image/webp"

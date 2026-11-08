@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { load } from 'js-yaml';
 
 const agent = JSON.parse(readFileSync(new URL('../virtual-studio-agent/package.json', import.meta.url), 'utf8'));
+const agentHtml = readFileSync(new URL('../virtual-studio-agent/src/index.html', import.meta.url), 'utf8');
 const downloadPage = readFileSync(new URL('../client/src/pages/RemoteControl.tsx', import.meta.url), 'utf8');
 const homePage = readFileSync(new URL('../client/src/pages/Home.tsx', import.meta.url), 'utf8');
 const downloadConfig = readFileSync(new URL('../client/src/lib/agent-downloads.ts', import.meta.url), 'utf8');
@@ -31,6 +32,13 @@ test('macOS agent builds native Apple Silicon and Intel installers', () => {
   assert.match(signedBuild.if, /steps\.apple_signing\.outputs\.unsigned/);
   assert.equal(signedBuild.run, 'npm run build:mac');
   assert.match(signedBuild.env.CSC_LINK, /secrets\.MACOS_CSC_LINK/);
+});
+
+test('Windows and Mac Agent packages display the same shipped app icon', () => {
+  assert.equal(agent.build.win.icon, 'assets/icon.png');
+  assert.equal(agent.build.mac.icon, 'assets/icon.png');
+  assert.ok(agent.build.files.includes('assets/**/*'));
+  assert.match(agentHtml, /src="\.\.\/assets\/icon\.png"/);
 });
 
 test('combined release normalizes the lockfile before public CI installs dependencies', () => {
