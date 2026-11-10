@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
-import { isSyntheticClickAfterTouch, mapVideoPointToScreen } from './remote-control-video.js';
+import {
+  isSyntheticClickAfterTouch,
+  mapVideoPointToScreen,
+  REMOTE_TOUCH_TAP_MAX_DURATION_MS,
+  REMOTE_TOUCH_TAP_SLOP_PX,
+} from './remote-control-video.js';
 import { remoteControlHarness } from './test-support/remote-control-harness.mjs';
 
 // Execute the real callbacks wired to the inline video, without a WebRTC session.
@@ -58,6 +63,7 @@ function setup({ controlEnabled = true, videoPresent = true, remote } = {}) {
       (() => commands.push({ type: 'mouse-click', button: 'left' })),
     sendControlEvent: () => assert.fail('unexpected pointer-only command'),
     mapVideoPointToScreen, isSyntheticClickAfterTouch, TOUCH_DELAY_MS: 500,
+    REMOTE_TOUCH_TAP_SLOP_PX, REMOTE_TOUCH_TAP_MAX_DURATION_MS,
     Date: { now: () => now },
     setTimeout: (callback) => callback(),
   };

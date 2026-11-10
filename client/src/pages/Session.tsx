@@ -11,7 +11,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
-import { isSyntheticClickAfterTouch, mapVideoPointToScreen } from '@/lib/remote-control-video.js';
+import {
+  isSyntheticClickAfterTouch,
+  mapVideoPointToScreen,
+  REMOTE_TOUCH_TAP_MAX_DURATION_MS,
+  REMOTE_TOUCH_TAP_SLOP_PX,
+} from '@/lib/remote-control-video.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Monitor, Mic, Square, Disc, Save, Download, Copy, 
@@ -161,8 +166,6 @@ function SessionContent() {
   const lastTouchTimeRef = useRef<number>(0);
   const lastRemoteVideoTouchTimeRef = useRef<number>(0);
   const TOUCH_DELAY_MS = 500; // Ignore clicks within 500ms of touch
-  const TOUCH_TAP_SLOP_PX = 24;
-  const TOUCH_TAP_MAX_DURATION_MS = 600;
   
   const { toast } = useToast();
   
@@ -523,7 +526,7 @@ function SessionContent() {
     e.preventDefault();
 
     // Track the entire gesture, including moves skipped by the command throttle.
-    if (Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= TOUCH_TAP_SLOP_PX) {
+    if (Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= REMOTE_TOUCH_TAP_SLOP_PX) {
       gesture.moved = true;
     }
     
@@ -564,7 +567,8 @@ function SessionContent() {
     const moveDistance = Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y);
     
     // If it was a tap (not much movement), click at that position
-    if (moveDistance < TOUCH_TAP_SLOP_PX && touchDuration < TOUCH_TAP_MAX_DURATION_MS) {
+    if (moveDistance < REMOTE_TOUCH_TAP_SLOP_PX &&
+        touchDuration < REMOTE_TOUCH_TAP_MAX_DURATION_MS) {
       const { x, y } = mapVideoPointToScreen(
         touch.clientX,
         touch.clientY,
@@ -1518,7 +1522,8 @@ function SessionContent() {
                 if (!touch) return;
                 const gesture = fullscreenTouchRef.current;
                 if (gesture && (e.touches.length !== 1 ||
-                    Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= TOUCH_TAP_SLOP_PX)) {
+                    Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >=
+                      REMOTE_TOUCH_TAP_SLOP_PX)) {
                   gesture.moved = true;
                 }
                 const video = e.currentTarget;
@@ -1544,8 +1549,9 @@ function SessionContent() {
                 lastRemoteVideoTouchTimeRef.current = Date.now();
                 const touch = e.changedTouches[0];
                 if (!touch || !gesture || gesture.moved || e.touches.length !== 0 ||
-                    Date.now() - gesture.time >= TOUCH_TAP_MAX_DURATION_MS ||
-                    Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >= TOUCH_TAP_SLOP_PX) return;
+                    Date.now() - gesture.time >= REMOTE_TOUCH_TAP_MAX_DURATION_MS ||
+                    Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) >=
+                      REMOTE_TOUCH_TAP_SLOP_PX) return;
                 const video = e.currentTarget;
                 const rect = video.getBoundingClientRect();
                 const { x, y } = mapVideoPointToScreen(

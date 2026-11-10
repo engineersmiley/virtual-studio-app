@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
-import { isSyntheticClickAfterTouch, mapVideoPointToScreen } from './remote-control-video.js';
+import {
+  isSyntheticClickAfterTouch,
+  mapVideoPointToScreen,
+  REMOTE_TOUCH_TAP_MAX_DURATION_MS,
+  REMOTE_TOUCH_TAP_SLOP_PX,
+} from './remote-control-video.js';
 import { remoteControlHarness } from './test-support/remote-control-harness.mjs';
 
 // Run the real fullscreen JSX handlers without mounting a WebRTC session.
@@ -39,6 +44,7 @@ function setup({ role = 'engineer', controlEnabled = true, remote } = {}) {
     queueFullControlClick: remote?.api.queueFullControlClick ??
       (() => commands.push({ type: 'mouse-click', button: 'left' })),
     mapVideoPointToScreen, isSyntheticClickAfterTouch, TOUCH_DELAY_MS: 500,
+    REMOTE_TOUCH_TAP_SLOP_PX, REMOTE_TOUCH_TAP_MAX_DURATION_MS,
     Date: { now: () => now },
     setTimeout: (callback) => callback(),
   };

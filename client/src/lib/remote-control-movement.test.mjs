@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
-import { isSyntheticClickAfterTouch, mapVideoPointToScreen } from './remote-control-video.js';
+import {
+  isSyntheticClickAfterTouch,
+  mapVideoPointToScreen,
+  REMOTE_TOUCH_TAP_SLOP_PX,
+} from './remote-control-video.js';
 
 // Exercise the real handlers without requiring a live WebRTC peer or desktop agent.
 const source = ts.createSourceFile(
@@ -48,6 +52,7 @@ function setup() {
     lastRemoteVideoTouchTimeRef: { current: 0 },
     agentScreenSize: { width: 1920, height: 1080 },
     TOUCH_DELAY_MS: 500,
+    REMOTE_TOUCH_TAP_SLOP_PX,
     setTimeout: (callback) => callback(),
     queueFullControlClick: () => commands.push({ type: 'mouse-click', button: 'left' }),
     document: { pointerLockElement: null },

@@ -10,6 +10,9 @@ export interface RemoteScreenSize {
   height: number;
 }
 
+export const REMOTE_TOUCH_TAP_SLOP_PX: number;
+export const REMOTE_TOUCH_TAP_MAX_DURATION_MS: number;
+
 export function mapVideoPointToScreen(
   clientX: number,
   clientY: number,

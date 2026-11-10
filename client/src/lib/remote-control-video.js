@@ -1,3 +1,6 @@
+export const REMOTE_TOUCH_TAP_SLOP_PX = 24;
+export const REMOTE_TOUCH_TAP_MAX_DURATION_MS = 600;
+
 export function mapVideoPointToScreen(
   clientX,
   clientY,
