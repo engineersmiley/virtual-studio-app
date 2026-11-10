@@ -113,7 +113,7 @@ test('inline short tap clicks exactly once, including its synthetic browser clic
 test('inline drags returning to their origin send both movement samples without clicking', () => {
   const { commands, handlers, event, point, syntheticClick } = setup();
   handlers.onTouchStart(event());
-  handlers.onTouchMove(event([point(115, 200)]));
+  handlers.onTouchMove(event([point(130, 200)]));
   handlers.onTouchMove(event());
   handlers.onTouchEnd(event([]));
   syntheticClick();
@@ -122,7 +122,7 @@ test('inline drags returning to their origin send both movement samples without 
 });
 
 test('inline tap distance and duration limits still reject drags and long presses', () => {
-  for (const [distance, duration] of [[15, 0], [0, 400], [100, 100]]) {
+  for (const [distance, duration] of [[24, 0], [0, 600], [100, 100]]) {
     const { commands, handlers, event, point, advance, syntheticClick } = setup();
     handlers.onTouchStart(event());
     advance(duration);
@@ -130,6 +130,15 @@ test('inline tap distance and duration limits still reject drags and long presse
     syntheticClick();
     assert.deepEqual(commands, []);
   }
+});
+
+test('inline tap tolerates small finger drift without turning a clear drag into a click', () => {
+  const { commands, handlers, event, point, advance } = setup();
+  handlers.onTouchStart(event());
+  handlers.onTouchMove(event([point(118, 210)]));
+  advance(100);
+  handlers.onTouchEnd(event([], [point(118, 210)]));
+  assert.equal(clickCount(commands), 1);
 });
 
 test('inline cancellation clears state, blocks synthetic clicks, and permits a fresh tap', () => {

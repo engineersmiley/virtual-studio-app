@@ -14,3 +14,9 @@ Browser gesture tests must verify the hit target, not just the number of remote 
 **Why:** A tap on the audio-enable overlay can bubble into the remote-click container and produce a convincing one-click result even though no video touch handler ran. This caused a false-positive during browser coverage development.
 
 **How to apply:** Dismiss overlapping controls through the UI and assert the touch actually lands on the video before relying on command counts. Native default prevention may suppress compatibility events entirely; exercise genuine browser compatibility events at an ancestor separately rather than injecting synthetic DOM clicks.
+
+Touch tap recognition must tolerate small finger drift while still rejecting clear drags.
+
+**Why:** A phone tap can move enough to be treated as a drag, sending pointer movement without the click the user intended.
+
+**How to apply:** Keep the tap movement threshold forgiving, and test both small-drift taps and drags that travel away and return before release.

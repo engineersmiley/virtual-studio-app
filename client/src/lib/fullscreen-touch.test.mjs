@@ -106,14 +106,14 @@ test('dragging away and returning to the start is not a tap', () => {
 test('end displacement rejects a drag even without a touchmove event', () => {
   const { commands, handlers, event } = setup();
   handlers.onTouchStart(event(100, 200));
-  handlers.onTouchEnd(event(115, 200, true));
+  handlers.onTouchEnd(event(124, 200, true));
   assert.deepEqual(commands, []);
 });
 
 test('long press and canceled or missing gestures do not click; the next tap still works', () => {
   const { commands, handlers, event, advance } = setup();
   handlers.onTouchStart(event(100, 200));
-  advance(400);
+  advance(600);
   handlers.onTouchEnd(event(100, 200, true));
   handlers.onTouchStart(event(100, 200));
   handlers.onTouchCancel();
@@ -123,6 +123,15 @@ test('long press and canceled or missing gestures do not click; the next tap sti
   handlers.onTouchStart(event(100, 200));
   handlers.onTouchEnd(event(100, 200, true));
   assert.equal(commands.filter((command) => command.type === 'mouse-click').length, 1);
+});
+
+test('fullscreen tap tolerates small finger drift on touchscreens', () => {
+  const { commands, handlers, event, advance } = setup();
+  handlers.onTouchStart(event(100, 200));
+  handlers.onTouchMove(event(118, 210));
+  advance(100);
+  handlers.onTouchEnd(event(118, 210, true));
+  assert.equal(commands.filter(command => command.type === 'mouse-click').length, 1);
 });
 
 test('multiple fingers do not produce a tap', () => {
