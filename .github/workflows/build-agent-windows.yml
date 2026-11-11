@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Windows Agent release tag
         required: true
-        default: windows-v1.20.8
+        default: windows-v1.20.9
         type: string
 
 permissions:
