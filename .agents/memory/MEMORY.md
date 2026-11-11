@@ -18,3 +18,4 @@
 - [Session continuity](session-continuity.md) — no room runtime cap; keep control consent only through engineer transport recovery while artist capture remains valid.
 - [Desktop release inspection](desktop-release-inspection.md) — the workspace archive tool can misidentify APFS DMGs; verify architecture independently.
 - [DJ session role](session-role-policy.md) — DJs can share screen/audio like producers, but do not inherit engineer or artist control permissions.
+- [Desktop Agent shutdown](desktop-agent-shutdown.md) — distinguish hiding the Agent window from fully quitting its background process.

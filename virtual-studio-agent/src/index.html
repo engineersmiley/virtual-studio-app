@@ -281,6 +281,13 @@
         Disconnect
       </button>
     </div>
+
+    <button class="btn btn-secondary" id="quitBtn" style="width: 100%; margin-top: 10px;">
+      Quit Agent
+    </button>
+    <p style="font-size: 11px; color: #888; margin: 7px 4px 15px; text-align: center;">
+      Closing this window keeps the Agent running in the tray.
+    </p>
     
     <div class="instructions">
       <h3>How it works:</h3>
@@ -297,6 +304,7 @@
     const sessionCodeInput = document.getElementById('sessionCode');
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
+    const quitBtn = document.getElementById('quitBtn');
     const stopControlBtn = document.getElementById('stopControlBtn');
     const enableFullControlBtn = document.getElementById('enableFullControlBtn');
     const connectForm = document.getElementById('connectForm');
@@ -346,6 +354,18 @@
       } finally {
         disconnectBtn.disabled = false;
         disconnectBtn.textContent = 'Disconnect';
+      }
+    });
+
+    quitBtn.addEventListener('click', async () => {
+      quitBtn.disabled = true;
+      quitBtn.textContent = 'Quitting...';
+      try {
+        await window.agent.quit();
+      } catch (err) {
+        console.error('Quit error:', err);
+        quitBtn.disabled = false;
+        quitBtn.textContent = 'Quit Agent';
       }
     });
     

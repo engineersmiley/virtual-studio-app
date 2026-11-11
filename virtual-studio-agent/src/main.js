@@ -322,12 +322,65 @@ let agentSocketReconnectTimer = null;
 let usePolling = false;
 let stopScreenInfoMonitor = null;
 let connectionGeneration = 0;
+let runtimeShutdownStarted = false;
 
 function stopScreenInfoUpdates() {
   if (stopScreenInfoMonitor) {
     stopScreenInfoMonitor();
     stopScreenInfoMonitor = null;
   }
+}
+
+function stopRuntimeForQuit() {
+  if (runtimeShutdownStarted) return;
+  runtimeShutdownStarted = true;
+  app.isQuitting = true;
+  ++connectionGeneration;
+  stopScreenInfoUpdates();
+
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+  if (agentSocketReconnectTimer) {
+    clearTimeout(agentSocketReconnectTimer);
+    agentSocketReconnectTimer = null;
+  }
+  if (ws) {
+    const socket = ws;
+    ws = null;
+    try {
+      socket.terminate();
+    } catch (error) {
+      console.error('[Agent] WebSocket shutdown error:', error.message);
+    }
+  }
+
+  agentPollInFlight = false;
+  isConnected = false;
+  controlEnabled = false;
+  controlStage = 'none';
+  currentSession = null;
+  currentToken = null;
+  usePolling = false;
+
+  if (httpRequest.keepAliveAgent) {
+    httpRequest.keepAliveAgent.destroy();
+    httpRequest.keepAliveAgent = null;
+  }
+  if (tray) {
+    try {
+      tray.destroy();
+    } catch (error) {
+      console.error('[Agent] Tray shutdown error:', error.message);
+    }
+    tray = null;
+  }
+}
+
+function quitAgent() {
+  stopRuntimeForQuit();
+  app.quit();
 }
 
 const VIRTUAL_STUDIO_URL = 'wss://virtualstudio.sale';
@@ -382,12 +435,7 @@ function createTray() {
     { type: 'separator' },
     { 
       label: 'Quit', 
-      click: () => {
-        app.isQuitting = true;
-        if (pollingInterval) clearInterval(pollingInterval);
-        app.quit();
-        process.exit(0);
-      }
+      click: quitAgent
     }
   ]);
   
@@ -1068,10 +1116,7 @@ function updateTrayMenu() {
       },
       { 
         label: 'Quit', 
-        click: () => {
-          app.isQuitting = true;
-          app.quit();
-        }
+        click: quitAgent
       }
     ]);
     tray.setContextMenu(contextMenu);
@@ -1090,10 +1135,7 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
-  ++connectionGeneration;
-  stopScreenInfoUpdates();
-});
+app.on('before-quit', stopRuntimeForQuit);
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
@@ -1173,6 +1215,11 @@ ipcMain.handle('disconnect', async () => {
   }
   
   console.log('[Agent] Disconnected successfully');
+  return { success: true };
+});
+
+ipcMain.handle('quit', () => {
+  quitAgent();
   return { success: true };
 });
 

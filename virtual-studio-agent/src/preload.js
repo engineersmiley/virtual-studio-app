@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('agent', {
     ipcRenderer.invoke('connect', { sessionCode }),
   disconnect: () => 
     ipcRenderer.invoke('disconnect'),
+  quit: () =>
+    ipcRenderer.invoke('quit'),
   stopControl: () => 
     ipcRenderer.invoke('stop-control'),
   enableFullControl: () =>

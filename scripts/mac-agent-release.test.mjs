@@ -5,6 +5,8 @@ import { load } from 'js-yaml';
 
 const agent = JSON.parse(readFileSync(new URL('../virtual-studio-agent/package.json', import.meta.url), 'utf8'));
 const agentHtml = readFileSync(new URL('../virtual-studio-agent/src/index.html', import.meta.url), 'utf8');
+const agentMain = readFileSync(new URL('../virtual-studio-agent/src/main.js', import.meta.url), 'utf8');
+const agentPreload = readFileSync(new URL('../virtual-studio-agent/src/preload.js', import.meta.url), 'utf8');
 const downloadPage = readFileSync(new URL('../client/src/pages/RemoteControl.tsx', import.meta.url), 'utf8');
 const homePage = readFileSync(new URL('../client/src/pages/Home.tsx', import.meta.url), 'utf8');
 const downloadConfig = readFileSync(new URL('../client/src/lib/agent-downloads.ts', import.meta.url), 'utf8');
@@ -39,6 +41,21 @@ test('Windows and Mac Agent packages display the same shipped app icon', () => {
   assert.equal(agent.build.mac.icon, 'assets/icon.png');
   assert.ok(agent.build.files.includes('assets/**/*'));
   assert.match(agentHtml, /src="\.\.\/assets\/icon\.png"/);
+});
+
+test('desktop Agent provides a visible quit action and stops background resources cleanly', () => {
+  assert.match(agentHtml, /id="quitBtn"/);
+  assert.match(agentHtml, /Closing this window keeps the Agent running in the tray/);
+  assert.match(agentHtml, /window\.agent\.quit\(\)/);
+  assert.match(agentPreload, /quit:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('quit'\)/);
+  assert.match(agentMain, /ipcMain\.handle\('quit'/);
+  assert.match(agentMain, /function stopRuntimeForQuit\(\)/);
+  assert.match(agentMain, /clearInterval\(pollingInterval\)/);
+  assert.match(agentMain, /clearTimeout\(agentSocketReconnectTimer\)/);
+  assert.match(agentMain, /socket\.terminate\(\)/);
+  assert.match(agentMain, /httpRequest\.keepAliveAgent\.destroy\(\)/);
+  assert.match(agentMain, /app\.on\('before-quit', stopRuntimeForQuit\)/);
+  assert.doesNotMatch(agentMain, /process\.exit\(0\)/);
 });
 
 test('combined release normalizes the lockfile before public CI installs dependencies', () => {
